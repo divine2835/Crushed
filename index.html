@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0c1017">
+<title>Crushed — Live HR + RBI Scouting Terminal</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=IBM+Plex+Mono:wght@400;600&family=Public+Sans:wght@400;600&display=swap');
+:root {
+  --ink: #0c1017; --panel: #141a24; --panel-2: #1a2130;
+  --chalk: #ece9df; --dim: #8c94a3;
+  --line: #2a3242; --line-strong: #465067;
+  --hr: #f2b134; --rbi: #4fc38a; --hot: #f2b134; --cold: #6f7c95;
+}
+* { box-sizing: border-box; margin: 0; }
+body { background: var(--ink); }
+.app { min-height: 100vh; background: var(--ink); color: var(--chalk); font-family: 'Public Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.5; padding: 0 16px 40px; max-width: 1020px; margin: 0 auto; }
+.mono { font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; }
+.dim { color: var(--dim); }
+.strong { font-weight: 600; font-size: 15px; }
+button { font-family: inherit; }
+
+.banner { display: none; margin: 12px 0 0; border-radius: 6px; padding: 8px 12px; font-size: 12px; border: 1px solid var(--line-strong); }
+.banner.show { display: block; }
+.banner-demo { color: var(--hr); border-color: rgba(242,177,52,0.5); background: rgba(242,177,52,0.08); }
+.banner-live { color: var(--rbi); border-color: rgba(79,195,138,0.5); background: rgba(79,195,138,0.07); }
+
+.masthead { display: flex; align-items: flex-end; justify-content: space-between; padding: 24px 0 18px; border-bottom: 3px solid var(--chalk); }
+.wordmark { display: flex; flex-direction: column; line-height: 0.95; }
+.wm-top, .wm-bottom { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 0.04em; }
+.wm-top { font-size: 20px; font-weight: 500; color: var(--hr); }
+.wm-bottom { font-size: 34px; font-weight: 600; color: var(--rbi); }
+.masthead-meta { display: flex; align-items: center; gap: 8px; padding-bottom: 4px; }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--rbi); animation: pulse 2s infinite; }
+.live-label { color: var(--rbi); font-size: 11.5px; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
+
+.slate { padding: 18px 0 6px; }
+.slate-scroll { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: thin; }
+.game-card { flex: 0 0 auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; min-width: 148px; }
+.game-id { font-weight: 600; font-size: 13px; }
+.game-park { color: var(--dim); font-size: 12px; margin: 2px 0 8px; }
+.game-line { display: flex; align-items: center; gap: 8px; }
+.game-wx { font-size: 11px; }
+.slate-caption { color: var(--dim); font-size: 12px; margin-top: 6px; }
+.slate-caption strong { color: var(--chalk); }
+
+.chip { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-weight: 600; padding: 2px 7px; border-radius: 4px; border: 1px solid var(--line-strong); color: var(--dim); display: inline-block; }
+.chip-hot { color: var(--ink); background: var(--hot); border-color: var(--hot); }
+.chip-cold { color: var(--cold); border-color: var(--cold); }
+
+.tabs { display: flex; gap: 8px; margin: 18px 0 10px; }
+.tab { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 0.06em; font-size: 15px; font-weight: 500; background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 6px; padding: 8px 18px; cursor: pointer; }
+.tab:focus-visible { outline: 2px solid var(--chalk); outline-offset: 2px; }
+.tab-on.tab-hr { color: var(--ink); background: var(--hr); border-color: var(--hr); }
+.tab-on.tab-rbi { color: var(--ink); background: var(--rbi); border-color: var(--rbi); }
+
+.filterbar { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 10px; scrollbar-width: thin; }
+.fchip { flex: 0 0 auto; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 999px; padding: 4px 12px; cursor: pointer; white-space: nowrap; }
+.fchip-on { color: var(--chalk); border-color: var(--chalk); background: var(--panel-2); }
+.fchip:focus-visible { outline: 2px solid var(--chalk); outline-offset: 2px; }
+
+.board-intro { color: var(--dim); font-size: 13px; margin-bottom: 14px; max-width: 720px; }
+.board-intro strong, .board-intro em { color: var(--chalk); font-style: normal; }
+.loading { color: var(--dim); font-size: 13px; padding: 30px 0; text-align: center; font-family: 'IBM Plex Mono', monospace; }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; min-width: 660px; }
+thead th { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; font-weight: 600; color: var(--dim); text-align: left; padding: 10px 12px; background: var(--panel-2); cursor: pointer; user-select: none; white-space: nowrap; }
+thead th.th-static { cursor: default; }
+thead th.th-active { color: var(--chalk); }
+tbody td { padding: 11px 12px; border-top: 1px solid var(--line); vertical-align: middle; }
+.team-head td { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11.5px; color: var(--chalk); background: var(--panel-2); padding: 7px 12px; }
+.row { cursor: pointer; }
+.row:hover { background: var(--panel); }
+.player { display: flex; flex-direction: column; }
+.player-name { font-weight: 600; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+.player-team { color: var(--dim); font-size: 11.5px; white-space: nowrap; }
+.star { color: var(--hr); font-size: 13px; }
+.hr-num { color: var(--hr); }
+.rbi-num { color: var(--rbi); }
+.stat-cell { display: flex; flex-direction: column; gap: 4px; min-width: 72px; }
+.meter { height: 3px; background: var(--line); border-radius: 2px; width: 72px; }
+.meter-fill { height: 100%; border-radius: 2px; }
+.note-row td { background: var(--panel); border-top: none; padding-top: 0; }
+.note { color: var(--dim); font-size: 13px; border-left: 2px solid var(--line-strong); padding: 4px 0 4px 12px; max-width: 660px; margin-bottom: 10px; }
+
+.tagrow { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.tagchip { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 600; color: var(--hr); border: 1px solid rgba(242,177,52,0.5); background: rgba(242,177,52,0.08); border-radius: 999px; padding: 2px 9px; }
+
+.lu-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+.lu-on { background: var(--rbi); }
+.lu-proj { background: none; border: 1.4px solid var(--dim); }
+.inline-dot { vertical-align: 1px; margin: 0 2px; }
+
+.ownage { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; background: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; margin-bottom: 14px; }
+.ownage-title { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11.5px; color: var(--chalk); }
+.ownage-title em { color: var(--dim); font-style: normal; text-transform: none; letter-spacing: 0; }
+
+.scout { padding: 4px 0 10px; }
+.scout-grid { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(280px, 340px); gap: 18px; align-items: start; }
+.scout-col { display: flex; flex-direction: column; gap: 14px; }
+@media (max-width: 720px) { .scout-grid { grid-template-columns: 1fr; } }
+.scout-src { font-size: 10.5px; margin-top: 12px; }
+.panel-title { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11.5px; color: var(--chalk); }
+
+.mix-panel { background: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.arm-toggle { display: flex; gap: 6px; margin-bottom: 12px; }
+.arm { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 0.05em; font-size: 11.5px; background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 5px; padding: 5px 10px; cursor: pointer; }
+.arm:focus-visible { outline: 2px solid var(--chalk); outline-offset: 2px; }
+.arm-on { color: var(--chalk); border-color: var(--line-strong); background: var(--panel-2); }
+.mix-cols { display: grid; grid-template-columns: 1.2fr 1.4fr 0.6fr 0.9fr; gap: 8px; font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; padding: 0 6px 6px; }
+.mix-row { display: grid; grid-template-columns: 1.2fr 1.4fr 0.6fr 0.9fr; gap: 8px; align-items: center; width: 100%; text-align: left; background: none; border: 1px solid transparent; border-radius: 6px; padding: 7px 6px; cursor: pointer; color: var(--chalk); font-size: 13px; }
+.mix-row:hover { background: var(--panel); }
+.mix-row.mix-on { border-color: var(--line-strong); background: var(--panel-2); }
+.mix-row.mix-dim { opacity: 0.35; }
+.mix-row:focus-visible { outline: 2px solid var(--chalk); outline-offset: 1px; }
+.mix-label { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.swatch { width: 9px; height: 9px; border-radius: 2px; display: inline-block; flex: 0 0 auto; }
+.mix-bar-cell { display: flex; align-items: center; gap: 8px; }
+.mix-bar-cell .meter { width: 100%; max-width: 90px; }
+.mix-bar-cell em { font-style: normal; font-size: 11.5px; font-family: 'IBM Plex Mono', monospace; }
+.mix-caption { color: var(--dim); font-size: 11px; margin-top: 10px; padding: 0 6px; }
+
+.zone-panel { background: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.zone-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.zone-head .mono { font-size: 10.5px; }
+.zone-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; max-width: 240px; margin: 0 auto; border: 1.5px solid var(--line-strong); border-radius: 4px; padding: 4px; }
+.zone-cell { position: relative; aspect-ratio: 1.15; border-radius: 3px; display: flex; align-items: center; justify-content: center; }
+.zone-val { font-size: 11px; font-weight: 600; color: var(--chalk); text-shadow: 0 1px 2px rgba(12,16,23,0.7); font-family: 'IBM Plex Mono', monospace; }
+.zone-tag { position: absolute; top: 2px; right: 5px; font-size: 12px; font-family: 'IBM Plex Mono', monospace; }
+.zone-pct { position: absolute; bottom: 2px; left: 5px; font-size: 9px; font-weight: 600; font-family: 'IBM Plex Mono', monospace; }
+
+.spray-panel { background: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 12px 10px 6px; }
+.spray-svg { width: 100%; height: auto; display: block; }
+.svg-cap { fill: var(--dim); font-family: 'IBM Plex Mono', monospace; font-size: 9px; }
+.svg-sector { fill: var(--line-strong); font-family: 'Oswald', sans-serif; font-size: 11px; letter-spacing: 0.08em; }
+.spray-legend { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; font-size: 10.5px; color: var(--chalk); padding: 8px 4px 6px; font-family: 'IBM Plex Mono', monospace; }
+.lg { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+.lg-hr { background: var(--chalk); box-shadow: 0 0 0 2.5px var(--ink), 0 0 0 3.5px var(--chalk); }
+.lg-xbh { background: var(--chalk); }
+.lg-1b { background: var(--chalk); opacity: 0.6; }
+.lg-out { background: none; border: 1.2px solid var(--chalk); opacity: 0.6; }
+
+footer { margin-top: 28px; text-align: center; }
+footer p { font-size: 11px; }
+@media (max-width: 480px) { .masthead { flex-direction: column; align-items: flex-start; gap: 8px; } .wm-bottom { font-size: 30px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="masthead">
+    <div class="wordmark">
+      <span class="wm-top">HR + RBI Terminal</span>
+      <span class="wm-bottom">Crushed</span>
+    </div>
+    <div class="masthead-meta">
+      <span class="mono dim" id="slate-meta">syncing…</span>
+      <span class="live-dot" aria-hidden="true"></span> <span class="mono live-label" id="sync-label">connecting</span>
+    </div>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <section class="slate" aria-label="Tonight's conditions">
+    <div class="slate-scroll" id="slate"></div>
+    <p class="slate-caption"><strong>Park</strong> chip is that stadium's HR factor (1.00× neutral). ★ marks the plays where the most data points align.</p>
+  </section>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-hr" class="tab" data-tab="hr">HR Board</button>
+    <button role="tab" id="tab-rbi" class="tab" data-tab="rbi">RBI Board</button>
+  </nav>
+
+  <div class="filterbar" id="gamefilter"></div>
+
+  <main>
+    <p class="board-intro" id="intro"></p>
+    <div id="board"><div class="loading">Syncing tonight's slate from Statcast…</div></div>
+  </main>
+
+  <footer>
+    <p class="mono dim">Statcast via Baseball Savant · MLB Stats API · baseline model (see server notes) · not betting advice</p>
+  </footer>
+</div>
+
+<script>
+/* ============================================================
+   CRUSHED — LIVE FRONTEND (final)
+   • Game/lineup picker: every batter in both lineups is
+     selectable; ★ marks suggested plays where signals align
+   • Per-pitch precision: zone map overlays the starter's full
+     location distribution for the selected pitch
+   • Spray charts with distance arcs and field sectors
+   • Non-featured batters lazy-load Statcast detail on tap
+   Falls back to built-in demo data when no server is reachable.
+   ============================================================ */
+
+var PITCH = {
+  FF: { label: "4-Seam", color: "#e5615e" },
+  SI: { label: "Sinker", color: "#e88a3a" },
+  FC: { label: "Cutter", color: "#b3743a" },
+  SL: { label: "Slider", color: "#e3c44a" },
+  ST: { label: "Sweeper", color: "#c9a2e8" },
+  CH: { label: "Changeup", color: "#5fbf77" },
+  CU: { label: "Curveball", color: "#5a9fe3" },
+  KC: { label: "Knuckle Curve", color: "#5a9fe3" },
+  SV: { label: "Slurve", color: "#8fa8e8" },
+  FS: { label: "Splitter", color: "#6fd0c0" }
+};
+function pInfo(pt) { return PITCH[pt] || { label: pt || "?", color: "#8c94a3" }; }
+
+/* ---------- demo fallback (same schema the server returns) ---------- */
+function mulberry32(seed) {
+  var t = seed;
+  return function () {
+    t += 0x6d2b79f5;
+    var r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function makeSpray(seed, clusters) {
+  var rand = mulberry32(seed), pts = [];
+  clusters.forEach(function (c) {
+    for (var i = 0; i < c.n; i++) {
+      pts.push({ x: c.x + (rand() - 0.5) * c.sx, y: c.y + (rand() - 0.5) * c.sy, pt: c.pitch, ev: c.results[i % c.results.length] });
+    }
+  });
+  return pts;
+}
+var PETERSON = { name:"D. Peterson", hand:"L", mix:[
+  {pt:"FF",pct:33,velo:93.8,zone:2,dist:{1:16,2:26,3:12,4:10,5:14,6:9,7:6,8:4,9:3}},
+  {pt:"SL",pct:24,velo:84.1,zone:9,dist:{9:32,8:24,6:16,5:11,7:9,3:8}},
+  {pt:"CH",pct:19,velo:85.6,zone:8,dist:{8:30,7:24,9:20,5:14,4:12}},
+  {pt:"SI",pct:18,velo:92.9,zone:6,dist:{6:26,5:20,9:16,3:14,2:12,8:12}},
+  {pt:"CU",pct:6,velo:77.2,zone:8,dist:{8:36,7:26,9:22,5:16}} ] };
+var SANCHEZ = { name:"C. Sánchez", hand:"L", mix:[
+  {pt:"SI",pct:34,velo:94.3,zone:6,dist:{6:24,9:20,5:16,3:14,8:14,2:12}},
+  {pt:"CH",pct:30,velo:84.9,zone:8,dist:{8:32,7:24,9:20,5:12,4:12}},
+  {pt:"FF",pct:20,velo:94.8,zone:2,dist:{2:24,1:18,3:16,5:16,4:14,6:12}},
+  {pt:"SL",pct:16,velo:86.0,zone:7,dist:{7:30,8:24,4:18,5:14,9:14}} ] };
+var DEMO = {
+  demo: true,
+  games: [
+    { gamePk:101, away:"PHI", home:"NYM", park:"Citi Field", parkHR:1.06, lineupsConfirmed:true },
+    { gamePk:102, away:"LAD", home:"COL", park:"Coors Field", parkHR:1.38, lineupsConfirmed:true },
+    { gamePk:103, away:"NYY", home:"BOS", park:"Fenway Park", parkHR:1.03, lineupsConfirmed:true },
+    { gamePk:104, away:"HOU", home:"TEX", park:"Globe Life", parkHR:0.98, lineupsConfirmed:true },
+    { gamePk:105, away:"CIN", home:"ATL", park:"Truist Park", parkHR:1.04, lineupsConfirmed:false },
+    { gamePk:106, away:"KC", home:"SEA", park:"T-Mobile Park", parkHR:0.86, lineupsConfirmed:false }
+  ],
+  players: [
+    { id:1, name:"Kyle Schwarber", teamAbbr:"PHI", slot:2, gamePk:101, lineup:"confirmed", bats:"L", detail:true, suggested:true,
+      tags:["Crushes top pitch","Ownage","Power form"],
+      sp: PETERSON,
+      penMix:[{pt:"FF",pct:46,velo:96.4},{pt:"SL",pct:27,velo:86.0},{pt:"SI",pct:15,velo:95.1},{pt:"CH",pct:12,velo:87.3}],
+      hrPct:31.4, xRbi:0.74, rbiPct:46, settersObp:0.344, runnersPA:0.38, parkHR:1.06,
+      season:{hr:32,pa:390,rbi:71,g:96},
+      bvp:{ab:27,h:9,hr:4,bb:5,so:8,avg:".333",slg:".815"},
+      zones:[0.740,0.812,0.455,0.688,0.702,0.398,0.510,0.442,0.290],
+      vsPitch:{FF:0.671,SI:0.588,SL:0.402,CH:0.510,CU:0.333},
+      spray: makeSpray(11,[{x:168,y:52,n:6,sx:28,sy:26,pitch:"FF",results:["home_run","home_run","double","home_run","field_out","home_run"]},{x:158,y:66,n:4,sx:30,sy:30,pitch:"SI",results:["home_run","double","field_out","home_run"]},{x:118,y:96,n:5,sx:44,sy:40,pitch:"SL",results:["field_out","single","field_out","double","field_out"]},{x:150,y:80,n:3,sx:34,sy:30,pitch:"CH",results:["home_run","field_out","single"]}]) },
+    { id:7, name:"Trea Turner", teamAbbr:"PHI", slot:1, gamePk:101, lineup:"confirmed", bats:"R", detail:false, suggested:false,
+      tags:[],
+      sp: PETERSON,
+      hrPct:14.8, xRbi:0.53, rbiPct:41, settersObp:null, runnersPA:0.31, parkHR:1.06,
+      season:{hr:12,pa:398,rbi:49,g:93},
+      bvp:{ab:21,h:6,hr:1,bb:2,so:4,avg:".286",slg:".429"},
+      zones:null, vsPitch:null, spray:null },
+    { id:8, name:"Francisco Lindor", teamAbbr:"NYM", slot:1, gamePk:101, lineup:"confirmed", bats:"S", detail:false, suggested:false,
+      tags:[],
+      sp: SANCHEZ,
+      hrPct:16.2, xRbi:0.56, rbiPct:43, settersObp:null, runnersPA:0.31, parkHR:1.06,
+      season:{hr:17,pa:412,rbi:54,g:97},
+      bvp:{ab:18,h:5,hr:1,bb:1,so:3,avg:".278",slg:".444"},
+      zones:null, vsPitch:null, spray:null },
+    { id:9, name:"Pete Alonso", teamAbbr:"NYM", slot:3, gamePk:101, lineup:"confirmed", bats:"R", detail:false, suggested:true,
+      tags:["Power form","Traffic ahead"],
+      sp: SANCHEZ,
+      hrPct:21.5, xRbi:0.69, rbiPct:50, settersObp:0.352, runnersPA:0.43, parkHR:1.06,
+      season:{hr:24,pa:405,rbi:68,g:96},
+      bvp:{ab:13,h:3,hr:1,bb:2,so:4,avg:".231",slg:".538"},
+      zones:null, vsPitch:null, spray:null },
+    { id:2, name:"Shohei Ohtani", teamAbbr:"LAD", slot:1, gamePk:102, lineup:"confirmed", bats:"L", detail:true, suggested:true,
+      tags:["Crushes top pitch","Ownage","HR park","Power form"],
+      sp:{ name:"K. Freeland", hand:"L", mix:[{pt:"FF",pct:29,velo:91.2,zone:1,dist:{1:22,2:20,4:16,5:14,3:12,7:8,6:8}},{pt:"SL",pct:28,velo:83.4,zone:7,dist:{7:28,8:22,4:18,5:12,9:11,6:9}},{pt:"CH",pct:22,velo:84.8,zone:8,dist:{8:30,7:22,9:20,5:14,6:14}},{pt:"CU",pct:13,velo:76.5,zone:8,dist:{8:34,7:24,9:22,5:12}},{pt:"FC",pct:8,velo:87.9,zone:4,dist:{4:26,5:22,1:18,7:16,2:12}}] },
+      penMix:[{pt:"FF",pct:41,velo:95.8},{pt:"SI",pct:22,velo:94.6},{pt:"SL",pct:21,velo:85.2},{pt:"ST",pct:16,velo:81.7}],
+      hrPct:29.7, xRbi:0.81, rbiPct:49, settersObp:0.301, runnersPA:0.34, parkHR:1.38,
+      season:{hr:34,pa:410,rbi:78,g:97},
+      bvp:{ab:19,h:8,hr:3,bb:3,so:4,avg:".421",slg:".947"},
+      zones:[0.690,0.755,0.620,0.802,0.744,0.531,0.577,0.488,0.402],
+      vsPitch:{FF:0.702,SL:0.531,CH:0.489,CU:0.458,FC:0.560},
+      spray: makeSpray(22,[{x:162,y:46,n:5,sx:26,sy:24,pitch:"FF",results:["home_run","home_run","home_run","double","home_run"]},{x:128,y:42,n:4,sx:30,sy:22,pitch:"SL",results:["home_run","double","home_run","field_out"]},{x:100,y:88,n:4,sx:36,sy:34,pitch:"CH",results:["single","double","field_out","single"]},{x:140,y:74,n:3,sx:30,sy:28,pitch:"CU",results:["double","field_out","home_run"]}]) },
+    { id:3, name:"Aaron Judge", teamAbbr:"NYY", slot:2, gamePk:103, lineup:"confirmed", bats:"R", detail:true, suggested:true,
+      tags:["Crushes top pitch","Ownage","Power form"],
+      sp:{ name:"B. Bello", hand:"R", mix:[{pt:"SI",pct:36,velo:94.7,zone:6,dist:{6:26,9:20,5:16,3:14,8:12,2:12}},{pt:"CH",pct:26,velo:87.1,zone:9,dist:{9:30,8:24,6:20,5:12,7:14}},{pt:"SL",pct:21,velo:85.9,zone:7,dist:{7:28,8:22,4:18,5:14,9:18}},{pt:"FF",pct:17,velo:95.3,zone:2,dist:{2:24,1:18,3:16,5:16,4:14,6:12}}] },
+      penMix:[{pt:"FF",pct:44,velo:96.1},{pt:"ST",pct:24,velo:82.3},{pt:"SI",pct:18,velo:95.0},{pt:"CU",pct:14,velo:79.8}],
+      hrPct:27.9, xRbi:0.72, rbiPct:45, settersObp:0.339, runnersPA:0.41, parkHR:1.03,
+      season:{hr:33,pa:398,rbi:69,g:95},
+      bvp:{ab:22,h:7,hr:3,bb:6,so:7,avg:".318",slg:".773"},
+      zones:[0.512,0.798,0.845,0.560,0.812,0.744,0.402,0.598,0.505],
+      vsPitch:{SI:0.645,CH:0.512,SL:0.577,FF:0.688},
+      spray: makeSpray(33,[{x:96,y:48,n:5,sx:30,sy:26,pitch:"SI",results:["home_run","home_run","double","home_run","field_out"]},{x:152,y:54,n:5,sx:26,sy:26,pitch:"FF",results:["home_run","double","home_run","home_run","single"]},{x:120,y:92,n:4,sx:40,sy:34,pitch:"CH",results:["field_out","single","double","field_out"]},{x:88,y:78,n:3,sx:30,sy:28,pitch:"SL",results:["home_run","field_out","double"]}]) },
+    { id:4, name:"Yordan Alvarez", teamAbbr:"HOU", slot:3, gamePk:104, lineup:"confirmed", bats:"L", detail:true, suggested:true,
+      tags:["Ownage","Traffic ahead","Power form"],
+      sp:{ name:"N. Eovaldi", hand:"R", mix:[{pt:"FF",pct:31,velo:95.6,zone:2,dist:{2:24,1:20,3:16,5:14,4:14,6:12}},{pt:"ST",pct:22,velo:81.9,zone:7,dist:{7:30,8:24,4:18,5:14,9:14}},{pt:"FC",pct:20,velo:89.4,zone:4,dist:{4:26,5:20,1:18,7:18,2:10,8:8}},{pt:"CU",pct:16,velo:78.8,zone:8,dist:{8:34,7:24,9:20,5:12}},{pt:"CH",pct:11,velo:88.2,zone:9,dist:{9:30,8:26,6:22,5:12}}] },
+      penMix:[{pt:"FF",pct:39,velo:96.8},{pt:"SL",pct:30,velo:86.7},{pt:"SI",pct:19,velo:95.9},{pt:"CH",pct:12,velo:88.0}],
+      hrPct:22.1, xRbi:0.78, rbiPct:47, settersObp:0.355, runnersPA:0.47, parkHR:0.98,
+      season:{hr:24,pa:360,rbi:74,g:88},
+      bvp:{ab:14,h:6,hr:2,bb:2,so:3,avg:".429",slg:".929"},
+      zones:[0.655,0.720,0.588,0.744,0.690,0.512,0.598,0.455,0.377],
+      vsPitch:{FF:0.630,ST:0.455,FC:0.598,CU:0.410,CH:0.522},
+      spray: makeSpray(44,[{x:156,y:58,n:5,sx:30,sy:26,pitch:"FF",results:["home_run","double","home_run","field_out","home_run"]},{x:112,y:60,n:4,sx:32,sy:26,pitch:"FC",results:["home_run","double","single","home_run"]},{x:132,y:98,n:4,sx:42,sy:34,pitch:"ST",results:["field_out","single","field_out","double"]},{x:144,y:82,n:3,sx:30,sy:28,pitch:"CH",results:["double","home_run","field_out"]}]) },
+    { id:5, name:"Elly De La Cruz", teamAbbr:"CIN", slot:1, gamePk:105, lineup:"projected", bats:"S", detail:true, suggested:false,
+      tags:[],
+      sp:{ name:"S. Strider", hand:"R", mix:[{pt:"FF",pct:58,velo:97.4,zone:2,dist:{2:26,1:20,3:18,5:14,4:12,6:10}},{pt:"SL",pct:33,velo:86.8,zone:9,dist:{9:34,8:24,6:18,5:12,3:12}},{pt:"CH",pct:9,velo:88.9,zone:8,dist:{8:32,7:26,9:22,5:12}}] },
+      penMix:[{pt:"FF",pct:43,velo:96.6},{pt:"SI",pct:23,velo:95.4},{pt:"SL",pct:22,velo:85.5},{pt:"CU",pct:12,velo:80.1}],
+      hrPct:17.4, xRbi:0.55, rbiPct:37, settersObp:0.298, runnersPA:0.31, parkHR:1.04,
+      season:{hr:18,pa:405,rbi:52,g:96},
+      bvp:{ab:11,h:2,hr:1,bb:1,so:6,avg:".182",slg:".455"},
+      zones:[0.480,0.610,0.520,0.555,0.588,0.470,0.360,0.310,0.250],
+      vsPitch:{FF:0.512,SL:0.388,CH:0.460},
+      spray: makeSpray(55,[{x:158,y:62,n:4,sx:34,sy:30,pitch:"FF",results:["home_run","field_out","home_run","double"]},{x:100,y:70,n:3,sx:34,sy:30,pitch:"FF",results:["home_run","triple","field_out"]},{x:122,y:104,n:5,sx:48,sy:40,pitch:"SL",results:["field_out","field_out","single","field_out","double"]}]) },
+    { id:6, name:"Julio Rodríguez", teamAbbr:"SEA", slot:3, gamePk:106, lineup:"projected", bats:"R", detail:true, suggested:false,
+      tags:[],
+      sp:{ name:"S. Lugo", hand:"R", mix:[{pt:"SI",pct:24,velo:93.1,zone:4,dist:{4:24,5:18,1:16,7:16,6:14,2:12}},{pt:"CU",pct:21,velo:79.6,zone:8,dist:{8:32,7:24,9:22,5:12}},{pt:"FC",pct:18,velo:88.7,zone:6,dist:{6:26,9:20,3:18,5:14,2:12}},{pt:"SL",pct:15,velo:84.9,zone:9,dist:{9:30,8:24,6:18,5:14}},{pt:"FF",pct:12,velo:93.8,zone:2,dist:{2:24,1:20,3:16,5:16,4:12}},{pt:"CH",pct:10,velo:86.4,zone:7,dist:{7:28,8:24,4:18,5:14,9:16}}] },
+      penMix:[{pt:"FF",pct:47,velo:96.2},{pt:"SL",pct:26,velo:86.1},{pt:"CH",pct:15,velo:87.5},{pt:"SI",pct:12,velo:94.8}],
+      hrPct:12.2, xRbi:0.52, rbiPct:35, settersObp:0.315, runnersPA:0.40, parkHR:0.86,
+      season:{hr:15,pa:400,rbi:48,g:94},
+      bvp:{ab:16,h:4,hr:0,bb:1,so:5,avg:".250",slg:".375"},
+      zones:[0.420,0.640,0.702,0.510,0.655,0.588,0.330,0.470,0.410],
+      vsPitch:{SI:0.540,CU:0.395,FC:0.470,SL:0.505,FF:0.575,CH:0.430},
+      spray: makeSpray(66,[{x:98,y:58,n:4,sx:30,sy:26,pitch:"FF",results:["home_run","double","home_run","field_out"]},{x:130,y:72,n:4,sx:36,sy:30,pitch:"SI",results:["double","home_run","single","field_out"]},{x:118,y:108,n:4,sx:46,sy:38,pitch:"CU",results:["field_out","single","field_out","field_out"]}]) }
+  ]
+};
+
+/* ---------- state ---------- */
+var state = { tab:"hr", game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{} };
+var API_BASES = ["", "http://localhost:3001"];
+var apiBase = "";
+
+/* ---------- helpers ---------- */
+function heat(slg) {
+  if (slg == null) return "var(--dim)";
+  if (slg >= 0.6) return "var(--hr)";
+  if (slg >= 0.5) return "#d9a13f";
+  if (slg >= 0.42) return "var(--chalk)";
+  return "var(--cold)";
+}
+function zoneFill(slg) {
+  if (slg == null) return "rgba(140,148,163,0.08)";
+  if (slg >= 0.7) return "rgba(242,177,52,0.85)";
+  if (slg >= 0.6) return "rgba(242,177,52,0.55)";
+  if (slg >= 0.5) return "rgba(242,177,52,0.3)";
+  if (slg >= 0.4) return "rgba(140,148,163,0.22)";
+  return "rgba(111,124,149,0.14)";
+}
+function hexA(hex, a) {
+  var r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return "rgba(" + r + "," + g + "," + b + "," + a.toFixed(2) + ")";
+}
+function fmtSlg(v) { return v == null ? "—" : "." + String(Math.round(v * 1000)).padStart(3, "0"); }
+function lastName(n) { return String(n || "").split(" ").slice(-1)[0]; }
+function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function meter(value, max, color) {
+  var w = Math.min(100, (value / max) * 100);
+  return '<div class="meter"><div class="meter-fill" style="width:' + w + '%;background:' + color + '"></div></div>';
+}
+function factorChip(c) {
+  if (c == null) return '<span class="chip">—</span>';
+  var cls = c >= 1.15 ? " chip-hot" : (c < 0.92 ? " chip-cold" : "");
+  return '<span class="chip' + cls + '">' + Number(c).toFixed(2) + '×</span>';
+}
+function luDot(status) {
+  var on = status === "confirmed";
+  return '<span class="lu-dot ' + (on ? "lu-on" : "lu-proj") + '" title="' + (on ? "Lineup confirmed" : "Projected lineup") + '"></span>';
+}
+function byId(id) {
+  var ps = (state.data && state.data.players) || [];
+  for (var i = 0; i < ps.length; i++) if (String(ps[i].id) === String(id)) return ps[i];
+  return null;
+}
+function visiblePlayers() {
+  var ps = (state.data && state.data.players) || [];
+  if (state.game === "all") return ps;
+  return ps.filter(function (p) { return String(p.gamePk) === String(state.game); });
+}
+
+function noteFor(p) {
+  var parts = [];
+  var top = p.sp && p.sp.mix && p.sp.mix[0];
+  if (top && p.vsPitch && p.vsPitch[top.pt] != null) {
+    parts.push(esc(lastName(p.name)) + " slugs " + fmtSlg(p.vsPitch[top.pt]) + " against the " + pInfo(top.pt).label.toLowerCase() + " — " + esc(p.sp.name) + "'s top pitch (" + top.pct + "% usage).");
+  }
+  if (p.bvp && p.bvp.ab >= 8) {
+    parts.push("Career vs " + esc(p.sp.name) + ": " + p.bvp.h + "-for-" + p.bvp.ab + (p.bvp.hr ? " with " + p.bvp.hr + " HR" : "") + ".");
+  }
+  if (p.parkHR >= 1.15) parts.push("Park boosts HR " + p.parkHR.toFixed(2) + "×.");
+  else if (p.parkHR <= 0.9) parts.push("Park suppresses HR (" + p.parkHR.toFixed(2) + "×).");
+  if (p.lineup === "projected") parts.push("Lineup not posted yet — slot projected from the last game.");
+  return parts.length ? parts.join(" ") : "Statcast scouting detail below.";
+}
+
+/* ---------- diamond ---------- */
+function trafficBases(p) {
+  var b = [];
+  if (p.runnersPA >= 0.34) b.push(1);
+  if (p.runnersPA >= 0.42) b.push(2);
+  if (p.runnersPA >= 0.46) b.push(3);
+  return b;
+}
+function diamondSvg(bases) {
+  var s = 26, pad = 2, mid = s / 2;
+  function sq(cx, cy, filled) {
+    return '<rect x="' + (cx - 3.2) + '" y="' + (cy - 3.2) + '" width="6.4" height="6.4" transform="rotate(45 ' + cx + ' ' + cy + ')" fill="' + (filled ? "var(--rbi)" : "none") + '" stroke="' + (filled ? "var(--rbi)" : "var(--line-strong)") + '" stroke-width="1.2"/>';
+  }
+  var on = function (b) { return bases.indexOf(b) !== -1; };
+  return '<svg width="26" height="26" viewBox="0 0 26 26" aria-label="Expected traffic">' +
+    '<path d="M ' + mid + ' ' + (s - pad) + ' L ' + (s - pad) + ' ' + mid + ' L ' + mid + ' ' + pad + ' L ' + pad + ' ' + mid + ' Z" fill="none" stroke="var(--line)" stroke-width="1"/>' +
+    sq(s - pad, mid, on(1)) + sq(mid, pad, on(2)) + sq(pad, mid, on(3)) +
+    '<rect x="' + (mid - 2.4) + '" y="' + (s - pad - 2.4) + '" width="4.8" height="4.8" transform="rotate(45 ' + mid + ' ' + (s - pad) + ')" fill="var(--line-strong)"/></svg>';
+}
+
+/* ---------- spray chart with distance arcs + sectors ----------
+   Savant hc units → feet ≈ ×2.31; px = ft × 0.52 at this scale */
+var HC_HOME = { x: 125.42, y: 198.27 };
+var F = { hx: 160, hy: 282, k: 1.2 };
+var FT = 0.52;
+function sprayChart(p, activePitch) {
+  if (!p.spray || !p.spray.length) {
+    var msg = p.detail === false
+      ? (state.demo ? "Full Statcast spray loads on the live server." : (state.detailLoading[p.id] ? "Pulling this hitter's Statcast batted balls…" : "Tap re-opens will sync this hitter's Statcast detail."))
+      : "No Statcast batted-ball data synced yet for this hitter.";
+    return '<div class="spray-panel"><div class="zone-head"><span class="panel-title">Spray chart</span></div><p class="mix-caption">' + msg + '</p></div>';
+  }
+  var shown = activePitch ? p.spray.filter(function (b) { return b.pt === activePitch; }) : p.spray;
+  var fence = 208, infield = 96, base = 62;
+  var lf = { x: F.hx - fence * 0.707, y: F.hy - fence * 0.707 };
+  var rf = { x: F.hx + fence * 0.707, y: F.hy - fence * 0.707 };
+  function arc(rft) {
+    var r = rft * FT;
+    return '<path d="M ' + (F.hx - r * 0.707) + ' ' + (F.hy - r * 0.707) + ' A ' + r + ' ' + r + ' 0 0 1 ' + (F.hx + r * 0.707) + ' ' + (F.hy - r * 0.707) + '" fill="none" stroke="var(--line)" stroke-width="0.8" stroke-dasharray="2 4"/>' +
+      '<text x="' + (F.hx + r * 0.707 + 3) + '" y="' + (F.hy - r * 0.707 + 3) + '" class="svg-cap">' + rft + '</text>';
+  }
+  var dots = shown.map(function (b) {
+    var x = F.hx + (b.x - HC_HOME.x) * F.k;
+    var y = F.hy - (HC_HOME.y - b.y) * F.k;
+    if (x < 4 || x > 316 || y < 4 || y > 296) return "";
+    var c = pInfo(b.pt).color;
+    if (b.ev === "home_run") return '<circle cx="' + x + '" cy="' + y + '" r="6.5" fill="none" stroke="' + c + '" stroke-width="1.5" opacity="0.9"/><circle cx="' + x + '" cy="' + y + '" r="3.4" fill="' + c + '"/>';
+    if (b.ev === "double" || b.ev === "triple") return '<circle cx="' + x + '" cy="' + y + '" r="3.4" fill="' + c + '" opacity="0.9"/>';
+    if (b.ev === "single") return '<circle cx="' + x + '" cy="' + y + '" r="2.8" fill="' + c + '" opacity="0.65"/>';
+    return '<circle cx="' + x + '" cy="' + y + '" r="2.8" fill="none" stroke="' + c + '" stroke-width="1.2" opacity="0.55"/>';
+  }).join("");
+  var count = activePitch ? pInfo(activePitch).label + " only · " + shown.length + " BBE" : "All pitches · " + shown.length + " BBE";
+  return '<div class="spray-panel">' +
+    '<div class="zone-head"><span class="panel-title">Spray chart</span><span class="mono dim">batted balls · colored by pitch</span></div>' +
+    '<svg viewBox="0 0 320 300" class="spray-svg" role="img" aria-label="Spray chart">' +
+    '<path d="M ' + F.hx + ' ' + F.hy + ' L ' + lf.x + ' ' + lf.y + ' A ' + fence + ' ' + fence + ' 0 0 1 ' + rf.x + ' ' + rf.y + ' Z" fill="rgba(79,195,138,0.07)"/>' +
+    '<path d="M ' + lf.x + ' ' + lf.y + ' A ' + fence + ' ' + fence + ' 0 0 1 ' + rf.x + ' ' + rf.y + '" fill="none" stroke="var(--line-strong)" stroke-width="2"/>' +
+    '<path d="M ' + F.hx + ' ' + F.hy + ' L ' + lf.x + ' ' + lf.y + '" stroke="var(--line)" stroke-width="1.5"/>' +
+    '<path d="M ' + F.hx + ' ' + F.hy + ' L ' + rf.x + ' ' + rf.y + '" stroke="var(--line)" stroke-width="1.5"/>' +
+    arc(150) + arc(250) + arc(350) +
+    '<path d="M ' + (F.hx - infield * 0.707) + ' ' + (F.hy - infield * 0.707) + ' A ' + infield + ' ' + infield + ' 0 0 1 ' + (F.hx + infield * 0.707) + ' ' + (F.hy - infield * 0.707) + '" fill="none" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 3"/>' +
+    '<path d="M ' + F.hx + ' ' + F.hy + ' L ' + (F.hx + base * 0.707) + ' ' + (F.hy - base * 0.707) + ' L ' + F.hx + ' ' + (F.hy - base * 1.414) + ' L ' + (F.hx - base * 0.707) + ' ' + (F.hy - base * 0.707) + ' Z" fill="none" stroke="var(--line)" stroke-width="1"/>' +
+    '<text x="' + (F.hx - 131) + '" y="' + (F.hy - 131) + '" class="svg-sector" text-anchor="middle">LF</text>' +
+    '<text x="' + F.hx + '" y="' + (F.hy - 192) + '" class="svg-sector" text-anchor="middle">CF</text>' +
+    '<text x="' + (F.hx + 131) + '" y="' + (F.hy - 131) + '" class="svg-sector" text-anchor="middle">RF</text>' +
+    dots + '</svg>' +
+    '<div class="spray-legend"><span><i class="lg lg-hr"></i> HR</span><span><i class="lg lg-xbh"></i> XBH</span><span><i class="lg lg-1b"></i> 1B</span><span><i class="lg lg-out"></i> Out</span><span class="dim">' + count + '</span></div>' +
+    '</div>';
+}
+
+/* ---------- zone heatmap with per-pitch location distribution ---------- */
+function zoneMap(p, arm, activePitch) {
+  if (!p.zones) {
+    var msg2 = p.detail === false
+      ? (state.demo ? "Zone splits load on the live server." : "Zone splits sync when this hitter's Statcast detail loads.")
+      : "Zone splits sync after enough Statcast at-bats.";
+    return '<div class="zone-panel"><div class="zone-head"><span class="panel-title">Zone damage</span></div><p class="mix-caption">' + msg2 + '</p></div>';
+  }
+  var target = null, dist = null, maxPct = 0;
+  if (arm === "sp" && activePitch && p.sp && p.sp.mix) {
+    var m = p.sp.mix.filter(function (x) { return x.pt === activePitch; })[0];
+    if (m) {
+      target = m.zone || null;
+      dist = m.dist || null;
+      if (dist) Object.keys(dist).forEach(function (z) { if (+z <= 9 && dist[z] > maxPct) maxPct = dist[z]; });
+    }
+  }
+  var cells = p.zones.map(function (slg, i) {
+    var z = i + 1, isT = target === z;
+    var ring = "", pctTag = "";
+    if (dist && dist[z] && maxPct) {
+      var alpha = 0.25 + 0.75 * (dist[z] / maxPct);
+      ring = "box-shadow: inset 0 0 0 2px " + hexA(pInfo(activePitch).color, alpha) + ";";
+      if (dist[z] >= 10) pctTag = '<span class="zone-pct" style="color:' + hexA(pInfo(activePitch).color, Math.max(alpha, 0.7)) + '">' + dist[z] + '%</span>';
+    } else if (isT) {
+      ring = "box-shadow: inset 0 0 0 2px " + pInfo(activePitch).color + ";";
+    }
+    var tag = isT ? '<span class="zone-tag" style="color:' + pInfo(activePitch).color + '">◎</span>' : "";
+    return '<div class="zone-cell" style="background:' + zoneFill(slg) + ';' + ring + '"><span class="zone-val">' + fmtSlg(slg) + '</span>' + tag + pctTag + '</div>';
+  }).join("");
+  var cap = activePitch && dist
+    ? "Rings = where " + esc(p.sp.name) + " locates the " + pInfo(activePitch).label.toLowerCase() + " (% of in-zone locations, ◎ = most common). Cell color = " + esc(lastName(p.name)) + "'s SLG there."
+    : (target
+      ? "◎ where " + esc(p.sp.name) + " locates the " + pInfo(activePitch).label.toLowerCase() + " most often."
+      : "Hot zones in amber. Select a pitch to overlay the starter's full location pattern.");
+  return '<div class="zone-panel">' +
+    '<div class="zone-head"><span class="panel-title">Zone damage</span><span class="mono dim">' + esc(lastName(p.name)) + ' SLG · catcher\u2019s view</span></div>' +
+    '<div class="zone-grid" role="img" aria-label="Strike zone heatmap">' + cells + '</div>' +
+    '<p class="mix-caption">' + cap + '</p></div>';
+}
+
+/* ---------- pitch mix panel (SP + lazy bullpen) ---------- */
+function currentPen(p) {
+  if (p.penMix) return p.penMix;
+  return state.pen[p.id] || null;
+}
+function mixPanel(p, arm, activePitch) {
+  var mix = arm === "sp" ? (p.sp && p.sp.mix) : currentPen(p);
+  var rowsHtml;
+  if (arm === "pen" && !mix) {
+    rowsHtml = '<p class="mix-caption">' + (state.penLoading[p.id] ? "Loading bullpen arsenal from Statcast…" : "Bullpen arsenal loads from the live server.") + '</p>';
+  } else if (!mix || !mix.length) {
+    rowsHtml = '<p class="mix-caption">Arsenal not synced yet.</p>';
+  } else {
+    rowsHtml = '<div class="mix-cols mono"><span>Pitch</span><span>Usage</span><span>Velo</span><span>' + esc(lastName(p.name)) + ' SLG</span></div>' +
+      mix.map(function (m) {
+        var slg = p.vsPitch ? p.vsPitch[m.pt] : null;
+        var dim = activePitch && activePitch !== m.pt ? " mix-dim" : "";
+        var on = activePitch === m.pt ? " mix-on" : "";
+        return '<button class="mix-row' + dim + on + '" data-pitch="' + m.pt + '" aria-pressed="' + (activePitch === m.pt) + '">' +
+          '<span class="mix-label"><i class="swatch" style="background:' + pInfo(m.pt).color + '"></i>' + pInfo(m.pt).label + '</span>' +
+          '<span class="mix-bar-cell">' + meter(m.pct, 60, pInfo(m.pt).color) + '<em>' + m.pct + '%</em></span>' +
+          '<span class="mono dim">' + (m.velo ? m.velo.toFixed(1) : "—") + '</span>' +
+          '<span class="mono" style="color:' + heat(slg) + ';font-weight:600">' + fmtSlg(slg) + '</span></button>';
+      }).join("") +
+      '<p class="mix-caption">Tap a pitch to isolate it on the spray chart and see its full location pattern in the zone map.</p>';
+  }
+  var spLabel = p.sp ? esc(p.sp.name) + " (" + (p.sp.hand || "?") + "HP)" : "Starter TBD";
+  return '<div class="mix-panel">' +
+    '<div class="arm-toggle" role="tablist">' +
+    '<button role="tab" class="arm' + (arm === "sp" ? " arm-on" : "") + '" data-arm="sp" aria-selected="' + (arm === "sp") + '">' + spLabel + '</button>' +
+    '<button role="tab" class="arm' + (arm === "pen" ? " arm-on" : "") + '" data-arm="pen" aria-selected="' + (arm === "pen") + '">Opp. Bullpen</button>' +
+    '</div>' + rowsHtml + '</div>';
+}
+
+/* ---------- ownage strip ---------- */
+function ownageStrip(p) {
+  var b = p.bvp;
+  if (!b || !b.ab || !p.sp) return "";
+  var hot = parseFloat(b.slg) >= 0.6;
+  return '<div class="ownage">' +
+    '<span class="ownage-title">' + esc(lastName(p.name)) + ' vs ' + esc(p.sp.name) + ' <em>· career</em></span>' +
+    '<span class="mono">' + b.h + '-for-' + b.ab + '</span>' +
+    '<span class="mono" style="color:' + (b.hr > 0 ? "var(--hr)" : "var(--dim)") + '">' + b.hr + ' HR</span>' +
+    '<span class="mono dim">' + b.bb + ' BB · ' + b.so + ' K</span>' +
+    '<span class="mono" style="color:' + (hot ? "var(--hr)" : "var(--chalk)") + ';font-weight:600">' + esc(b.slg) + ' SLG</span>' +
+    (hot ? '<span class="chip chip-hot">Ownage</span>' : "") + '</div>';
+}
+
+/* ---------- scouting card ---------- */
+function scoutCard(p) {
+  var tagsHtml = (p.tags && p.tags.length)
+    ? '<div class="tagrow">' + (p.suggested ? '<span class="tagchip">★ Suggested play</span>' : "") + p.tags.map(function (t) { return '<span class="tagchip">' + esc(t) + '</span>'; }).join("") + '</div>'
+    : (p.suggested ? '<div class="tagrow"><span class="tagchip">★ Suggested play</span></div>' : "");
+  return '<div class="scout">' +
+    '<div class="note">' + noteFor(p) + '</div>' +
+    tagsHtml +
+    ownageStrip(p) +
+    '<div class="scout-grid">' +
+    '<div class="scout-col">' + mixPanel(p, state.arm, state.pitch) + zoneMap(p, state.arm, state.pitch) + '</div>' +
+    sprayChart(p, state.pitch) +
+    '</div>' +
+    '<p class="scout-src mono dim">Arsenal, velo, locations, SLG splits &amp; hit coordinates: Statcast via Baseball Savant · lineups &amp; BvP: MLB Stats API · batter side: ' + esc(p.bats) + 'HB</p>' +
+    '</div>';
+}
+
+/* ---------- boards ---------- */
+var HR_COLS = [
+  { key:"hrPct", label:"HR%", render:function (p) { return '<div class="stat-cell"><span class="mono strong hr-num">' + p.hrPct.toFixed(1) + '</span>' + meter(p.hrPct, 35, "var(--hr)") + '</div>'; } },
+  { key:"seasonHr", label:"HR (szn)", render:function (p) { return '<span class="mono">' + (p.season ? p.season.hr : "—") + '</span>'; } },
+  { key:"parkHR", label:"Park", render:function (p) { return factorChip(p.parkHR); } },
+  { label:"Carry", render:function () { return factorChip(null); } }
+];
+var RBI_COLS = [
+  { label:"Traffic", render:function (p) { return diamondSvg(trafficBases(p)); } },
+  { key:"xRbi", label:"xRBI", render:function (p) { return '<div class="stat-cell"><span class="mono strong rbi-num">' + p.xRbi.toFixed(2) + '</span>' + meter(p.xRbi, 1, "var(--rbi)") + '</div>'; } },
+  { key:"rbiPct", label:"1+ RBI%", render:function (p) { return '<span class="mono">' + p.rbiPct + '%</span>'; } },
+  { key:"settersObp", label:"Setters OBP", render:function (p) { return '<span class="mono dim">' + (p.settersObp != null ? p.settersObp.toFixed(3) : "—") + '</span>'; } },
+  { key:"runnersPA", label:"Runners/PA", render:function (p) { return '<span class="mono dim">' + Math.round(p.runnersPA * 100) + '%</span>'; } }
+];
+function sortVal(p, key) {
+  if (key === "seasonHr") return p.season ? p.season.hr : 0;
+  return p[key] == null ? -1 : p[key];
+}
+function playerRow(p, cols) {
+  var cells = cols.map(function (c) { return '<td>' + c.render(p) + '</td>'; }).join("");
+  var html = '<tr class="row" data-row="' + p.id + '">' +
+    '<td><div class="player"><span class="player-name">' + luDot(p.lineup) + (p.suggested ? '<span class="star" title="Suggested play">★</span>' : "") + esc(p.name) + '</span>' +
+    '<span class="player-team">' + esc(p.teamAbbr) + ' · #' + p.slot + (p.sp ? ' · vs ' + esc(p.sp.name) : "") + '</span></div></td>' + cells + '</tr>';
+  if (String(state.open) === String(p.id)) {
+    html += '<tr class="note-row"><td colspan="' + (cols.length + 1) + '">' + scoutCard(p) + '</td></tr>';
+  }
+  return html;
+}
+function boardTable(players, cols, sortKey) {
+  var head = '<th>Batter</th>' + cols.map(function (c) {
+    var cls = sortKey === c.key ? ' class="th-active"' : (c.key ? "" : ' class="th-static"');
+    var attr = c.key ? ' data-sort="' + c.key + '"' : "";
+    return '<th' + cls + attr + '>' + c.label + (sortKey === c.key ? " ▾" : "") + '</th>';
+  }).join("");
+  var body;
+  if (state.game === "all") {
+    body = players.slice().sort(function (a, b) { return sortVal(b, sortKey) - sortVal(a, sortKey); })
+      .map(function (p) { return playerRow(p, cols); }).join("");
+  } else {
+    // lineup view: group by team, order by lineup slot
+    var teams = [];
+    players.forEach(function (p) { if (teams.indexOf(p.teamAbbr) === -1) teams.push(p.teamAbbr); });
+    body = teams.map(function (t) {
+      var rows = players.filter(function (p) { return p.teamAbbr === t; })
+        .sort(function (a, b) { return a.slot - b.slot; })
+        .map(function (p) { return playerRow(p, cols); }).join("");
+      return '<tr class="team-head"><td colspan="' + (cols.length + 1) + '">' + esc(t) + ' lineup</td></tr>' + rows;
+    }).join("");
+  }
+  return '<div class="table-wrap"><table><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+}
+
+/* ---------- render ---------- */
+function renderFilter() {
+  var games = (state.data && state.data.games) || [];
+  var chips = '<button class="fchip' + (state.game === "all" ? " fchip-on" : "") + '" data-game="all">All games</button>';
+  chips += games.map(function (g) {
+    var on = String(state.game) === String(g.gamePk);
+    return '<button class="fchip' + (on ? " fchip-on" : "") + '" data-game="' + g.gamePk + '">' + esc(g.away) + '@' + esc(g.home) + '</button>';
+  }).join("");
+  document.getElementById("gamefilter").innerHTML = chips;
+}
+function render() {
+  document.getElementById("tab-hr").className = "tab" + (state.tab === "hr" ? " tab-on tab-hr" : "");
+  document.getElementById("tab-rbi").className = "tab" + (state.tab === "rbi" ? " tab-on tab-rbi" : "");
+  var intro = document.getElementById("intro");
+  var board = document.getElementById("board");
+  if (!state.data) { board.innerHTML = '<div class="loading">Syncing tonight\u2019s slate from Statcast…</div>'; return; }
+  renderFilter();
+  var players = visiblePlayers();
+  if (!players.length) {
+    intro.innerHTML = "";
+    board.innerHTML = '<div class="loading">No batters on the board for this view yet — lineups post 2–4 hours before first pitch.</div>';
+    return;
+  }
+  if (state.tab === "hr") {
+    intro.innerHTML = (state.game === "all"
+      ? 'The whole slate, ranked. Pick a game above to browse both full lineups.'
+      : 'Both lineups, in batting order — tap any batter to scout him.') +
+      ' <span class="star">★</span> = suggested play where data points align (pitch-mix edge, ownage, park, traffic). <span class="lu-dot lu-on inline-dot"></span> confirmed · <span class="lu-dot lu-proj inline-dot"></span> projected.';
+    board.innerHTML = boardTable(players, HR_COLS, state.hrSort);
+  } else {
+    intro.innerHTML = 'RBIs are about traffic. <strong>xRBI</strong> blends lineup slot, the on-base rate of the hitters ahead (<strong>Setters OBP</strong>), and runners-on rate. ' +
+      (state.game === "all" ? 'Pick a game above to browse both full lineups.' : 'Both lineups shown in batting order.');
+    board.innerHTML = boardTable(players, RBI_COLS, state.rbiSort);
+  }
+}
+function renderSlate() {
+  var games = (state.data && state.data.games) || [];
+  document.getElementById("slate").innerHTML = games.map(function (g) {
+    return '<div class="game-card"><div class="game-id mono">' + esc(g.away) + ' @ ' + esc(g.home) + '</div>' +
+      '<div class="game-park">' + esc(g.park || "") + '</div>' +
+      '<div class="game-line">' + factorChip(g.parkHR) +
+      '<span class="mono dim game-wx">' + (g.lineupsConfirmed ? "lineups ✓" : "lineups TBD") + '</span></div></div>';
+  }).join("");
+  document.getElementById("slate-meta").textContent = games.length ? games.length + " games" : "no games";
+}
+function setBanner(kind, msg) {
+  var b = document.getElementById("banner");
+  b.className = "banner show " + (kind === "live" ? "banner-live" : "banner-demo");
+  b.innerHTML = msg;
+  document.getElementById("sync-label").textContent = kind === "live" ? "Statcast synced" : "demo data";
+}
+
+/* ---------- data loading ---------- */
+function loadBoard() {
+  function attempt(i) {
+    if (i >= API_BASES.length) {
+      state.data = DEMO; state.demo = true;
+      setBanner("demo", "Showing built-in demo data. Deploy with <span class=\"mono\">server-live.js</span> (or run <span class=\"mono\">node server-live.js</span> locally) and open the served page for live Statcast feeds.");
+      renderSlate(); render();
+      return;
+    }
+    fetch(API_BASES[i] + "/api/board")
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (j) {
+        if (!j || !j.players) throw new Error("bad payload");
+        apiBase = API_BASES[i];
+        state.data = j; state.demo = false;
+        var t = j.generatedAt ? new Date(j.generatedAt) : new Date();
+        setBanner("live", "Live · slate assembled " + t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + " · lineups re-check every 30 min · baseline model scores");
+        renderSlate(); render();
+      })
+      .catch(function () { attempt(i + 1); });
+  }
+  attempt(0);
+}
+function loadDetail(p) {
+  if (p.detail || state.demo || state.detailLoading[p.id]) return;
+  state.detailLoading[p.id] = true;
+  fetch(apiBase + "/api/detail/" + p.id)
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      p.vsPitch = j.vsPitch || null;
+      p.zones = j.zones || null;
+      p.spray = j.spray || null;
+      p.detail = true;
+    })
+    .catch(function () { /* leave light */ })
+    .finally(function () { state.detailLoading[p.id] = false; render(); });
+}
+function loadPen(p) {
+  if (p.penMix || state.pen[p.id] || state.penLoading[p.id]) return;
+  if (state.demo || !p.oppTeamId) return;
+  state.penLoading[p.id] = true;
+  fetch(apiBase + "/api/pen/" + p.oppTeamId + "?exclude=" + (p.sp && p.sp.id ? p.sp.id : ""))
+    .then(function (r) { return r.json(); })
+    .then(function (j) { state.pen[p.id] = Array.isArray(j) ? j : []; })
+    .catch(function () { state.pen[p.id] = []; })
+    .finally(function () { state.penLoading[p.id] = false; render(); });
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click", function (e) {
+  var el = e.target.closest ? e.target.closest("[data-tab],[data-game],[data-sort],[data-pitch],[data-arm],[data-row]") : null;
+  if (!el) return;
+  if (el.dataset.tab) { state.tab = el.dataset.tab; state.open = null; state.pitch = null; state.arm = "sp"; render(); return; }
+  if (el.dataset.game) { state.game = el.dataset.game; state.open = null; state.pitch = null; state.arm = "sp"; render(); return; }
+  if (el.dataset.sort) {
+    if (state.tab === "hr") state.hrSort = el.dataset.sort; else state.rbiSort = el.dataset.sort;
+    render(); return;
+  }
+  if (el.dataset.pitch) { state.pitch = state.pitch === el.dataset.pitch ? null : el.dataset.pitch; render(); return; }
+  if (el.dataset.arm) {
+    state.arm = el.dataset.arm; state.pitch = null;
+    if (state.arm === "pen" && state.open != null) { var pp = byId(state.open); if (pp) loadPen(pp); }
+    render(); return;
+  }
+  if (el.dataset.row) {
+    state.open = String(state.open) === String(el.dataset.row) ? null : el.dataset.row;
+    state.pitch = null; state.arm = "sp";
+    if (state.open != null) { var p = byId(state.open); if (p && !p.detail) loadDetail(p); }
+    render(); return;
+  }
+});
+
+render();
+loadBoard();
+setInterval(loadBoard, 15 * 60 * 1000); // client re-pulls every 15 min for lineup updates
+</script>
+</body>
+</html>

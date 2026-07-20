@@ -1,0 +1,12 @@
+{
+  "name": "crushed",
+  "version": "1.0.0",
+  "description": "Crushed — MLB HR + RBI scouting terminal with live Statcast data",
+  "main": "server-live.js",
+  "scripts": {
+    "start": "node server-live.js"
+  },
+  "dependencies": {
+    "express": "^4.19.0"
+  }
+}
