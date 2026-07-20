@@ -262,11 +262,14 @@ async function buildTeamSide(game, sideKey, box) {
   if (!order.length || !oppSP) return [];
 
   const spPerson = await person(oppSP.id);
-  const spRows = await savantRows(oppSP.id, "pitcher").catch(() => []);
-  const spMix = arsenalFromRows(spRows);
   const tInfo = await teamInfo(team.id);
   const parkHR = PARK_HR[game.venue?.name] || 1.0;
-  const sp = { id: oppSP.id, name: oppSP.fullName, hand: spPerson.pitchHand?.code || "?", mix: spMix };
+  // NOTE: no Savant pulls during board assembly — the board is built
+  // entirely from the MLB Stats API (lineups, probables, season stats,
+  // BvP) so it loads fast. Savant detail (arsenal, spray, zones,
+  // pitch-type SLG) loads lazily via /api/arsenal and /api/detail
+  // when a scout card is opened.
+  const sp = { id: oppSP.id, name: oppSP.fullName, hand: spPerson.pitchHand?.code || "?", mix: null };
 
   // every batter in the order is selectable; season stats for all
   const roster = [];
@@ -276,22 +279,11 @@ async function buildTeamSide(game, sideKey, box) {
       if (s && +s.plateAppearances >= 30) roster.push({ ...o, season: s });
     } catch { /* skip */ }
   }
-  // full Statcast detail up front for the top 3 power threats;
-  // the rest load lazily via /api/detail when a user opens them
-  const byPower = roster.slice().sort((a, b) =>
-    (+b.season.homeRuns / +b.season.plateAppearances) - (+a.season.homeRuns / +a.season.plateAppearances));
-  const featuredIds = new Set(byPower.slice(0, 3).map((r) => r.id));
-
   const out = [];
   for (const f of roster) {
     try {
       const p = await person(f.id);
-      const isFeatured = featuredIds.has(f.id);
-      let agg = { vsPitch: null, zones: null, spray: null };
-      if (isFeatured) {
-        const rows = await savantRows(f.id, "batter").catch(() => []);
-        if (rows.length) agg = batterAggregates(rows);
-      }
+      const agg = { vsPitch: null, zones: null, spray: null };
       const ahead = order.filter((o) => o.slot < f.slot).slice(-2);
       let settersObp = null;
       if (ahead.length) {
@@ -312,7 +304,7 @@ async function buildTeamSide(game, sideKey, box) {
         ...sc, parkHR,
         bvp: await bvp(f.id, oppSP.id).catch(() => null),
         vsPitch: agg.vsPitch, zones: agg.zones, spray: agg.spray,
-        detail: isFeatured,
+        detail: false,
       };
       player.tags = tagsFor(player);
       out.push(player);
@@ -362,14 +354,22 @@ async function warm() {
 }
 
 /* ---------------- routes ---------------- */
-app.get("/api/board", async (req, res) => {
+app.get("/api/board", (req, res) => {
   if (BOARD && BOARD.date === new Date().toISOString().slice(0, 10)) {
     res.json(BOARD);
     if (Date.now() - Date.parse(BOARD.generatedAt) > 0.5 * H) warm(); // refresh in background
     return;
   }
-  try { await warm(); res.json(BOARD || { games: [], players: [] }); }
-  catch (e) { res.status(502).json({ error: e.message }); }
+  warm(); // kick off in the background — never block the request
+  res.json({ warming: true, games: [], players: [] });
+});
+
+/* lazy starting-pitcher / any-pitcher arsenal from Statcast */
+app.get("/api/arsenal/:pitcherId", async (req, res) => {
+  try {
+    const rows = await savantRows(req.params.pitcherId, "pitcher");
+    res.json(arsenalFromRows(rows));
+  } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
 /* lazy Statcast detail (spray, zones, pitch-type SLG) for any batter —

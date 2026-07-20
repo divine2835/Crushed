@@ -338,7 +338,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{} };
+var state = { tab:"hr", game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -432,7 +432,9 @@ var FT = 0.52;
 function sprayChart(p, activePitch) {
   if (!p.spray || !p.spray.length) {
     var msg = p.detail === false
-      ? (state.demo ? "Full Statcast spray loads on the live server." : (state.detailLoading[p.id] ? "Pulling this hitter's Statcast batted balls…" : "Tap re-opens will sync this hitter's Statcast detail."))
+      ? (state.demo ? "Full Statcast spray loads on the live server."
+        : (state.detailLoading[p.id] ? "Pulling this hitter’s Statcast batted balls from Baseball Savant… (5–15s first time)"
+        : (p.detailFail ? "Savant fetch failed — check the server logs and re-tap this player." : "Statcast detail syncs when you open this player.")))
       : "No Statcast batted-ball data synced yet for this hitter.";
     return '<div class="spray-panel"><div class="zone-head"><span class="panel-title">Spray chart</span></div><p class="mix-caption">' + msg + '</p></div>';
   }
@@ -526,7 +528,11 @@ function mixPanel(p, arm, activePitch) {
   if (arm === "pen" && !mix) {
     rowsHtml = '<p class="mix-caption">' + (state.penLoading[p.id] ? "Loading bullpen arsenal from Statcast…" : "Bullpen arsenal loads from the live server.") + '</p>';
   } else if (!mix || !mix.length) {
-    rowsHtml = '<p class="mix-caption">Arsenal not synced yet.</p>';
+    var spId2 = p.sp && p.sp.id;
+    var armMsg = (spId2 && state.arsLoading[spId2])
+      ? "Pulling " + esc(p.sp.name) + "’s pitch-by-pitch arsenal from Baseball Savant… (5–15s first time, instant after)"
+      : (p.sp && p.sp.mixFail ? "Savant arsenal fetch failed — check the server logs and re-tap." : "Arsenal not synced yet.");
+    rowsHtml = '<p class="mix-caption">' + armMsg + '</p>';
   } else {
     rowsHtml = '<div class="mix-cols mono"><span>Pitch</span><span>Usage</span><span>Velo</span><span>' + esc(lastName(p.name)) + ' SLG</span></div>' +
       mix.map(function (m) {
@@ -697,6 +703,13 @@ function loadBoard() {
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (j) {
         if (!j || !j.players) throw new Error("bad payload");
+        if (j.warming) {
+          apiBase = API_BASES[i];
+          setBanner("live", "Live · server is assembling tonight’s board from MLB lineups — usually 1–3 minutes. This page refreshes itself.");
+          document.getElementById("board").innerHTML = '<div class="loading">Assembling tonight’s slate… hang tight, this refreshes automatically.</div>';
+          setTimeout(loadBoard, 20000);
+          return;
+        }
         apiBase = API_BASES[i];
         state.data = j; state.demo = false;
         var t = j.generatedAt ? new Date(j.generatedAt) : new Date();
@@ -711,15 +724,28 @@ function loadDetail(p) {
   if (p.detail || state.demo || state.detailLoading[p.id]) return;
   state.detailLoading[p.id] = true;
   fetch(apiBase + "/api/detail/" + p.id)
-    .then(function (r) { return r.json(); })
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(function (j) {
       p.vsPitch = j.vsPitch || null;
       p.zones = j.zones || null;
       p.spray = j.spray || null;
       p.detail = true;
+      p.detailFail = false;
     })
-    .catch(function () { /* leave light */ })
+    .catch(function () { p.detailFail = true; })
     .finally(function () { state.detailLoading[p.id] = false; render(); });
+}
+function loadArsenal(p) {
+  if (state.demo || !p.sp || p.sp.mix || !p.sp.id) return;
+  var spId = p.sp.id;
+  if (state.arsenals[spId]) { p.sp.mix = state.arsenals[spId]; return; }
+  if (state.arsLoading[spId]) return;
+  state.arsLoading[spId] = true;
+  fetch(apiBase + "/api/arsenal/" + spId)
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (j) { if (Array.isArray(j) && j.length) { state.arsenals[spId] = j; p.sp.mix = j; } else { p.sp.mixFail = true; } })
+    .catch(function () { p.sp.mixFail = true; })
+    .finally(function () { state.arsLoading[spId] = false; render(); });
 }
 function loadPen(p) {
   if (p.penMix || state.pen[p.id] || state.penLoading[p.id]) return;
@@ -751,7 +777,11 @@ document.addEventListener("click", function (e) {
   if (el.dataset.row) {
     state.open = String(state.open) === String(el.dataset.row) ? null : el.dataset.row;
     state.pitch = null; state.arm = "sp";
-    if (state.open != null) { var p = byId(state.open); if (p && !p.detail) loadDetail(p); }
+    if (state.open != null) {
+      var p = byId(state.open);
+      if (p && !p.detail) loadDetail(p);
+      if (p) loadArsenal(p);
+    }
     render(); return;
   }
 });
