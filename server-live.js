@@ -89,22 +89,38 @@ async function getJson(url) {
   return r.json();
 }
 
-async function savantRows(playerId, playerType) {
-  return cached(`sv:${playerType}:${playerId}`, 12 * H, async () => {
-    const params = new URLSearchParams({
-      all: "true", type: "details", player_type: playerType,
-      hfSea: `${SEASON}|`,
-      game_date_gt: `${SEASON}-03-01`, game_date_lt: `${SEASON}-11-30`,
-      min_pitches: "0", min_results: "0",
-      sort_col: "pitches", sort_order: "desc",
-    });
-    params.append(playerType === "pitcher" ? "pitchers_lookup[]" : "batters_lookup[]", String(playerId));
-    const r = await fetch(`${SAVANT}?${params}`);
-    if (!r.ok) throw new Error(`Savant ${r.status}`);
-    await sleep(400); // politeness between heavy pulls
-    return parseCsv(await r.text());
+/* Fetch pitch-level rows from Savant and immediately slim them to the
+   handful of fields we use. NOT cached — raw rows are huge. Only the
+   small computed packs below get cached, which keeps memory tiny on
+   free-tier hosts (raw caching was blowing the 512MB limit and
+   crashing the server mid-request). */
+async function savantRowsRaw(playerId, playerType) {
+  const params = new URLSearchParams({
+    all: "true", type: "details", player_type: playerType,
+    hfSea: `${SEASON}|`,
+    game_date_gt: `${SEASON}-03-01`, game_date_lt: `${SEASON}-11-30`,
+    min_pitches: "0", min_results: "0",
+    sort_col: "pitches", sort_order: "desc",
   });
+  params.append(playerType === "pitcher" ? "pitchers_lookup[]" : "batters_lookup[]", String(playerId));
+  const res = await fetch(`${SAVANT}?${params}`);
+  if (!res.ok) throw new Error(`Savant ${res.status}`);
+  await sleep(400); // politeness between heavy pulls
+  return parseCsv(await res.text()).map((r) => ({
+    pitch_type: r.pitch_type, release_speed: r.release_speed, zone: r.zone,
+    hc_x: r.hc_x, hc_y: r.hc_y, events: r.events, type: r.type,
+    launch_speed: r.launch_speed, launch_angle: r.launch_angle,
+    stand: r.stand, p_throws: r.p_throws, description: r.description,
+    game_date: r.game_date,
+  }));
 }
+/* small cached packs (a few KB each) */
+const batterPack = (id) => cached(`bpk:${id}`, 12 * H, async () =>
+  batterAggregates(await savantRowsRaw(id, "batter")));
+const pitcherPack = (id) => cached(`ppk:${id}`, 12 * H, async () => {
+  const rows = await savantRowsRaw(id, "pitcher");
+  return { mix: arsenalFromRows(rows), swstr: swstrFromRows(rows), n: rows.length };
+});
 
 const person = (id) => cached(`person:${id}`, 240 * H, () =>
   getJson(`${STATS}/people/${id}`).then((j) => j.people?.[0] || {}));
@@ -574,19 +590,16 @@ async function enrichDay(day) {
     const top = group.slice().sort((a, b2) => starScore(b2) - starScore(a)).slice(0, THRESH.prePull);
     for (const p of top) {
       try {
-        const rows = await savantRows(p.id, "batter");
-        if (rows.length) {
-          const agg = batterAggregates(rows);
-          p.vsPitch = agg.vsPitch; p.zones = agg.zones; p.spray = agg.spray;
-          p.hardHitPct = agg.hardHitPct; p.pullPct = agg.pullPct;
-          p.barrelsByPt = agg.barrelsByPt; p.vsHand = agg.vsHand;
-          p.detail = true;
-        }
+        const agg = await batterPack(p.id);
+        p.vsPitch = agg.vsPitch; p.zones = agg.zones; p.spray = agg.spray;
+        p.hardHitPct = agg.hardHitPct; p.pullPct = agg.pullPct;
+        p.barrelsByPt = agg.barrelsByPt; p.vsHand = agg.vsHand;
+        p.detail = true;
         if (p.sp && p.sp.id && (!p.sp.mix || p.sp.swstr == null)) {
-          const sr = await savantRows(p.sp.id, "pitcher").catch(() => []);
-          if (sr.length) {
-            if (!p.sp.mix) p.sp.mix = arsenalFromRows(sr);
-            p.sp.swstr = swstrFromRows(sr);
+          const pk = await pitcherPack(p.sp.id).catch(() => null);
+          if (pk) {
+            if (!p.sp.mix) p.sp.mix = pk.mix;
+            p.sp.swstr = pk.swstr;
           }
         }
         p.tags = tagsFor(p);
@@ -633,8 +646,7 @@ app.get("/api/board", (req, res) => {
 /* lazy starting-pitcher / any-pitcher arsenal from Statcast */
 app.get("/api/arsenal/:pitcherId", async (req, res) => {
   try {
-    const rows = await savantRows(req.params.pitcherId, "pitcher");
-    res.json(arsenalFromRows(rows));
+    res.json((await pitcherPack(req.params.pitcherId)).mix);
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
@@ -642,8 +654,7 @@ app.get("/api/arsenal/:pitcherId", async (req, res) => {
    used when a non-featured lineup player is opened */
 app.get("/api/detail/:batterId", async (req, res) => {
   try {
-    const rows = await savantRows(req.params.batterId, "batter");
-    res.json(rows.length ? batterAggregates(rows) : { vsPitch: null, zones: null, spray: null });
+    res.json(await batterPack(req.params.batterId));
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
@@ -656,9 +667,23 @@ app.get("/api/pen/:teamId", async (req, res) => {
       const arms = (roster.roster || [])
         .filter((r) => r.position?.abbreviation === "P" && String(r.person.id) !== exclude)
         .slice(0, 5);
-      const all = [];
-      for (const a of arms) all.push(...(await savantRows(a.person.id, "pitcher").catch(() => [])));
-      return arsenalFromRows(all).map(({ pt, pct, velo }) => ({ pt, pct, velo }));
+      const agg = {}; // pitch counts + velo, weighted across the pen
+      for (const a of arms) {
+        try {
+          const pk = await pitcherPack(a.person.id);
+          pk.mix.forEach((mm) => {
+            const cnt = pk.n * (mm.pct / 100);
+            agg[mm.pt] = agg[mm.pt] || { n: 0, velo: 0 };
+            agg[mm.pt].n += cnt;
+            agg[mm.pt].velo += mm.velo * cnt;
+          });
+        } catch { /* skip arm */ }
+      }
+      const total = Object.values(agg).reduce((s, v) => s + v.n, 0) || 1;
+      return Object.entries(agg)
+        .map(([pt, v]) => ({ pt, pct: Math.round((v.n / total) * 100), velo: +(v.velo / v.n).toFixed(1) }))
+        .filter((mm) => mm.pct >= 3)
+        .sort((a, b) => b.pct - a.pct);
     });
     res.json(data);
   } catch (e) { res.status(502).json({ error: e.message }); }

@@ -340,7 +340,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -734,6 +734,16 @@ function loadBoard() {
   var day = state.day;
   function attempt(i) {
     if (i >= API_BASES.length) {
+      if (state.everLive) {
+        // we've talked to the live server before - this is a blip
+        // (free-tier wake-up or restart), so retry instead of demo
+        if (state.day === day) {
+          setBanner("live", "Reconnecting to the live server (it may be waking up)\u2026 retrying automatically.");
+          document.getElementById("board").innerHTML = '<div class="loading">Lost the server for a moment \u2014 reconnecting\u2026</div>';
+        }
+        setTimeout(function () { if (state.day === day) loadBoard(); }, 15000);
+        return;
+      }
       state.demo = true;
       state.boards.today = DEMO;
       if (state.day === "today") { state.data = DEMO; }
@@ -753,6 +763,7 @@ function loadBoard() {
         if (!j || !j.players) throw new Error("bad payload");
         if (j.warming) {
           apiBase = API_BASES[i];
+          state.everLive = true;
           if (state.day === day) {
             setBanner("live", "Live \u00b7 assembling the " + day + " board from MLB lineups \u2014 usually 1\u20133 minutes. This page refreshes itself.");
             document.getElementById("board").innerHTML = '<div class="loading">Assembling the ' + day + ' slate\u2026 hang tight, this refreshes automatically.</div>';
@@ -761,6 +772,7 @@ function loadBoard() {
           return;
         }
         apiBase = API_BASES[i];
+        state.everLive = true;
         state.demo = false;
         state.boards[day] = j;
         if (state.day === day) {
