@@ -117,6 +117,16 @@ const seasonHitting = (id) => cached(`sh:${id}`, 6 * H, async () => {
   return j.stats?.[0]?.splits?.[0]?.stat || null;
 });
 
+/* last-14-days hitting line for the Hot bat signal */
+const recentHitting = (id) => cached(`rh:${id}`, 6 * H, async () => {
+  const end = new Date(Date.now() - 5 * 3600_000);
+  const start = new Date(end.getTime() - 14 * 86400_000);
+  const fmt = (d) => d.toISOString().slice(0, 10);
+  const j = await getJson(`${STATS}/people/${id}/stats?stats=byDateRange&group=hitting&startDate=${fmt(start)}&endDate=${fmt(end)}&season=${SEASON}`);
+  const s = j.stats?.[0]?.splits?.[0]?.stat;
+  return s ? { slg: s.slg != null ? +s.slg : null, pa: +s.plateAppearances || 0 } : null;
+});
+
 const bvp = (batterId, pitcherId) => cached(`bvp:${batterId}:${pitcherId}`, 24 * H, async () => {
   const j = await getJson(`${STATS}/people/${batterId}/stats?stats=vsPlayer&opposingPlayerId=${pitcherId}&group=hitting`);
   const s = j.stats?.find((x) => x.type?.displayName === "vsPlayerTotal")?.splits?.[0]?.stat;
@@ -157,9 +167,28 @@ function arsenalFromRows(rows) {
     .sort((a, b) => b.pct - a.pct);
 }
 
+/* Statcast barrel approximation: EV >= 98 with a launch-angle band
+   that widens as EV climbs (close to MLB's official definition) */
+function isBarrel(ev, la) {
+  if (!(ev >= 98) || la == null || isNaN(la)) return false;
+  const lower = Math.max(8, 26 - (ev - 98));
+  const upper = Math.min(50, 30 + (ev - 98) * 2);
+  return la >= lower && la <= upper;
+}
+const WHIFF = new Set(["swinging_strike", "swinging_strike_blocked", "missed_bunt"]);
+function swstrFromRows(rows) {
+  if (!rows.length) return null;
+  let w = 0;
+  rows.forEach((r) => { if (WHIFF.has(r.description)) w++; });
+  return +((w / rows.length) * 100).toFixed(1);
+}
+
 function batterAggregates(rows) {
   const vs = {}, z = {};
   const spray = [];
+  let bbe = 0, hard = 0, pulled = 0;
+  const bp = {}; // barrels / batted balls by pitch type
+  const hand = { L: { ab: 0, tb: 0 }, R: { ab: 0, tb: 0 } };
   rows.forEach((r) => {
     const ev = r.events;
     if (AB_END.has(ev) && r.pitch_type) {
@@ -173,7 +202,24 @@ function batterAggregates(rows) {
         z[zone].tb += TB[ev] || 0;
       }
     }
+    if (AB_END.has(ev) && (r.p_throws === "L" || r.p_throws === "R")) {
+      hand[r.p_throws].ab++;
+      hand[r.p_throws].tb += TB[ev] || 0;
+    }
     if (r.type === "X" && r.hc_x && r.hc_y) {
+      bbe++;
+      const lsp = +r.launch_speed, la = +r.launch_angle;
+      if (lsp >= 95) hard++;
+      const dx = (+r.hc_x) - 125.42, dz = 198.27 - (+r.hc_y);
+      if (dz > 0) {
+        const ang = Math.atan2(dx, dz) * 180 / Math.PI; // negative = LF side, positive = RF side
+        if ((r.stand === "R" && ang <= -15) || (r.stand === "L" && ang >= 15)) pulled++;
+      }
+      if (r.pitch_type) {
+        bp[r.pitch_type] = bp[r.pitch_type] || { bbe: 0, barrels: 0 };
+        bp[r.pitch_type].bbe++;
+        if (isBarrel(lsp, la)) bp[r.pitch_type].barrels++;
+      }
       spray.push({ x: +(+r.hc_x).toFixed(1), y: +(+r.hc_y).toFixed(1), pt: r.pitch_type, ev, d: r.game_date });
     }
   });
@@ -182,7 +228,18 @@ function batterAggregates(rows) {
   const zones = [];
   for (let i = 1; i <= 9; i++) zones.push(z[i] && z[i].ab >= 5 ? +(z[i].tb / z[i].ab).toFixed(3) : null);
   spray.sort((a, b) => (a.d < b.d ? 1 : -1));
-  return { vsPitch, zones, spray: spray.slice(0, 120).map(({ x, y, pt, ev }) => ({ x, y, pt, ev })) };
+  const vsHand = {
+    L: hand.L.ab >= THRESH.platoonAb ? +(hand.L.tb / hand.L.ab).toFixed(3) : null,
+    R: hand.R.ab >= THRESH.platoonAb ? +(hand.R.tb / hand.R.ab).toFixed(3) : null,
+  };
+  return {
+    vsPitch, zones,
+    spray: spray.slice(0, 120).map(({ x, y, pt, ev }) => ({ x, y, pt, ev })),
+    hardHitPct: bbe >= 20 ? Math.round((hard / bbe) * 100) : null,
+    pullPct: bbe >= 20 ? Math.round((pulled / bbe) * 100) : null,
+    barrelsByPt: bp,
+    vsHand,
+  };
 }
 
 /* ---------------- park HR factors (approx, static) ------- */
@@ -198,6 +255,36 @@ const PARK_HR = {
   "T-Mobile Park": 0.86, "Oracle Park": 0.82, "George M. Steinbrenner Field": 1.15, "Sutter Health Park": 1.05,
 };
 const RUNNERS_PA = { 1: 0.31, 2: 0.36, 3: 0.43, 4: 0.47, 5: 0.45, 6: 0.42, 7: 0.40, 8: 0.38, 9: 0.36 };
+
+/* ============================================================
+   ★ SIGNAL THRESHOLDS — TUNE ME
+   These drive the tags and the gold stars. Adjust freely as
+   you learn what actually predicts.
+   ============================================================ */
+const THRESH = {
+  crushSlg: 0.60,     // "Crushes top pitch": SLG vs the SP's most-used pitch
+  ownageSlg: 0.60,    // "Ownage": career SLG vs tonight's SP...
+  ownageAb: 8,        //   ...with at least this many career ABs
+  parkHr: 1.15,       // "HR park": park HR factor at/above this
+  settersObp: 0.350,  // "Traffic ahead": combined OBP of the two hitters ahead
+  hrPct: 20,          // "Power form": tonight's adjusted HR% at/above this
+  hotSlg: 0.550,      // "Hot bat": SLG over the last 14 days...
+  hotPa: 25,          //   ...with at least this many PAs in that window
+  platoonSlg: 0.550,  // "Platoon edge": season SLG vs the SP's throwing hand...
+  platoonAb: 30,      //   ...with at least this many ABs vs that hand
+  hardHit: 45,        // "Hard contact": % of batted balls 95+ mph EV
+  carry: 1.15,        // "Carry night": weather ball-flight factor
+  pullPct: 45,        // "Pull-heavy": pct of batted balls pulled - no number given, tune me
+  spSwstr: 10,        // "Hittable arm": SP swinging-strike pct BELOW this
+  barrelMix: 13,      // "Barrels the mix": batter barrel pct on the SP's pitch types, at/above...
+  barrelMixBbe: 25,   //   ...with at least this many batted balls vs those pitches
+  zoneHotSlg: 0.550,  // "Zone overlap": a batter zone counts as hot at this SLG...
+  spZonePct: 10,      //   ...an SP zone counts if he locates at least this pct of pitches there...
+  zoneOverlap: 3,     //   ...signal fires at this many overlapping zones
+  tagWeight: 3,       // star score = HR% + tagWeight × (number of tags)
+  starsPerTeam: 2,    // how many players per team get the ★
+  prePull: 3,         // top-N per team pre-pulled from Savant for star signals
+};
 
 /* ---------------- ballpark geography (approx) --------------
    lat/lon for the weather forecast; cf = compass bearing from
@@ -327,17 +414,48 @@ function dayDate(day) {
   return d.toISOString().slice(0, 10);
 }
 
-/* signal tags = the aligned data points the terminal hunts for */
+/* signal tags = the aligned data points the terminal hunts for.
+   All thresholds live in THRESH above — tune there. */
 function tagsFor(p) {
   const t = [];
   const top = p.sp?.mix?.[0];
-  if (top && p.vsPitch && p.vsPitch[top.pt] >= 0.6) t.push("Crushes top pitch");
-  if (p.bvp && p.bvp.ab >= 8 && parseFloat(p.bvp.slg) >= 0.6) t.push("Ownage");
-  if (p.parkHR >= 1.15) t.push("HR park");
-  if (p.settersObp != null && p.settersObp >= 0.35) t.push("Traffic ahead");
-  if (p.hrPct >= 20) t.push("Power form");
+  if (top && p.vsPitch && p.vsPitch[top.pt] >= THRESH.crushSlg) t.push("Crushes top pitch");
+  if (p.bvp && p.bvp.ab >= THRESH.ownageAb && parseFloat(p.bvp.slg) >= THRESH.ownageSlg) t.push("Ownage");
+  if (p.sp && p.vsHand && p.vsHand[p.sp.hand] != null && p.vsHand[p.sp.hand] >= THRESH.platoonSlg) t.push("Platoon edge");
+  if (p.hot != null && p.hot >= THRESH.hotSlg) t.push("Hot bat");
+  if (p.hardHitPct != null && p.hardHitPct >= THRESH.hardHit) t.push("Hard contact");
+  if (p.pullPct != null && p.pullPct >= THRESH.pullPct) t.push("Pull-heavy");
+  if (p.sp && p.sp.swstr != null && p.sp.swstr < THRESH.spSwstr) t.push("Hittable arm");
+  if (p.barrelsByPt && p.sp && p.sp.mix && p.sp.mix.length) {
+    let mb = 0, mbbe = 0;
+    p.sp.mix.forEach((m) => {
+      const v = p.barrelsByPt[m.pt];
+      if (v) { mb += v.barrels; mbbe += v.bbe; }
+    });
+    if (mbbe >= THRESH.barrelMixBbe && (mb / mbbe) * 100 >= THRESH.barrelMix) t.push("Barrels the mix");
+  }
+  if (p.zones && p.sp && p.sp.mix && p.sp.mix.length) {
+    // SP aggregate location share per zone = sum of usage pct x per-pitch zone dist
+    const spZone = {};
+    p.sp.mix.forEach((m) => {
+      if (!m.dist) return;
+      Object.keys(m.dist).forEach((z) => {
+        spZone[z] = (spZone[z] || 0) + (m.pct / 100) * m.dist[z];
+      });
+    });
+    let overlap = 0;
+    for (let z = 1; z <= 9; z++) {
+      if ((spZone[z] || 0) >= THRESH.spZonePct && p.zones[z - 1] != null && p.zones[z - 1] >= THRESH.zoneHotSlg) overlap++;
+    }
+    if (overlap >= THRESH.zoneOverlap) t.push("Zone overlap");
+  }
+  if (p.parkHR >= THRESH.parkHr) t.push("HR park");
+  if (p.carry != null && p.carry >= THRESH.carry) t.push("Carry night");
+  if (p.settersObp != null && p.settersObp >= THRESH.settersObp) t.push("Traffic ahead");
+  if (p.hrPct >= THRESH.hrPct) t.push("Power form");
   return t;
 }
+function starScore(p) { return p.hrPct + p.tags.length * THRESH.tagWeight; }
 
 async function buildTeamSide(game, sideKey, box, carry) {
   const team = game.teams[sideKey].team;
@@ -384,12 +502,15 @@ async function buildTeamSide(game, sideKey, box, carry) {
         }
         if (obps.length) settersObp = +(obps.reduce((x, y) => x + y, 0) / obps.length).toFixed(3);
       }
+      const rh = await recentHitting(f.id).catch(() => null);
       const sc = score(f.season, f.slot, parkHR, settersObp, carry);
       const player = {
         id: f.id, name: f.name, slot: f.slot, lineup,
         teamId: team.id, teamAbbr: tInfo.abbreviation || team.name,
         gamePk: game.gamePk, oppTeamId: game.teams[oppKey].team.id,
         bats: p.batSide?.code || "?", sp,
+        hot: rh && rh.pa >= THRESH.hotPa ? rh.slg : null,
+        hardHitPct: null, pullPct: null, barrelsByPt: null, vsHand: null,
         season: { hr: +f.season.homeRuns, pa: +f.season.plateAppearances, rbi: +f.season.rbi, g: +f.season.gamesPlayed, obp: f.season.obp, slg: f.season.slg },
         ...sc, parkHR, carry: carry != null ? carry : null,
         bvp: await bvp(f.id, oppSP.id).catch(() => null),
@@ -400,10 +521,9 @@ async function buildTeamSide(game, sideKey, box, carry) {
       out.push(player);
     } catch (e) { console.error(`skip ${f.name}: ${e.message}`); }
   }
-  // star the two strongest aligned plays per team
-  out.slice()
-    .sort((a, b) => (b.hrPct + b.tags.length * 3) - (a.hrPct + a.tags.length * 3))
-    .slice(0, 2)
+  // provisional stars from MLB-API signals; refined after Savant enrichment
+  out.slice().sort((a, b) => starScore(b) - starScore(a))
+    .slice(0, THRESH.starsPerTeam)
     .forEach((p) => { p.suggested = true; });
   return out;
 }
@@ -437,10 +557,60 @@ async function assembleBoard(date) {
     games: outGames, players };
 }
 
+/* PRE-PULL: after the light board publishes, pull Savant data for the
+   top candidates per team so pitch-mix, platoon, and hard-contact
+   signals feed the tags and stars. Runs in the background — the
+   board is already being served while this fills in. */
+async function enrichDay(day) {
+  const b = BOARDS[day];
+  if (!b || !b.players.length) return;
+  const byTeam = {};
+  b.players.forEach((p) => {
+    const k = p.gamePk + ":" + p.teamId;
+    (byTeam[k] = byTeam[k] || []).push(p);
+  });
+  for (const k of Object.keys(byTeam)) {
+    const group = byTeam[k];
+    const top = group.slice().sort((a, b2) => starScore(b2) - starScore(a)).slice(0, THRESH.prePull);
+    for (const p of top) {
+      try {
+        const rows = await savantRows(p.id, "batter");
+        if (rows.length) {
+          const agg = batterAggregates(rows);
+          p.vsPitch = agg.vsPitch; p.zones = agg.zones; p.spray = agg.spray;
+          p.hardHitPct = agg.hardHitPct; p.pullPct = agg.pullPct;
+          p.barrelsByPt = agg.barrelsByPt; p.vsHand = agg.vsHand;
+          p.detail = true;
+        }
+        if (p.sp && p.sp.id && (!p.sp.mix || p.sp.swstr == null)) {
+          const sr = await savantRows(p.sp.id, "pitcher").catch(() => []);
+          if (sr.length) {
+            if (!p.sp.mix) p.sp.mix = arsenalFromRows(sr);
+            p.sp.swstr = swstrFromRows(sr);
+          }
+        }
+        p.tags = tagsFor(p);
+      } catch (e) { console.error(`[enrich:${day}] skip ${p.name}: ${e.message}`); }
+    }
+    // re-award the stars now that Savant signals are in
+    group.forEach((p) => { p.suggested = false; });
+    group.slice().sort((a, b2) => starScore(b2) - starScore(a))
+      .slice(0, THRESH.starsPerTeam)
+      .forEach((p) => { p.suggested = true; });
+  }
+  b.generatedAt = new Date().toISOString();
+  b.enriched = true;
+  console.log(`[enrich:${day}] Statcast signals applied to stars`);
+}
+
 function warmDay(day) {
   if (assembling[day]) return assembling[day];
   assembling[day] = assembleBoard(dayDate(day))
-    .then((b) => { BOARDS[day] = b; console.log(`[warm:${day}] board ready: ${b.players.length} players, ${b.games.length} games`); })
+    .then((b) => {
+      BOARDS[day] = b;
+      console.log(`[warm:${day}] board ready: ${b.players.length} players, ${b.games.length} games`);
+      return enrichDay(day);
+    })
     .catch((e) => console.error(`[warm:${day}] failed:`, e.message))
     .finally(() => { assembling[day] = null; });
   return assembling[day];

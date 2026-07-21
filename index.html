@@ -256,7 +256,7 @@ var DEMO = {
   ],
   players: [
     { id:1, name:"Kyle Schwarber", teamAbbr:"PHI", slot:2, gamePk:101, lineup:"confirmed", bats:"L", detail:true, suggested:true,
-      tags:["Crushes top pitch","Ownage","Power form"],
+      tags:["Crushes top pitch","Barrels the mix","Zone overlap","Pull-heavy","Ownage","Carry night"],
       sp: PETERSON,
       penMix:[{pt:"FF",pct:46,velo:96.4},{pt:"SL",pct:27,velo:86.0},{pt:"SI",pct:15,velo:95.1},{pt:"CH",pct:12,velo:87.3}],
       hrPct:31.4, xRbi:0.74, rbiPct:46, settersObp:0.344, runnersPA:0.38, parkHR:1.06, carry:1.42,
@@ -287,7 +287,7 @@ var DEMO = {
       bvp:{ab:13,h:3,hr:1,bb:2,so:4,avg:".231",slg:".538"},
       zones:null, vsPitch:null, spray:null },
     { id:2, name:"Shohei Ohtani", teamAbbr:"LAD", slot:1, gamePk:102, lineup:"confirmed", bats:"L", detail:true, suggested:true,
-      tags:["Crushes top pitch","Ownage","HR park","Power form"],
+      tags:["Crushes top pitch","Ownage","Hot bat","HR park","Carry night","Power form"],
       sp:{ name:"K. Freeland", hand:"L", mix:[{pt:"FF",pct:29,velo:91.2,zone:1,dist:{1:22,2:20,4:16,5:14,3:12,7:8,6:8}},{pt:"SL",pct:28,velo:83.4,zone:7,dist:{7:28,8:22,4:18,5:12,9:11,6:9}},{pt:"CH",pct:22,velo:84.8,zone:8,dist:{8:30,7:22,9:20,5:14,6:14}},{pt:"CU",pct:13,velo:76.5,zone:8,dist:{8:34,7:24,9:22,5:12}},{pt:"FC",pct:8,velo:87.9,zone:4,dist:{4:26,5:22,1:18,7:16,2:12}}] },
       penMix:[{pt:"FF",pct:41,velo:95.8},{pt:"SI",pct:22,velo:94.6},{pt:"SL",pct:21,velo:85.2},{pt:"ST",pct:16,velo:81.7}],
       hrPct:29.7, xRbi:0.81, rbiPct:49, settersObp:0.301, runnersPA:0.34, parkHR:1.38, carry:1.61,
@@ -297,7 +297,7 @@ var DEMO = {
       vsPitch:{FF:0.702,SL:0.531,CH:0.489,CU:0.458,FC:0.560},
       spray: makeSpray(22,[{x:162,y:46,n:5,sx:26,sy:24,pitch:"FF",results:["home_run","home_run","home_run","double","home_run"]},{x:128,y:42,n:4,sx:30,sy:22,pitch:"SL",results:["home_run","double","home_run","field_out"]},{x:100,y:88,n:4,sx:36,sy:34,pitch:"CH",results:["single","double","field_out","single"]},{x:140,y:74,n:3,sx:30,sy:28,pitch:"CU",results:["double","field_out","home_run"]}]) },
     { id:3, name:"Aaron Judge", teamAbbr:"NYY", slot:2, gamePk:103, lineup:"confirmed", bats:"R", detail:true, suggested:true,
-      tags:["Crushes top pitch","Ownage","Power form"],
+      tags:["Crushes top pitch","Barrels the mix","Zone overlap","Pull-heavy","Ownage","Carry night"],
       sp:{ name:"B. Bello", hand:"R", mix:[{pt:"SI",pct:36,velo:94.7,zone:6,dist:{6:26,9:20,5:16,3:14,8:12,2:12}},{pt:"CH",pct:26,velo:87.1,zone:9,dist:{9:30,8:24,6:20,5:12,7:14}},{pt:"SL",pct:21,velo:85.9,zone:7,dist:{7:28,8:22,4:18,5:14,9:18}},{pt:"FF",pct:17,velo:95.3,zone:2,dist:{2:24,1:18,3:16,5:16,4:14,6:12}}] },
       penMix:[{pt:"FF",pct:44,velo:96.1},{pt:"ST",pct:24,velo:82.3},{pt:"SI",pct:18,velo:95.0},{pt:"CU",pct:14,velo:79.8}],
       hrPct:27.9, xRbi:0.72, rbiPct:45, settersObp:0.339, runnersPA:0.41, parkHR:1.03, carry:1.08,
@@ -703,7 +703,7 @@ function render() {
     intro.innerHTML = (state.game === "all"
       ? 'The whole slate, ranked. Pick a game above to browse both full lineups.'
       : 'Both lineups, in batting order — tap any batter to scout him.') +
-      ' <span class="star">★</span> = suggested play where data points align (pitch-mix edge, ownage, park, traffic). <span class="lu-dot lu-on inline-dot"></span> confirmed · <span class="lu-dot lu-proj inline-dot"></span> projected.';
+      ' <span class="star">★</span> = suggested play where data points align (pitch-mix edge, barrels vs the mix, zone overlap, pull profile, hittable arm, platoon, hot bat, hard contact, ownage, park, wind, traffic). <span class="lu-dot lu-on inline-dot"></span> confirmed · <span class="lu-dot lu-proj inline-dot"></span> projected.';
     board.innerHTML = boardTable(players, HR_COLS, state.hrSort);
   } else {
     intro.innerHTML = 'RBIs are about traffic. <strong>xRBI</strong> blends lineup slot, the on-base rate of the hitters ahead (<strong>Setters OBP</strong>), and runners-on rate. ' +
