@@ -398,6 +398,104 @@ function score(season, slot, parkHR, settersObp, carry) {
   return { hrPct, xRbi, rbiPct, runnersPA: RUNNERS_PA[slot] || 0.4, settersObp };
 }
 
+/* ============================================================
+   NUMEROLOGY ALIGNMENT — the user's four day-number methods,
+   matched against live player data. This is a pattern overlay
+   tab, separate from the statistical model scores.
+   ============================================================ */
+const MASTERS = [11, 22, 33];
+function stepsOf(n) {
+  n = Math.abs(Math.round(n));
+  const st = [n];
+  while (n > 9) {
+    n = String(n).split("").reduce((s, d) => s + +d, 0);
+    st.push(n);
+  }
+  return st;
+}
+const markStep = (s) => s + (MASTERS.indexOf(s) !== -1 ? " (Master)" : "");
+function pathStr(n) { return stepsOf(n).map(markStep).join(" \u2192 "); }
+function tailStr(n) { return stepsOf(n).slice(1).map(markStep).join(" \u2192 "); }
+function reduceNum(n) { const st = stepsOf(n); return st[st.length - 1]; }
+const ORD = (n) => {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+};
+const PLANETS = [
+  { name: "Sun", num: 1 }, { name: "Moon", num: 2 }, { name: "Mars", num: 9 },
+  { name: "Mercury", num: 5 }, { name: "Jupiter", num: 3 }, { name: "Venus", num: 6 },
+  { name: "Saturn", num: 8 },
+];
+const DAYNAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+function dayNumerology(dateStr) {
+  const d = new Date(dateStr + "T12:00:00Z");
+  const digits = dateStr.replace(/-/g, "").split("").map(Number);
+  const lpSum = digits.reduce((s, x) => s + x, 0);
+  const lp = reduceNum(lpSum);
+  const dom = +dateStr.slice(8, 10);
+  const planet = PLANETS[d.getUTCDay()];
+  const y = +dateStr.slice(0, 4);
+  const doy = Math.floor((Date.UTC(y, +dateStr.slice(5, 7) - 1, +dateStr.slice(8, 10)) - Date.UTC(y, 0, 1)) / 86400000) + 1;
+  const numbers = [
+    { num: lp, method: "Date life path", calc: `${digits.join("+")} = ${pathStr(lpSum)}` },
+    { num: reduceNum(dom), method: "Day of month", calc: pathStr(dom) },
+    { num: planet.num, method: "Planet of the day", calc: `${DAYNAMES[d.getUTCDay()]} = ${planet.name} = ${planet.num}` },
+    { num: reduceNum(doy), method: "Day of year", calc: `Day ${doy} of the year` + (doy > 9 ? ` \u2192 ${tailStr(doy)}` : "") },
+  ];
+  return { date: dateStr, numbers, set: [...new Set(numbers.map((n) => n.num))] };
+}
+
+/* season HR/RBI splits vs LHP / RHP (MLB Stats API sitCodes) */
+const handSplits = (id) => cached(`hs:${id}`, 6 * H, async () => {
+  const j = await getJson(`${STATS}/people/${id}/stats?stats=statSplits&group=hitting&season=${SEASON}&sitCodes=vl,vr`);
+  const out = {};
+  (j.stats?.[0]?.splits || []).forEach((s) => {
+    const code = s.split?.code;
+    if (code === "vl" || code === "vr") out[code] = { hr: +(s.stat?.homeRuns || 0), rbi: +(s.stat?.rbi || 0) };
+  });
+  return out;
+});
+
+function numerologyHits(player, personInfo, splits, dayNums) {
+  const facts = [];
+  const push = (label, value) => { if (value != null && !isNaN(value) && value > 0) facts.push({ label, value }); };
+  push(`Next HR of the season would be #${player.season.hr + 1}`, player.season.hr + 1);
+  push(`Next RBI would be #${player.season.rbi + 1}`, player.season.rbi + 1);
+  push(`Bats ${ORD(player.slot)}`, player.slot);
+  const hand = player.sp && player.sp.hand;
+  const code = hand === "L" ? "vl" : hand === "R" ? "vr" : null;
+  if (code && splits && splits[code]) {
+    push(`Next HR vs ${hand}HP would be #${splits[code].hr + 1}`, splits[code].hr + 1);
+    push(`Next RBI vs ${hand}HP would be #${splits[code].rbi + 1}`, splits[code].rbi + 1);
+  }
+  const bd = personInfo.birthDate; // YYYY-MM-DD
+  if (bd) {
+    const bday = +bd.slice(8, 10);
+    push(`Born on the ${ORD(bday)}`, bday);
+    const bSum = bd.replace(/-/g, "").split("").reduce((s, x) => s + +x, 0);
+    const bSteps = stepsOf(bSum);
+    const bMaster = bSteps.find((s) => MASTERS.indexOf(s) !== -1);
+    const bFinal = bSteps[bSteps.length - 1];
+    push(bMaster ? `Birthday life path ${bMaster} (Master) \u2192 ${bFinal}` : `Birthday life path ${bFinal}`, bFinal);
+  }
+  if (personInfo.primaryNumber) push(`Wears #${personInfo.primaryNumber}`, +personInfo.primaryNumber);
+  const hits = [], seen = new Set();
+  facts.forEach((f) => {
+    const red = reduceNum(f.value);
+    if (dayNums.set.indexOf(red) !== -1) {
+      let suffix = "";
+      if (f.value > 9) {
+        suffix = MASTERS.indexOf(f.value) !== -1
+          ? ` (Master) \u2192 ${red}`
+          : ` \u2192 ${tailStr(f.value)}`;
+      }
+      const label = f.label + suffix;
+      if (!seen.has(label)) { seen.add(label); hits.push({ label, num: red }); }
+    }
+  });
+  return hits;
+}
+
 /* ---------------- lineup helpers ---------------- */
 async function boxscore(gamePk) {
   return cached(`box:${gamePk}`, 0.1 * H, () => getJson(`${STATS}/game/${gamePk}/boxscore`));
@@ -473,7 +571,7 @@ function tagsFor(p) {
 }
 function starScore(p) { return p.hrPct + p.tags.length * THRESH.tagWeight; }
 
-async function buildTeamSide(game, sideKey, box, carry) {
+async function buildTeamSide(game, sideKey, box, carry, dayNums) {
   const team = game.teams[sideKey].team;
   const oppKey = sideKey === "away" ? "home" : "away";
   const oppSP = game.teams[oppKey].probablePitcher;
@@ -534,6 +632,10 @@ async function buildTeamSide(game, sideKey, box, carry) {
         detail: false,
       };
       player.tags = tagsFor(player);
+      try {
+        const splits = await handSplits(f.id).catch(() => ({}));
+        player.numerHits = dayNums ? numerologyHits(player, p, splits, dayNums) : [];
+      } catch { player.numerHits = []; }
       out.push(player);
     } catch (e) { console.error(`skip ${f.name}: ${e.message}`); }
   }
@@ -548,6 +650,7 @@ async function assembleBoard(date) {
   const sched = await getJson(`${STATS}/schedule?sportId=1&date=${date}&hydrate=probablePitcher,venue`);
   const games = sched.dates?.[0]?.games || [];
   const outGames = [], players = [];
+  const dayNums = dayNumerology(date);
   for (const g of games) {
     if (g.status?.abstractGameState === "Final") continue;
     const box = await boxscore(g.gamePk).catch(() => ({ teams: { away: { players: {} }, home: { players: {} } } }));
@@ -565,10 +668,11 @@ async function assembleBoard(date) {
       weather: wx ? { tempF: wx.tempF, windMph: wx.windMph, relDeg: wx.relDeg, label: wx.roof ? "Roof" : wx.label } : null,
       lineupsConfirmed: !!(box.teams?.away?.battingOrder?.length),
     });
-    players.push(...(await buildTeamSide(g, "away", box, carry)));
-    players.push(...(await buildTeamSide(g, "home", box, carry)));
+    players.push(...(await buildTeamSide(g, "away", box, carry, dayNums)));
+    players.push(...(await buildTeamSide(g, "home", box, carry, dayNums)));
   }
   return { date, generatedAt: new Date().toISOString(),
+    numerology: dayNums,
     modelNote: "hrPct is park- and weather-adjusted (Carry); xRbi from lineup context — transparent baseline formulas, replace score() with your model.",
     games: outGames, players };
 }
