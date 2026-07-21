@@ -535,7 +535,12 @@ function tagsFor(p) {
   const top = p.sp?.mix?.[0];
   if (top && p.vsPitch && p.vsPitch[top.pt] >= THRESH.crushSlg) t.push("Crushes top pitch");
   if (p.bvp && p.bvp.ab >= THRESH.ownageAb && parseFloat(p.bvp.slg) >= THRESH.ownageSlg) t.push("Ownage");
-  if (p.sp && p.vsHand && p.vsHand[p.sp.hand] != null && p.vsHand[p.sp.hand] >= THRESH.platoonSlg) t.push("Platoon edge");
+  if (p.sp && p.vsHand && p.vsHand[p.sp.hand] != null && p.vsHand[p.sp.hand] >= THRESH.platoonSlg && (p.bats === "S" || p.bats === "L" || p.bats === "R")) {
+    // a true platoon edge requires the opposite-hand matchup;
+    // crushing SAME-hand pitching is its own (rarer) signal
+    const opp = p.bats === "S" || (p.bats === "L" && p.sp.hand === "R") || (p.bats === "R" && p.sp.hand === "L");
+    t.push(opp ? "Platoon edge" : "Reverse split");
+  }
   if (p.hot != null && p.hot >= THRESH.hotSlg) t.push("Hot bat");
   if (p.hardHitPct != null && p.hardHitPct >= THRESH.hardHit) t.push("Hard contact");
   if (p.pullPct != null && p.pullPct >= THRESH.pullPct) t.push("Pull-heavy");

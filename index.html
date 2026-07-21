@@ -983,7 +983,10 @@ function recomputeTags(p) {
   var top = p.sp && p.sp.mix && p.sp.mix[0];
   if (top && p.vsPitch && p.vsPitch[top.pt] != null && p.vsPitch[top.pt] >= TH.crushSlg) t.push("Crushes top pitch");
   if (p.bvp && p.bvp.ab >= TH.ownageAb && parseFloat(p.bvp.slg) >= TH.ownageSlg) t.push("Ownage");
-  if (p.sp && p.vsHand && p.vsHand[p.sp.hand] != null && p.vsHand[p.sp.hand] >= TH.platoonSlg) t.push("Platoon edge");
+  if (p.sp && p.vsHand && p.vsHand[p.sp.hand] != null && p.vsHand[p.sp.hand] >= TH.platoonSlg && (p.bats === "S" || p.bats === "L" || p.bats === "R")) {
+    var oppHand = p.bats === "S" || (p.bats === "L" && p.sp.hand === "R") || (p.bats === "R" && p.sp.hand === "L");
+    t.push(oppHand ? "Platoon edge" : "Reverse split");
+  }
   if (p.hot != null && p.hot >= TH.hotSlg) t.push("Hot bat");
   if (p.hardHitPct != null && p.hardHitPct >= TH.hardHit) t.push("Hard contact");
   if (p.pullPct != null && p.pullPct >= TH.pullPct) t.push("Pull-heavy");
