@@ -802,6 +802,42 @@ app.get("/api/detail/:batterId", async (req, res) => {
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
+/* recent-form box: one game-log fetch aggregated into L7/L15/L30 windows */
+const recentBox = (id) => cached(`rb:${id}`, 6 * H, async () => {
+  const j = await getJson(`${STATS}/people/${id}/stats?stats=gameLog&group=hitting&season=${SEASON}`);
+  const logs = (j.stats?.[0]?.splits || []).slice();
+  logs.sort((a, b) => (a.date < b.date ? 1 : -1)); // newest first
+  const fmt = (v) => v.toFixed(3).replace(/^0\./, ".");
+  function agg(n) {
+    const rows = logs.slice(0, n);
+    if (!rows.length) return null;
+    const s = { pa: 0, ab: 0, h: 0, d: 0, t: 0, hr: 0, rbi: 0, bb: 0, so: 0, hbp: 0, sf: 0 };
+    rows.forEach((r) => {
+      const x = r.stat || {};
+      s.pa += +x.plateAppearances || 0; s.ab += +x.atBats || 0; s.h += +x.hits || 0;
+      s.d += +x.doubles || 0; s.t += +x.triples || 0; s.hr += +x.homeRuns || 0;
+      s.rbi += +x.rbi || 0; s.bb += +x.baseOnBalls || 0; s.so += +x.strikeOuts || 0;
+      s.hbp += +x.hitByPitch || 0; s.sf += +x.sacFlies || 0;
+    });
+    const tb = s.h + s.d + 2 * s.t + 3 * s.hr;
+    const obpDen = s.ab + s.bb + s.hbp + s.sf;
+    return {
+      g: rows.length, pa: s.pa, hr: s.hr, rbi: s.rbi, h: s.h,
+      xbh: s.d + s.t + s.hr, bb: s.bb, so: s.so,
+      avg: s.ab ? fmt(s.h / s.ab) : "\u2014",
+      obp: obpDen ? fmt((s.h + s.bb + s.hbp) / obpDen) : "\u2014",
+      slg: s.ab ? fmt(tb / s.ab) : "\u2014",
+      ops: s.ab && obpDen ? fmt((s.h + s.bb + s.hbp) / obpDen + tb / s.ab) : "\u2014",
+    };
+  }
+  return { 7: agg(7), 15: agg(15), 30: agg(30) };
+});
+app.get("/api/recent/:batterId", async (req, res) => {
+  try {
+    res.json(await recentBox(req.params.batterId));
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 /* lazy bullpen aggregate for one team (exclude = probable SP id) */
 app.get("/api/pen/:teamId", async (req, res) => {
   try {

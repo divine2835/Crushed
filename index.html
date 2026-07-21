@@ -104,6 +104,10 @@ tbody td { padding: 11px 12px; border-top: 1px solid var(--line); vertical-align
 .player-team { color: var(--dim); font-size: 11.5px; white-space: nowrap; }
 .star { color: var(--hr); font-size: 13px; }
 .star-num { color: #c9a2e8; font-size: 13px; }
+.rstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(52px, 1fr)); gap: 8px 6px; padding: 2px 4px 4px; }
+.rstat { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.rstat-l { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; font-family: 'Oswald', sans-serif; }
+.rstat-v { font-size: 12.5px; font-weight: 600; }
 .own-mini { font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 600; color: var(--ink); background: var(--hot); border-radius: 4px; padding: 1px 6px; letter-spacing: 0.02em; flex: 0 0 auto; }
 .hr-num { color: var(--hr); }
 .rbi-num { color: var(--rbi); }
@@ -300,6 +304,7 @@ var DEMO = {
       hrPct:31.4, xRbi:0.74, rbiPct:46, settersObp:0.344, runnersPA:0.38, parkHR:1.06, carry:1.42,
       season:{hr:32,pa:390,rbi:71,g:96},
       bvp:{ab:27,h:9,hr:4,bb:5,so:8,avg:".333",slg:".815"},
+      recent:{ 7:{g:7,pa:31,hr:4,rbi:9,h:9,xbh:6,bb:5,so:8,avg:".346",obp:".452",slg:".885",ops:"1.337"}, 15:{g:15,pa:66,hr:7,rbi:16,h:17,xbh:10,bb:9,so:18,avg:".298",obp:".394",slg:".702",ops:"1.096"}, 30:{g:30,pa:131,hr:12,rbi:28,h:31,xbh:18,bb:17,so:36,avg:".277",obp:".366",slg:".634",ops:"1.000"} },
       zones:[0.740,0.812,0.455,0.688,0.702,0.398,0.510,0.442,0.290],
       vsPitch:{FF:0.671,SI:0.588,SL:0.402,CH:0.510,CU:0.333},
       spray: makeSpray(11,[{x:168,y:52,n:6,sx:28,sy:26,pitch:"FF",results:["home_run","home_run","double","home_run","field_out","home_run"]},{x:158,y:66,n:4,sx:30,sy:30,pitch:"SI",results:["home_run","double","field_out","home_run"]},{x:118,y:96,n:5,sx:44,sy:40,pitch:"SL",results:["field_out","single","field_out","double","field_out"]},{x:150,y:80,n:3,sx:34,sy:30,pitch:"CH",results:["home_run","field_out","single"]}]) },
@@ -378,7 +383,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -661,6 +666,7 @@ function scoutCard(p) {
     '<div class="note">' + noteFor(p) + '</div>' +
     tagsHtml +
     ownageStrip(p) +
+    recentPanel(p) +
     '<div class="scout-grid">' +
     '<div class="scout-col">' + mixPanel(p, state.arm, state.pitch) + zoneMap(p, state.arm, state.pitch) + '</div>' +
     sprayChart(p, state.pitch, gameFor(p)) +
@@ -1075,6 +1081,39 @@ function loadArsenal(p) {
     .catch(function () { p.sp.mixFail = true; })
     .finally(function () { state.arsLoading[spId] = false; render(); });
 }
+function recentPanel(p) {
+  var data = state.demo ? p.recent : state.recent[p.id];
+  var chips = [7, 15, 30].map(function (n) {
+    return '<button class="arm' + (state.recentWin === n ? " arm-on" : "") + '" data-rwin="' + n + '">L' + n + '</button>';
+  }).join("");
+  var body;
+  if (!data) {
+    body = '<p class="mix-caption">' + (state.demo ? "Recent-form box loads on the live server." : (state.recentLoading[p.id] ? "Pulling this hitter\u2019s game logs\u2026" : "Recent-form box loads when this card opens.")) + '</p>';
+  } else if (data.error) {
+    body = '<p class="mix-caption">Game-log fetch failed \u2014 re-open this card to retry.</p>';
+  } else {
+    var w = data[state.recentWin];
+    if (!w) {
+      body = '<p class="mix-caption">No games in this window yet.</p>';
+    } else {
+      var cells = [["G", w.g], ["PA", w.pa], ["HR", w.hr], ["RBI", w.rbi], ["H", w.h], ["XBH", w.xbh], ["BB", w.bb], ["K", w.so], ["AVG", w.avg], ["OBP", w.obp], ["SLG", w.slg], ["OPS", w.ops]];
+      body = '<div class="rstats">' + cells.map(function (c) {
+        return '<div class="rstat"><span class="rstat-l">' + c[0] + '</span><span class="rstat-v mono">' + c[1] + '</span></div>';
+      }).join("") + '</div>';
+    }
+  }
+  return '<div class="zone-panel" style="margin-bottom:14px"><div class="zone-head"><span class="panel-title">Recent form</span><div class="arm-toggle" style="margin-bottom:0">' + chips + '</div></div>' + body + '</div>';
+}
+function loadRecent(p) {
+  if (state.demo || state.recentLoading[p.id]) return;
+  if (Object.prototype.hasOwnProperty.call(state.recent, p.id)) return;
+  state.recentLoading[p.id] = true;
+  fetch(apiBase + "/api/recent/" + p.id)
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (j) { state.recent[p.id] = j; })
+    .catch(function () { state.recent[p.id] = { error: true }; })
+    .finally(function () { state.recentLoading[p.id] = false; render(); });
+}
 function loadPen(p) {
   if (p.penMix || state.pen[p.id] || state.penLoading[p.id]) return;
   if (state.demo || !p.oppTeamId) return;
@@ -1088,7 +1127,7 @@ function loadPen(p) {
 
 /* ---------- events ---------- */
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-sort],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -1117,6 +1156,7 @@ document.addEventListener("click", function (e) {
     if (state.tab === "hr") state.hrSort = el.dataset.sort; else state.rbiSort = el.dataset.sort;
     render(); return;
   }
+  if (el.dataset.rwin) { state.recentWin = +el.dataset.rwin; render(); return; }
   if (el.dataset.pitch) { state.pitch = state.pitch === el.dataset.pitch ? null : el.dataset.pitch; render(); return; }
   if (el.dataset.arm) {
     state.arm = el.dataset.arm; state.pitch = null;
@@ -1129,7 +1169,7 @@ document.addEventListener("click", function (e) {
     if (state.open != null) {
       var p = byId(state.open);
       if (p && !p.detail) loadDetail(p);
-      if (p) loadArsenal(p);
+      if (p) { loadArsenal(p); loadRecent(p); }
     }
     render(); return;
   }
