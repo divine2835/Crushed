@@ -673,6 +673,7 @@ async function assembleBoard(date) {
   }
   return { date, generatedAt: new Date().toISOString(),
     numerology: dayNums,
+    thresholds: THRESH,
     modelNote: "hrPct is park- and weather-adjusted (Carry); xRbi from lineup context — transparent baseline formulas, replace score() with your model.",
     games: outGames, players };
 }
@@ -750,7 +751,8 @@ app.get("/api/board", (req, res) => {
 /* lazy starting-pitcher / any-pitcher arsenal from Statcast */
 app.get("/api/arsenal/:pitcherId", async (req, res) => {
   try {
-    res.json((await pitcherPack(req.params.pitcherId)).mix);
+    const pk = await pitcherPack(req.params.pitcherId);
+    res.json({ mix: pk.mix, swstr: pk.swstr });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 

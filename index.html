@@ -842,6 +842,49 @@ function loadBoard() {
   }
   attempt(0);
 }
+var DEFAULT_THRESH = { crushSlg:0.60, ownageSlg:0.60, ownageAb:8, parkHr:1.15, settersObp:0.350, hrPct:20, hotSlg:0.550, hotPa:25, platoonSlg:0.550, platoonAb:30, hardHit:45, pullPct:45, spSwstr:10, barrelMix:13, barrelMixBbe:25, zoneHotSlg:0.550, spZonePct:10, zoneOverlap:3, carry:1.15 };
+/* recompute ALL signal chips in the browser once a player's Statcast
+   detail arrives — mirrors the server's tagsFor with the same
+   thresholds (shipped in the board payload) */
+function recomputeTags(p) {
+  var TH = (state.data && state.data.thresholds) || DEFAULT_THRESH;
+  var t = [];
+  var top = p.sp && p.sp.mix && p.sp.mix[0];
+  if (top && p.vsPitch && p.vsPitch[top.pt] != null && p.vsPitch[top.pt] >= TH.crushSlg) t.push("Crushes top pitch");
+  if (p.bvp && p.bvp.ab >= TH.ownageAb && parseFloat(p.bvp.slg) >= TH.ownageSlg) t.push("Ownage");
+  if (p.sp && p.vsHand && p.vsHand[p.sp.hand] != null && p.vsHand[p.sp.hand] >= TH.platoonSlg) t.push("Platoon edge");
+  if (p.hot != null && p.hot >= TH.hotSlg) t.push("Hot bat");
+  if (p.hardHitPct != null && p.hardHitPct >= TH.hardHit) t.push("Hard contact");
+  if (p.pullPct != null && p.pullPct >= TH.pullPct) t.push("Pull-heavy");
+  if (p.sp && p.sp.swstr != null && p.sp.swstr < TH.spSwstr) t.push("Hittable arm");
+  if (p.barrelsByPt && p.sp && p.sp.mix && p.sp.mix.length) {
+    var mb = 0, mbbe = 0;
+    p.sp.mix.forEach(function (m) {
+      var v = p.barrelsByPt[m.pt];
+      if (v) { mb += v.barrels; mbbe += v.bbe; }
+    });
+    if (mbbe >= TH.barrelMixBbe && (mb / mbbe) * 100 >= TH.barrelMix) t.push("Barrels the mix");
+  }
+  if (p.zones && p.sp && p.sp.mix && p.sp.mix.length) {
+    var spZone = {};
+    p.sp.mix.forEach(function (m) {
+      if (!m.dist) return;
+      Object.keys(m.dist).forEach(function (z) {
+        spZone[z] = (spZone[z] || 0) + (m.pct / 100) * m.dist[z];
+      });
+    });
+    var overlap = 0;
+    for (var z = 1; z <= 9; z++) {
+      if ((spZone[z] || 0) >= TH.spZonePct && p.zones[z - 1] != null && p.zones[z - 1] >= TH.zoneHotSlg) overlap++;
+    }
+    if (overlap >= TH.zoneOverlap) t.push("Zone overlap");
+  }
+  if (p.parkHR >= TH.parkHr) t.push("HR park");
+  if (p.carry != null && p.carry >= TH.carry) t.push("Carry night");
+  if (p.settersObp != null && p.settersObp >= TH.settersObp) t.push("Traffic ahead");
+  if (p.hrPct >= TH.hrPct) t.push("Power form");
+  p.tags = t;
+}
 function loadDetail(p) {
   if (p.detail || state.demo || state.detailLoading[p.id]) return;
   state.detailLoading[p.id] = true;
@@ -851,8 +894,13 @@ function loadDetail(p) {
       p.vsPitch = j.vsPitch || null;
       p.zones = j.zones || null;
       p.spray = j.spray || null;
+      p.hardHitPct = j.hardHitPct != null ? j.hardHitPct : null;
+      p.pullPct = j.pullPct != null ? j.pullPct : null;
+      p.barrelsByPt = j.barrelsByPt || null;
+      p.vsHand = j.vsHand || null;
       p.detail = true;
       p.detailFail = false;
+      recomputeTags(p);
     })
     .catch(function () { p.detailFail = true; })
     .finally(function () { state.detailLoading[p.id] = false; render(); });
@@ -860,12 +908,26 @@ function loadDetail(p) {
 function loadArsenal(p) {
   if (state.demo || !p.sp || p.sp.mix || !p.sp.id) return;
   var spId = p.sp.id;
-  if (state.arsenals[spId]) { p.sp.mix = state.arsenals[spId]; return; }
+  if (state.arsenals[spId]) {
+    var c = state.arsenals[spId];
+    p.sp.mix = Array.isArray(c) ? c : c.mix;
+    if (c && c.swstr != null) p.sp.swstr = c.swstr;
+    recomputeTags(p);
+    return;
+  }
   if (state.arsLoading[spId]) return;
   state.arsLoading[spId] = true;
   fetch(apiBase + "/api/arsenal/" + spId)
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(function (j) { if (Array.isArray(j) && j.length) { state.arsenals[spId] = j; p.sp.mix = j; } else { p.sp.mixFail = true; } })
+    .then(function (j) {
+      var mix = Array.isArray(j) ? j : (j && j.mix);
+      if (mix && mix.length) {
+        state.arsenals[spId] = j;
+        p.sp.mix = mix;
+        if (j && j.swstr != null) p.sp.swstr = j.swstr;
+        recomputeTags(p);
+      } else { p.sp.mixFail = true; }
+    })
     .catch(function () { p.sp.mixFail = true; })
     .finally(function () { state.arsLoading[spId] = false; render(); });
 }
