@@ -642,13 +642,14 @@ function ownageStrip(p) {
   var b = p.bvp;
   if (!b || !b.ab || !p.sp) return "";
   var hot = parseFloat(b.slg) >= 0.6;
+  var own = hasOwnage(p); // same rule everywhere: SLG threshold AND the AB minimum
   return '<div class="ownage">' +
     '<span class="ownage-title">' + esc(lastName(p.name)) + ' vs ' + esc(p.sp.name) + ' <em>· career</em></span>' +
     '<span class="mono">' + b.h + '-for-' + b.ab + '</span>' +
     '<span class="mono" style="color:' + (b.hr > 0 ? "var(--hr)" : "var(--dim)") + '">' + b.hr + ' HR</span>' +
     '<span class="mono dim">' + b.bb + ' BB · ' + b.so + ' K</span>' +
     '<span class="mono" style="color:' + (hot ? "var(--hr)" : "var(--chalk)") + ';font-weight:600">' + esc(b.slg) + ' SLG</span>' +
-    (hot ? '<span class="chip chip-hot">Ownage</span>' : "") + '</div>';
+    (own ? '<span class="chip chip-hot">Ownage</span>' : "") + '</div>';
 }
 
 /* ---------- scouting card ---------- */
