@@ -57,6 +57,23 @@ button { font-family: inherit; }
 .tab-on.tab-hr { color: var(--ink); background: var(--hr); border-color: var(--hr); }
 .tab-on.tab-rbi { color: var(--ink); background: var(--rbi); border-color: var(--rbi); }
 .tab-on.tab-num { color: var(--ink); background: #c9a2e8; border-color: #c9a2e8; }
+.tab-gen { color: var(--hr); border-color: rgba(242,177,52,0.55); }
+.tab-on.tab-gen { color: var(--ink); background: var(--hr); border-color: var(--hr); }
+.gen-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+.gchip { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 999px; padding: 5px 13px; cursor: pointer; }
+.gchip-on { color: var(--ink); background: var(--hr); border-color: var(--hr); font-weight: 600; }
+.gen-btn { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 0.06em; font-size: 14px; font-weight: 600; color: var(--ink); background: var(--hr); border: 1px solid var(--hr); border-radius: 6px; padding: 8px 18px; cursor: pointer; margin-left: auto; }
+.gen-btn:focus-visible, .gchip:focus-visible { outline: 2px solid var(--chalk); outline-offset: 2px; }
+.gen-card { border: 1px solid rgba(242,177,52,0.5); border-radius: 10px; background: var(--ink); overflow: hidden; }
+.gen-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px 8px; border-top: 1px solid var(--line); cursor: pointer; flex-wrap: wrap; }
+.gen-card .gen-row:first-child { border-top: none; }
+.gen-row:hover { background: var(--panel); }
+.gen-rank { font-family: 'Oswald', sans-serif; color: var(--hr); font-size: 15px; width: 18px; flex: 0 0 auto; }
+.gen-main { flex: 1; min-width: 170px; }
+.gen-hr { font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: var(--hr); font-size: 15px; flex: 0 0 auto; }
+.gen-chips { display: flex; gap: 6px; flex-wrap: wrap; width: 100%; padding: 4px 0 2px 30px; }
+.gen-meta { padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 6px 16px; border-top: 1px solid rgba(242,177,52,0.35); background: rgba(242,177,52,0.05); font-size: 12px; }
+.gen-scout { background: var(--panel); border-radius: 8px; margin: 0 10px 10px; padding: 8px 12px; }
 .numer-row { display: flex; gap: 10px; align-items: baseline; padding: 5px 6px; flex-wrap: wrap; }
 .numer-method { font-weight: 600; font-size: 13px; min-width: 128px; }
 .num-badge { font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: var(--ink); background: #c9a2e8; border-radius: 5px; padding: 1px 8px; font-size: 13px; }
@@ -183,6 +200,7 @@ footer p { font-size: 11px; }
     <button role="tab" id="tab-hr" class="tab" data-tab="hr">HR Board</button>
     <button role="tab" id="tab-rbi" class="tab" data-tab="rbi">RBI Board</button>
     <button role="tab" id="tab-num" class="tab" data-tab="num">Numerology</button>
+    <button role="tab" id="tab-gen" class="tab tab-gen" data-tab="gen">Generate</button>
   </nav>
 
   <div class="filterbar" id="gamefilter"></div>
@@ -359,7 +377,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -732,6 +750,104 @@ function numerologyView(players) {
   }).join("");
   return head + '<div class="table-wrap"><table><thead><tr><th class="th-static">Batter</th><th class="th-static">Alignments</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
 }
+/* ============================================================
+   GENERATE — combo builder blending model metrics, signal tags,
+   numerology alignments, convergence, lineup status, and stack
+   logic. Estimates are from the baseline model; not betting advice.
+   ============================================================ */
+function compositeScore(p, TH) {
+  var s = p.hrPct || 0;
+  s += (p.tags ? p.tags.length : 0) * (TH.tagWeight || 3);
+  s += Math.min(4, (p.numerHits ? p.numerHits.length : 0)) * 2;
+  if (crossAligned(p)) s += 5;
+  if (p.lineup === "confirmed") s += 3;
+  return s;
+}
+function gameIsHot(p, gamesById) {
+  var g = gamesById[p.gamePk];
+  return !!((g && g.carry != null && g.carry >= 1.15) || (p.sp && p.sp.swstr != null && p.sp.swstr < 10));
+}
+function synergyScore(p, combo, gamesById) {
+  var s = 0;
+  combo.forEach(function (q) {
+    if (String(q.gamePk) === String(p.gamePk)) {
+      var hot = gameIsHot(p, gamesById);
+      if (q.teamAbbr === p.teamAbbr) s += hot ? 3 : 0;   // same-team stack, rewarded on launch nights
+      else s -= 2;                                        // both sides of one game fight each other
+      if (p.sp && q.sp && p.sp.id && p.sp.id === q.sp.id) s += hot ? 1 : -2;
+    }
+  });
+  return s;
+}
+function genCombo(size) {
+  var pool = ((state.data && state.data.players) || []).slice();
+  if (pool.length < size) {
+    state.genResult = { error: "Not enough players on this slate yet \u2014 combos sharpen as lineups post." };
+    return;
+  }
+  var TH = (state.data && state.data.thresholds) || DEFAULT_THRESH;
+  var gamesById = {};
+  ((state.data && state.data.games) || []).forEach(function (g) { gamesById[g.gamePk] = g; });
+  pool.forEach(function (p) { p._cs = compositeScore(p, TH); });
+  pool.sort(function (a, b) { return b._cs - a._cs; });
+  var cand = pool.slice(0, Math.max(16, size * 4));
+  var combo = [];
+  function countGame(pk) { return combo.filter(function (q) { return String(q.gamePk) === String(pk); }).length; }
+  while (combo.length < size) {
+    var scored = cand.filter(function (p) { return combo.indexOf(p) === -1 && countGame(p.gamePk) < 2; })
+      .map(function (p) { return { p: p, s: p._cs + synergyScore(p, combo, gamesById) }; })
+      .sort(function (a, b) { return b.s - a.s; });
+    if (!scored.length) break;
+    var pick = scored[Math.floor(Math.random() * Math.min(scored.length, 3))]; // explore among the top 3 for fresh combos
+    combo.push(pick.p);
+  }
+  var joint = combo.reduce(function (pr, p) { return pr * ((p.hrPct || 0) / 100); }, 1) * 100;
+  var covered = {};
+  combo.forEach(function (p) { (p.numerHits || []).forEach(function (h) { covered[h.num] = 1; }); });
+  var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
+  var covList = daySet.filter(function (n) { return covered[n]; });
+  var blend = Math.round(combo.reduce(function (s, p) { return s + p._cs; }, 0) + covList.length * 2);
+  var stacks = [];
+  combo.forEach(function (p, i) {
+    combo.slice(i + 1).forEach(function (q) {
+      if (String(p.gamePk) === String(q.gamePk) && p.teamAbbr === q.teamAbbr) stacks.push(p.teamAbbr + " stack");
+    });
+  });
+  state.genResult = { ids: combo.map(function (p) { return p.id; }), blend: blend, joint: joint, covList: covList, daySet: daySet, stacks: stacks, size: size };
+}
+function generateView() {
+  var sizes = [2, 3, 4, 5].map(function (n) {
+    return '<button class="gchip' + (state.genSize === n ? " gchip-on" : "") + '" data-gensize="' + n + '">' + n + ' names</button>';
+  }).join("");
+  var controls = '<div class="gen-controls">' + sizes + '<button class="gen-btn" data-generate="1">\u2726 Generate</button></div>';
+  var r = state.genResult;
+  if (!r) {
+    return controls + '<p class="mix-caption" style="padding:10px 6px">Pick a size and hit Generate. The engine blends model HR%, all thirteen signal tags, your numerology alignments, convergence stars, and lineup status \u2014 then builds with stack logic: same-team pairings get rewarded on launch nights, opposite sides of one game get penalized, and no more than two names come from a single game. Generate again for fresh high-scoring variations.</p>';
+  }
+  if (r.error) return controls + '<div class="loading">' + esc(r.error) + '</div>';
+  var players = r.ids.map(function (id) { return byId(id); }).filter(Boolean);
+  if (players.length !== r.size) return controls + '<div class="loading">The slate updated \u2014 hit Generate for a fresh combo.</div>';
+  var rows = players.map(function (p, i) {
+    var chips = (p.tags || []).slice(0, 2).map(function (t) { return '<span class="tagchip">' + esc(t) + '</span>'; }).join("") +
+      ((p.numerHits && p.numerHits[0]) ? '<span class="numchip"><b>' + p.numerHits[0].num + '</b>' + esc(p.numerHits[0].label) + '</span>' : "");
+    var out = '<div class="gen-row row" data-row="' + p.id + '">' +
+      '<span class="gen-rank">' + (i + 1) + '</span>' +
+      '<div class="gen-main"><span class="player-name">' + luDot(p.lineup) + (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") + (crossAligned(p) ? '<span class="star-num" title="Also numerology-aligned">\u2605</span>' : "") + esc(p.name) + '</span>' +
+      '<span class="player-team">' + esc(p.teamAbbr) + ' \u00b7 #' + p.slot + (p.sp ? ' \u00b7 vs ' + esc(p.sp.name) : "") + '</span></div>' +
+      '<span class="gen-hr">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "\u2014") + '</span>' +
+      (chips ? '<div class="gen-chips">' + chips + '</div>' : "") +
+      '</div>';
+    if (String(state.open) === String(p.id)) out += '<div class="gen-scout">' + scoutCard(p) + '</div>';
+    return out;
+  }).join("");
+  var meta = '<div class="gen-meta">' +
+    '<span class="mono" style="color:var(--hr);font-weight:600">Blend score ' + r.blend + '</span>' +
+    '<span class="mono dim">All-hit estimate: ' + (r.joint >= 1 ? r.joint.toFixed(1) : r.joint.toFixed(2)) + '% \u00b7 baseline model</span>' +
+    (r.daySet.length ? '<span class="mono" style="color:#c9a2e8">Day energies covered: ' + (r.covList.length ? r.covList.join(" \u00b7 ") : "none") + ' (' + r.covList.length + ' of ' + r.daySet.length + ')</span>' : "") +
+    (r.stacks.length ? '<span class="mono dim">' + esc([...new Set(r.stacks)].join(", ")) + '</span>' : "") +
+    '</div>';
+  return controls + '<div class="gen-card">' + rows + meta + '</div>';
+}
 function renderDaybar() {
   document.getElementById("daybar").innerHTML =
     '<button class="fchip' + (state.day === "today" ? " fchip-on" : "") + '" data-day="today">Today</button>' +
@@ -742,10 +858,16 @@ function render() {
   document.getElementById("tab-hr").className = "tab" + (state.tab === "hr" ? " tab-on tab-hr" : "");
   document.getElementById("tab-rbi").className = "tab" + (state.tab === "rbi" ? " tab-on tab-rbi" : "");
   document.getElementById("tab-num").className = "tab" + (state.tab === "num" ? " tab-on tab-num" : "");
+  document.getElementById("tab-gen").className = "tab tab-gen" + (state.tab === "gen" ? " tab-on" : "");
   var intro = document.getElementById("intro");
   var board = document.getElementById("board");
   if (!state.data) { board.innerHTML = '<div class="loading">Syncing tonight\u2019s slate from Statcast…</div>'; return; }
   renderFilter();
+  if (state.tab === "gen") {
+    intro.innerHTML = 'The combo engine: model HR% + signal tags + numerology alignments + convergence + lineup status, assembled with stack logic. Tap any name for its full scouting card. Estimates come from the baseline model \u2014 not betting advice.';
+    board.innerHTML = generateView();
+    return;
+  }
   var players = visiblePlayers();
   if (!players.length) {
     intro.innerHTML = "";
@@ -944,11 +1066,11 @@ function loadPen(p) {
 
 /* ---------- events ---------- */
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-sort],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-generate],[data-sort],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
-    state.day = el.dataset.day; state.open = null; state.pitch = null; state.arm = "sp"; state.game = "all";
+    state.day = el.dataset.day; state.open = null; state.pitch = null; state.arm = "sp"; state.game = "all"; state.genResult = null;
     if (state.demo && state.day === "tomorrow") {
       renderDaybar();
       document.getElementById("intro").innerHTML = "";
@@ -960,6 +1082,8 @@ document.addEventListener("click", function (e) {
     else { state.data = null; renderDaybar(); document.getElementById("board").innerHTML = '<div class="loading">Loading the ' + state.day + ' slate\u2026</div>'; loadBoard(); }
     return;
   }
+  if (el.dataset.gensize) { state.genSize = +el.dataset.gensize; render(); return; }
+  if (el.dataset.generate) { genCombo(state.genSize); state.open = null; render(); return; }
   if (el.dataset.tab) { state.tab = el.dataset.tab; state.open = null; state.pitch = null; state.arm = "sp"; render(); return; }
   if (el.dataset.game) { state.game = el.dataset.game; state.open = null; state.pitch = null; state.arm = "sp"; render(); return; }
   if (el.dataset.sort) {
