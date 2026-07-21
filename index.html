@@ -104,6 +104,7 @@ tbody td { padding: 11px 12px; border-top: 1px solid var(--line); vertical-align
 .player-team { color: var(--dim); font-size: 11.5px; white-space: nowrap; }
 .star { color: var(--hr); font-size: 13px; }
 .star-num { color: #c9a2e8; font-size: 13px; }
+.own-mini { font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 600; color: var(--ink); background: var(--hot); border-radius: 4px; padding: 1px 6px; letter-spacing: 0.02em; flex: 0 0 auto; }
 .hr-num { color: var(--hr); }
 .rbi-num { color: var(--rbi); }
 .stat-cell { display: flex; flex-direction: column; gap: 4px; min-width: 72px; }
@@ -432,6 +433,14 @@ function visiblePlayers() {
 function crossAligned(p) {
   return !!(p.suggested && p.numerHits && p.numerHits.length);
 }
+/* mini Ownage badge shown in list rows (same threshold as the big emblem) */
+function hasOwnage(p) {
+  var TH = (state.data && state.data.thresholds) || DEFAULT_THRESH;
+  return !!(p.bvp && p.bvp.ab >= TH.ownageAb && parseFloat(p.bvp.slg) >= TH.ownageSlg);
+}
+function ownMini(p) {
+  return hasOwnage(p) ? '<span class="own-mini" title="Career ownage vs tonight\u2019s starter">Ownage</span>' : "";
+}
 function gameFor(p) {
   var gs = (state.data && state.data.games) || [];
   for (var i = 0; i < gs.length; i++) if (String(gs[i].gamePk) === String(p.gamePk)) return gs[i];
@@ -680,7 +689,7 @@ function sortVal(p, key) {
 function playerRow(p, cols) {
   var cells = cols.map(function (c) { return '<td>' + c.render(p) + '</td>'; }).join("");
   var html = '<tr class="row" data-row="' + p.id + '">' +
-    '<td><div class="player"><span class="player-name">' + luDot(p.lineup) + (p.suggested ? '<span class="star" title="Suggested play">★</span>' : "") + (crossAligned(p) ? '<span class="star-num" title="Also numerology-aligned today">★</span>' : "") + esc(p.name) + '</span>' +
+    '<td><div class="player"><span class="player-name">' + luDot(p.lineup) + (p.suggested ? '<span class="star" title="Suggested play">★</span>' : "") + (crossAligned(p) ? '<span class="star-num" title="Also numerology-aligned today">★</span>' : "") + esc(p.name) + ownMini(p) + '</span>' +
     '<span class="player-team">' + esc(p.teamAbbr) + ' · #' + p.slot + (p.sp ? ' · vs ' + esc(p.sp.name) : "") + '</span></div></td>' + cells + '</tr>';
   if (String(state.open) === String(p.id)) {
     html += '<tr class="note-row"><td colspan="' + (cols.length + 1) + '">' + scoutCard(p) + '</td></tr>';
@@ -740,7 +749,7 @@ function numerologyView(players) {
       return '<span class="numchip"><b>' + h.num + '</b>' + esc(h.label) + '</span>';
     }).join("");
     var out = '<tr class="row" data-row="' + p.id + '">' +
-      '<td><div class="player"><span class="player-name">' + luDot(p.lineup) + (crossAligned(p) ? '<span class="star-num" title="Also a suggested play on the HR/RBI boards">\u2605</span>' : "") + esc(p.name) + '</span>' +
+      '<td><div class="player"><span class="player-name">' + luDot(p.lineup) + (crossAligned(p) ? '<span class="star-num" title="Also a suggested play on the HR/RBI boards">\u2605</span>' : "") + esc(p.name) + ownMini(p) + '</span>' +
       '<span class="player-team">' + esc(p.teamAbbr) + ' \u00b7 #' + p.slot + (p.sp ? ' \u00b7 vs ' + esc(p.sp.name) : "") + '</span></div></td>' +
       '<td><div class="numchips">' + chips + '</div></td></tr>';
     if (String(state.open) === String(p.id)) {
@@ -840,7 +849,7 @@ function generateView() {
       ((p.numerHits && p.numerHits[0]) ? '<span class="numchip"><b>' + p.numerHits[0].num + '</b>' + esc(p.numerHits[0].label) + '</span>' : "");
     var out = '<div class="gen-row row" data-row="' + p.id + '">' +
       '<span class="gen-rank">' + (i + 1) + '</span>' +
-      '<div class="gen-main"><span class="player-name">' + luDot(p.lineup) + (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") + (crossAligned(p) ? '<span class="star-num" title="Also numerology-aligned">\u2605</span>' : "") + esc(p.name) + '</span>' +
+      '<div class="gen-main"><span class="player-name">' + luDot(p.lineup) + (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") + (crossAligned(p) ? '<span class="star-num" title="Also numerology-aligned">\u2605</span>' : "") + esc(p.name) + ownMini(p) + '</span>' +
       '<span class="player-team">' + esc(p.teamAbbr) + ' \u00b7 #' + p.slot + (p.sp ? ' \u00b7 vs ' + esc(p.sp.name) : "") + '</span></div>' +
       '<span class="gen-hr">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "\u2014") + '</span>' +
       (chips ? '<div class="gen-chips">' + chips + '</div>' : "") +
