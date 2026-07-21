@@ -848,6 +848,30 @@ const recentBox = (id) => cached(`rb:${id}`, 6 * H, async () => {
   }
   return { 7: agg(7), 15: agg(15), 30: agg(30), games: perGame };
 });
+/* full season splits: batter vs LHP/RHP, or pitcher vs LHB/RHB */
+const fullSplits = (type, id) => cached(`fs:${type}:${id}`, 6 * H, async () => {
+  const group = type === "pitcher" ? "pitching" : "hitting";
+  const j = await getJson(`${STATS}/people/${id}/stats?stats=statSplits&group=${group}&season=${SEASON}&sitCodes=vl,vr`);
+  const out = { vl: null, vr: null };
+  (j.stats?.[0]?.splits || []).forEach((s) => {
+    const code = s.split?.code;
+    if (code !== "vl" && code !== "vr") return;
+    const x = s.stat || {};
+    out[code] = {
+      pa: +x.plateAppearances || +x.battersFaced || 0,
+      ab: +x.atBats || 0, h: +x.hits || 0, hr: +x.homeRuns || 0,
+      rbi: +x.rbi || 0, bb: +x.baseOnBalls || 0, so: +x.strikeOuts || 0,
+      avg: x.avg || "\u2014", obp: x.obp || "\u2014", slg: x.slg || "\u2014", ops: x.ops || "\u2014",
+    };
+  });
+  return out;
+});
+app.get("/api/splits/:type/:id", async (req, res) => {
+  try {
+    res.json(await fullSplits(req.params.type === "pitcher" ? "pitcher" : "batter", req.params.id));
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 app.get("/api/recent/:batterId", async (req, res) => {
   try {
     res.json(await recentBox(req.params.batterId));

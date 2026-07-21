@@ -113,6 +113,7 @@ tbody td { padding: 11px 12px; border-top: 1px solid var(--line); vertical-align
 .glog th { font-family: 'Oswald', sans-serif; font-size: 9px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--dim); text-align: left; padding: 3px 7px; white-space: nowrap; }
 .glog td { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--chalk); padding: 4px 7px; border-top: 1px solid var(--line); white-space: nowrap; }
 .glog td.hr-hot { color: var(--hr); font-weight: 600; }
+.hand-tag { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--dim); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; flex: 0 0 auto; }
 .own-mini { font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 600; color: var(--ink); background: var(--hot); border-radius: 4px; padding: 1px 6px; letter-spacing: 0.02em; flex: 0 0 auto; }
 .hr-num { color: var(--hr); }
 .rbi-num { color: var(--rbi); }
@@ -270,7 +271,7 @@ function makeSpray(seed, clusters) {
   });
   return pts;
 }
-var PETERSON = { name:"D. Peterson", hand:"L", mix:[
+var PETERSON = { name:"D. Peterson", hand:"L", splits:{ vl:{pa:118,ab:105,h:22,hr:2,bb:9,so:34,avg:".210",obp:".277",slg:".314",ops:".591"}, vr:{pa:352,ab:315,h:84,hr:11,bb:31,so:82,avg:".267",obp:".333",slg:".429",ops:".762"} }, mix:[
   {pt:"FF",pct:33,velo:93.8,zone:2,dist:{1:16,2:26,3:12,4:10,5:14,6:9,7:6,8:4,9:3}},
   {pt:"SL",pct:24,velo:84.1,zone:9,dist:{9:32,8:24,6:16,5:11,7:9,3:8}},
   {pt:"CH",pct:19,velo:85.6,zone:8,dist:{8:30,7:24,9:20,5:14,4:12}},
@@ -309,6 +310,7 @@ var DEMO = {
       hrPct:31.4, xRbi:0.74, rbiPct:46, settersObp:0.344, runnersPA:0.38, parkHR:1.06, carry:1.42,
       season:{hr:32,pa:390,rbi:71,g:96},
       bvp:{ab:27,h:9,hr:4,bb:5,so:8,avg:".333",slg:".815"},
+      bSplits:{ vl:{pa:112,ab:98,h:26,hr:8,rbi:19,bb:12,so:31,avg:".265",obp:".348",slg:".622",ops:".970"}, vr:{pa:278,ab:240,h:66,hr:24,rbi:52,bb:34,so:71,avg:".275",obp:".365",slg:".637",ops:"1.002"} },
       recent:{ 7:{g:7,pa:31,hr:4,rbi:9,h:9,xbh:6,bb:5,so:8,avg:".346",obp:".452",slg:".885",ops:"1.337"}, 15:{g:15,pa:66,hr:7,rbi:16,h:17,xbh:10,bb:9,so:18,avg:".298",obp:".394",slg:".702",ops:"1.096"}, 30:{g:30,pa:131,hr:12,rbi:28,h:31,xbh:18,bb:17,so:36,avg:".277",obp:".366",slg:".634",ops:"1.000"},
         games:[
           {d:"07-19",opp:"NYM",home:false,ab:4,r:2,h:2,hr:1,rbi:3,bb:1,so:1},
@@ -397,7 +399,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -459,6 +461,14 @@ function hasOwnage(p) {
 }
 function ownMini(p) {
   return hasOwnage(p) ? '<span class="own-mini" title="Career ownage vs tonight\u2019s starter">Ownage</span>' : "";
+}
+function batTag(p) {
+  var t = p.bats === "L" ? "LHB" : p.bats === "R" ? "RHB" : p.bats === "S" ? "SHB" : "";
+  return t ? '<span class="hand-tag">' + t + '</span>' : "";
+}
+function pitParen(sp) {
+  var t = sp && (sp.hand === "L" ? "LHP" : sp.hand === "R" ? "RHP" : "");
+  return t ? " (" + t + ")" : "";
 }
 function gameFor(p) {
   var gs = (state.data && state.data.games) || [];
@@ -624,18 +634,58 @@ function currentPen(p) {
   return state.pen[p.id] || null;
 }
 function mixPanel(p, arm, activePitch) {
-  var mix = arm === "sp" ? (p.sp && p.sp.mix) : currentPen(p);
+  var last = esc(lastName(p.name));
+  var spLast = p.sp ? esc(lastName(p.sp.name)) : "SP";
+  var spLabel = p.sp ? esc(p.sp.name) + " (" + (p.sp.hand === "L" ? "LHP" : p.sp.hand === "R" ? "RHP" : "?") + ")" : "Starter TBD";
+  function chip(mode, label) {
+    return '<button role="tab" class="arm' + (arm === mode ? " arm-on" : "") + '" data-arm="' + mode + '" aria-selected="' + (arm === mode) + '">' + label + '</button>';
+  }
+  var toggle = '<div class="arm-toggle" role="tablist" style="flex-wrap:wrap">' +
+    chip("sp", spLabel) + chip("pen", "Opp. Bullpen") +
+    chip("bvl", last + " vs LHP") + chip("bvr", last + " vs RHP") +
+    chip("pvl", spLast + " vs LHB") + chip("pvr", spLast + " vs RHB") +
+    '</div>';
   var rowsHtml;
+  if (arm === "bvl" || arm === "bvr" || arm === "pvl" || arm === "pvr") {
+    var isBat = arm === "bvl" || arm === "bvr";
+    var code = (arm === "bvl" || arm === "pvl") ? "vl" : "vr";
+    var data = state.demo
+      ? (isBat ? p.bSplits : (p.sp && p.sp.splits))
+      : (isBat ? state.bsplits[p.id] : (p.sp && p.sp.id ? state.psplits[p.sp.id] : null));
+    var loadKey = isBat ? ("b" + p.id) : ("p" + (p.sp && p.sp.id));
+    if (!data) {
+      rowsHtml = '<p class="mix-caption">' + (state.demo ? "Season splits load on the live server." : (state.splitsLoading[loadKey] ? "Pulling season splits from MLB\u2026" : "Splits load when this card opens.")) + '</p>';
+    } else if (data.error) {
+      rowsHtml = '<p class="mix-caption">Splits fetch failed \u2014 re-open this card to retry.</p>';
+    } else {
+      var w = data[code];
+      if (!w) {
+        rowsHtml = '<p class="mix-caption">No split sample this season yet.</p>';
+      } else {
+        var cells = isBat
+          ? [["PA", w.pa], ["AB", w.ab], ["H", w.h], ["HR", w.hr], ["RBI", w.rbi], ["BB", w.bb], ["K", w.so], ["AVG", w.avg], ["OBP", w.obp], ["SLG", w.slg], ["OPS", w.ops]]
+          : [["BF", w.pa], ["AB", w.ab], ["H", w.h], ["HR", w.hr], ["BB", w.bb], ["K", w.so], ["AVG", w.avg], ["OBP", w.obp], ["SLG", w.slg], ["OPS", w.ops]];
+        rowsHtml = '<div class="rstats">' + cells.map(function (c) {
+          return '<div class="rstat"><span class="rstat-l">' + c[0] + '</span><span class="rstat-v mono">' + c[1] + '</span></div>';
+        }).join("") + '</div>' +
+          '<p class="mix-caption">' + (isBat
+            ? last + " season split vs " + (code === "vl" ? "LHP" : "RHP") + " \u00b7 MLB Stats API"
+            : "Opponents\u2019 line vs " + spLast + " when batting " + (code === "vl" ? "left" : "right") + "-handed \u00b7 MLB Stats API") + '</p>';
+      }
+    }
+    return '<div class="mix-panel">' + toggle + rowsHtml + '</div>';
+  }
+  var mix = arm === "sp" ? (p.sp && p.sp.mix) : currentPen(p);
   if (arm === "pen" && !mix) {
-    rowsHtml = '<p class="mix-caption">' + (state.penLoading[p.id] ? "Loading bullpen arsenal from Statcast…" : "Bullpen arsenal loads from the live server.") + '</p>';
+    rowsHtml = '<p class="mix-caption">' + (state.penLoading[p.id] ? "Loading bullpen arsenal from Statcast\u2026" : "Bullpen arsenal loads from the live server.") + '</p>';
   } else if (!mix || !mix.length) {
     var spId2 = p.sp && p.sp.id;
     var armMsg = (spId2 && state.arsLoading[spId2])
-      ? "Pulling " + esc(p.sp.name) + "’s pitch-by-pitch arsenal from Baseball Savant… (5–15s first time, instant after)"
-      : (p.sp && p.sp.mixFail ? "Savant arsenal fetch failed — check the server logs and re-tap." : "Arsenal not synced yet.");
+      ? "Pulling " + esc(p.sp.name) + "\u2019s pitch-by-pitch arsenal from Baseball Savant\u2026 (5\u201315s first time, instant after)"
+      : (p.sp && p.sp.mixFail ? "Savant arsenal fetch failed \u2014 check the server logs and re-tap." : "Arsenal not synced yet.");
     rowsHtml = '<p class="mix-caption">' + armMsg + '</p>';
   } else {
-    rowsHtml = '<div class="mix-cols mono"><span>Pitch</span><span>Usage</span><span>Velo</span><span>' + esc(lastName(p.name)) + ' SLG</span></div>' +
+    rowsHtml = '<div class="mix-cols mono"><span>Pitch</span><span>Usage</span><span>Velo</span><span>' + last + ' SLG</span></div>' +
       mix.map(function (m) {
         var slg = p.vsPitch ? p.vsPitch[m.pt] : null;
         var dim = activePitch && activePitch !== m.pt ? " mix-dim" : "";
@@ -643,17 +693,12 @@ function mixPanel(p, arm, activePitch) {
         return '<button class="mix-row' + dim + on + '" data-pitch="' + m.pt + '" aria-pressed="' + (activePitch === m.pt) + '">' +
           '<span class="mix-label"><i class="swatch" style="background:' + pInfo(m.pt).color + '"></i>' + pInfo(m.pt).label + '</span>' +
           '<span class="mix-bar-cell">' + meter(m.pct, 60, pInfo(m.pt).color) + '<em>' + m.pct + '%</em></span>' +
-          '<span class="mono dim">' + (m.velo ? m.velo.toFixed(1) : "—") + '</span>' +
+          '<span class="mono dim">' + (m.velo ? m.velo.toFixed(1) : "\u2014") + '</span>' +
           '<span class="mono" style="color:' + heat(slg) + ';font-weight:600">' + fmtSlg(slg) + '</span></button>';
       }).join("") +
       '<p class="mix-caption">Tap a pitch to isolate it on the spray chart and see its full location pattern in the zone map.</p>';
   }
-  var spLabel = p.sp ? esc(p.sp.name) + " (" + (p.sp.hand || "?") + "HP)" : "Starter TBD";
-  return '<div class="mix-panel">' +
-    '<div class="arm-toggle" role="tablist">' +
-    '<button role="tab" class="arm' + (arm === "sp" ? " arm-on" : "") + '" data-arm="sp" aria-selected="' + (arm === "sp") + '">' + spLabel + '</button>' +
-    '<button role="tab" class="arm' + (arm === "pen" ? " arm-on" : "") + '" data-arm="pen" aria-selected="' + (arm === "pen") + '">Opp. Bullpen</button>' +
-    '</div>' + rowsHtml + '</div>';
+  return '<div class="mix-panel">' + toggle + rowsHtml + '</div>';
 }
 
 /* ---------- ownage strip ---------- */
@@ -710,8 +755,8 @@ function sortVal(p, key) {
 function playerRow(p, cols) {
   var cells = cols.map(function (c) { return '<td>' + c.render(p) + '</td>'; }).join("");
   var html = '<tr class="row" data-row="' + p.id + '">' +
-    '<td><div class="player"><span class="player-name">' + luDot(p.lineup) + (p.suggested ? '<span class="star" title="Suggested play">★</span>' : "") + (crossAligned(p) ? '<span class="star-num" title="Also numerology-aligned today">★</span>' : "") + esc(p.name) + ownMini(p) + '</span>' +
-    '<span class="player-team">' + esc(p.teamAbbr) + ' · #' + p.slot + (p.sp ? ' · vs ' + esc(p.sp.name) : "") + '</span></div></td>' + cells + '</tr>';
+    '<td><div class="player"><span class="player-name">' + luDot(p.lineup) + (p.suggested ? '<span class="star" title="Suggested play">★</span>' : "") + (crossAligned(p) ? '<span class="star-num" title="Also numerology-aligned today">★</span>' : "") + esc(p.name) + batTag(p) + ownMini(p) + '</span>' +
+    '<span class="player-team">' + esc(p.teamAbbr) + ' · #' + p.slot + (p.sp ? ' · vs ' + esc(p.sp.name) + pitParen(p.sp) : "") + '</span></div></td>' + cells + '</tr>';
   if (String(state.open) === String(p.id)) {
     html += '<tr class="note-row"><td colspan="' + (cols.length + 1) + '">' + scoutCard(p) + '</td></tr>';
   }
@@ -770,8 +815,8 @@ function numerologyView(players) {
       return '<span class="numchip"><b>' + h.num + '</b>' + esc(h.label) + '</span>';
     }).join("");
     var out = '<tr class="row" data-row="' + p.id + '">' +
-      '<td><div class="player"><span class="player-name">' + luDot(p.lineup) + (crossAligned(p) ? '<span class="star-num" title="Also a suggested play on the HR/RBI boards">\u2605</span>' : "") + esc(p.name) + ownMini(p) + '</span>' +
-      '<span class="player-team">' + esc(p.teamAbbr) + ' \u00b7 #' + p.slot + (p.sp ? ' \u00b7 vs ' + esc(p.sp.name) : "") + '</span></div></td>' +
+      '<td><div class="player"><span class="player-name">' + luDot(p.lineup) + (crossAligned(p) ? '<span class="star-num" title="Also a suggested play on the HR/RBI boards">\u2605</span>' : "") + esc(p.name) + batTag(p) + ownMini(p) + '</span>' +
+      '<span class="player-team">' + esc(p.teamAbbr) + ' \u00b7 #' + p.slot + (p.sp ? ' \u00b7 vs ' + esc(p.sp.name) + pitParen(p.sp) : "") + '</span></div></td>' +
       '<td><div class="numchips">' + chips + '</div></td></tr>';
     if (String(state.open) === String(p.id)) {
       out += '<tr class="note-row"><td colspan="2">' + scoutCard(p) + '</td></tr>';
@@ -870,8 +915,8 @@ function generateView() {
       ((p.numerHits && p.numerHits[0]) ? '<span class="numchip"><b>' + p.numerHits[0].num + '</b>' + esc(p.numerHits[0].label) + '</span>' : "");
     var out = '<div class="gen-row row" data-row="' + p.id + '">' +
       '<span class="gen-rank">' + (i + 1) + '</span>' +
-      '<div class="gen-main"><span class="player-name">' + luDot(p.lineup) + (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") + (crossAligned(p) ? '<span class="star-num" title="Also numerology-aligned">\u2605</span>' : "") + esc(p.name) + ownMini(p) + '</span>' +
-      '<span class="player-team">' + esc(p.teamAbbr) + ' \u00b7 #' + p.slot + (p.sp ? ' \u00b7 vs ' + esc(p.sp.name) : "") + '</span></div>' +
+      '<div class="gen-main"><span class="player-name">' + luDot(p.lineup) + (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") + (crossAligned(p) ? '<span class="star-num" title="Also numerology-aligned">\u2605</span>' : "") + esc(p.name) + batTag(p) + ownMini(p) + '</span>' +
+      '<span class="player-team">' + esc(p.teamAbbr) + ' \u00b7 #' + p.slot + (p.sp ? ' \u00b7 vs ' + esc(p.sp.name) + pitParen(p.sp) : "") + '</span></div>' +
       '<span class="gen-hr">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "\u2014") + '</span>' +
       (chips ? '<div class="gen-chips">' + chips + '</div>' : "") +
       '</div>';
@@ -1135,6 +1180,26 @@ function loadRecent(p) {
     .catch(function () { state.recent[p.id] = { error: true }; })
     .finally(function () { state.recentLoading[p.id] = false; render(); });
 }
+function loadSplits(p) {
+  if (state.demo) return;
+  if (p.id != null && !Object.prototype.hasOwnProperty.call(state.bsplits, p.id) && !state.splitsLoading["b" + p.id]) {
+    state.splitsLoading["b" + p.id] = true;
+    fetch(apiBase + "/api/splits/batter/" + p.id)
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (j) { state.bsplits[p.id] = j; })
+      .catch(function () { state.bsplits[p.id] = { error: true }; })
+      .finally(function () { state.splitsLoading["b" + p.id] = false; render(); });
+  }
+  var spId = p.sp && p.sp.id;
+  if (spId && !Object.prototype.hasOwnProperty.call(state.psplits, spId) && !state.splitsLoading["p" + spId]) {
+    state.splitsLoading["p" + spId] = true;
+    fetch(apiBase + "/api/splits/pitcher/" + spId)
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (j) { state.psplits[spId] = j; })
+      .catch(function () { state.psplits[spId] = { error: true }; })
+      .finally(function () { state.splitsLoading["p" + spId] = false; render(); });
+  }
+}
 function loadPen(p) {
   if (p.penMix || state.pen[p.id] || state.penLoading[p.id]) return;
   if (state.demo || !p.oppTeamId) return;
@@ -1181,7 +1246,11 @@ document.addEventListener("click", function (e) {
   if (el.dataset.pitch) { state.pitch = state.pitch === el.dataset.pitch ? null : el.dataset.pitch; render(); return; }
   if (el.dataset.arm) {
     state.arm = el.dataset.arm; state.pitch = null;
-    if (state.arm === "pen" && state.open != null) { var pp = byId(state.open); if (pp) loadPen(pp); }
+    if (state.open != null) {
+      var pp = byId(state.open);
+      if (pp && state.arm === "pen") loadPen(pp);
+      if (pp && (state.arm === "bvl" || state.arm === "bvr" || state.arm === "pvl" || state.arm === "pvr")) loadSplits(pp);
+    }
     render(); return;
   }
   if (el.dataset.row) {
@@ -1190,7 +1259,7 @@ document.addEventListener("click", function (e) {
     if (state.open != null) {
       var p = byId(state.open);
       if (p && !p.detail) loadDetail(p);
-      if (p) { loadArsenal(p); loadRecent(p); }
+      if (p) { loadArsenal(p); loadRecent(p); loadSplits(p); }
     }
     render(); return;
   }
