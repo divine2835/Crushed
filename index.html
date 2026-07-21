@@ -166,8 +166,10 @@ footer p { font-size: 11px; }
 
   <section class="slate" aria-label="Tonight's conditions">
     <div class="slate-scroll" id="slate"></div>
-    <p class="slate-caption"><strong>Park</strong> chip is that stadium's HR factor (1.00× neutral). ★ marks the plays where the most data points align.</p>
+    <p class="slate-caption"><strong>Carry</strong> chip = game-time weather ball-flight factor (temp + wind + altitude, 1.00× neutral); the smaller chip is the park's HR factor. ★ marks the plays where the most data points align.</p>
   </section>
+
+  <div class="filterbar" id="daybar" style="padding-top:14px"></div>
 
   <nav class="tabs" role="tablist">
     <button role="tab" id="tab-hr" class="tab" data-tab="hr">HR Board</button>
@@ -245,19 +247,19 @@ var SANCHEZ = { name:"C. Sánchez", hand:"L", mix:[
 var DEMO = {
   demo: true,
   games: [
-    { gamePk:101, away:"PHI", home:"NYM", park:"Citi Field", parkHR:1.06, lineupsConfirmed:true },
-    { gamePk:102, away:"LAD", home:"COL", park:"Coors Field", parkHR:1.38, lineupsConfirmed:true },
-    { gamePk:103, away:"NYY", home:"BOS", park:"Fenway Park", parkHR:1.03, lineupsConfirmed:true },
-    { gamePk:104, away:"HOU", home:"TEX", park:"Globe Life", parkHR:0.98, lineupsConfirmed:true },
-    { gamePk:105, away:"CIN", home:"ATL", park:"Truist Park", parkHR:1.04, lineupsConfirmed:false },
-    { gamePk:106, away:"KC", home:"SEA", park:"T-Mobile Park", parkHR:0.86, lineupsConfirmed:false }
+    { gamePk:101, away:"PHI", home:"NYM", park:"Citi Field", parkHR:1.06, carry:1.42, weather:{ tempF:88, windMph:12, relDeg:45, label:"12 mph Out to RF" }, lineupsConfirmed:true },
+    { gamePk:102, away:"LAD", home:"COL", park:"Coors Field", parkHR:1.38, carry:1.61, weather:{ tempF:91, windMph:8, relDeg:5, label:"8 mph Out to CF" }, lineupsConfirmed:true },
+    { gamePk:103, away:"NYY", home:"BOS", park:"Fenway Park", parkHR:1.03, carry:1.08, weather:{ tempF:79, windMph:6, relDeg:90, label:"6 mph L to R" }, lineupsConfirmed:true },
+    { gamePk:104, away:"HOU", home:"TEX", park:"Globe Life", parkHR:0.98, carry:1.00, weather:{ tempF:72, windMph:0, relDeg:null, label:"Roof" }, lineupsConfirmed:true },
+    { gamePk:105, away:"CIN", home:"ATL", park:"Truist Park", parkHR:1.04, carry:1.18, weather:{ tempF:84, windMph:5, relDeg:315, label:"5 mph Out to LF" }, lineupsConfirmed:false },
+    { gamePk:106, away:"KC", home:"SEA", park:"T-Mobile Park", parkHR:0.86, carry:0.81, weather:{ tempF:66, windMph:9, relDeg:180, label:"9 mph In from CF" }, lineupsConfirmed:false }
   ],
   players: [
     { id:1, name:"Kyle Schwarber", teamAbbr:"PHI", slot:2, gamePk:101, lineup:"confirmed", bats:"L", detail:true, suggested:true,
       tags:["Crushes top pitch","Ownage","Power form"],
       sp: PETERSON,
       penMix:[{pt:"FF",pct:46,velo:96.4},{pt:"SL",pct:27,velo:86.0},{pt:"SI",pct:15,velo:95.1},{pt:"CH",pct:12,velo:87.3}],
-      hrPct:31.4, xRbi:0.74, rbiPct:46, settersObp:0.344, runnersPA:0.38, parkHR:1.06,
+      hrPct:31.4, xRbi:0.74, rbiPct:46, settersObp:0.344, runnersPA:0.38, parkHR:1.06, carry:1.42,
       season:{hr:32,pa:390,rbi:71,g:96},
       bvp:{ab:27,h:9,hr:4,bb:5,so:8,avg:".333",slg:".815"},
       zones:[0.740,0.812,0.455,0.688,0.702,0.398,0.510,0.442,0.290],
@@ -266,21 +268,21 @@ var DEMO = {
     { id:7, name:"Trea Turner", teamAbbr:"PHI", slot:1, gamePk:101, lineup:"confirmed", bats:"R", detail:false, suggested:false,
       tags:[],
       sp: PETERSON,
-      hrPct:14.8, xRbi:0.53, rbiPct:41, settersObp:null, runnersPA:0.31, parkHR:1.06,
+      hrPct:14.8, xRbi:0.53, rbiPct:41, settersObp:null, runnersPA:0.31, parkHR:1.06, carry:1.42,
       season:{hr:12,pa:398,rbi:49,g:93},
       bvp:{ab:21,h:6,hr:1,bb:2,so:4,avg:".286",slg:".429"},
       zones:null, vsPitch:null, spray:null },
     { id:8, name:"Francisco Lindor", teamAbbr:"NYM", slot:1, gamePk:101, lineup:"confirmed", bats:"S", detail:false, suggested:false,
       tags:[],
       sp: SANCHEZ,
-      hrPct:16.2, xRbi:0.56, rbiPct:43, settersObp:null, runnersPA:0.31, parkHR:1.06,
+      hrPct:16.2, xRbi:0.56, rbiPct:43, settersObp:null, runnersPA:0.31, parkHR:1.06, carry:1.42,
       season:{hr:17,pa:412,rbi:54,g:97},
       bvp:{ab:18,h:5,hr:1,bb:1,so:3,avg:".278",slg:".444"},
       zones:null, vsPitch:null, spray:null },
     { id:9, name:"Pete Alonso", teamAbbr:"NYM", slot:3, gamePk:101, lineup:"confirmed", bats:"R", detail:false, suggested:true,
       tags:["Power form","Traffic ahead"],
       sp: SANCHEZ,
-      hrPct:21.5, xRbi:0.69, rbiPct:50, settersObp:0.352, runnersPA:0.43, parkHR:1.06,
+      hrPct:21.5, xRbi:0.69, rbiPct:50, settersObp:0.352, runnersPA:0.43, parkHR:1.06, carry:1.42,
       season:{hr:24,pa:405,rbi:68,g:96},
       bvp:{ab:13,h:3,hr:1,bb:2,so:4,avg:".231",slg:".538"},
       zones:null, vsPitch:null, spray:null },
@@ -288,7 +290,7 @@ var DEMO = {
       tags:["Crushes top pitch","Ownage","HR park","Power form"],
       sp:{ name:"K. Freeland", hand:"L", mix:[{pt:"FF",pct:29,velo:91.2,zone:1,dist:{1:22,2:20,4:16,5:14,3:12,7:8,6:8}},{pt:"SL",pct:28,velo:83.4,zone:7,dist:{7:28,8:22,4:18,5:12,9:11,6:9}},{pt:"CH",pct:22,velo:84.8,zone:8,dist:{8:30,7:22,9:20,5:14,6:14}},{pt:"CU",pct:13,velo:76.5,zone:8,dist:{8:34,7:24,9:22,5:12}},{pt:"FC",pct:8,velo:87.9,zone:4,dist:{4:26,5:22,1:18,7:16,2:12}}] },
       penMix:[{pt:"FF",pct:41,velo:95.8},{pt:"SI",pct:22,velo:94.6},{pt:"SL",pct:21,velo:85.2},{pt:"ST",pct:16,velo:81.7}],
-      hrPct:29.7, xRbi:0.81, rbiPct:49, settersObp:0.301, runnersPA:0.34, parkHR:1.38,
+      hrPct:29.7, xRbi:0.81, rbiPct:49, settersObp:0.301, runnersPA:0.34, parkHR:1.38, carry:1.61,
       season:{hr:34,pa:410,rbi:78,g:97},
       bvp:{ab:19,h:8,hr:3,bb:3,so:4,avg:".421",slg:".947"},
       zones:[0.690,0.755,0.620,0.802,0.744,0.531,0.577,0.488,0.402],
@@ -298,7 +300,7 @@ var DEMO = {
       tags:["Crushes top pitch","Ownage","Power form"],
       sp:{ name:"B. Bello", hand:"R", mix:[{pt:"SI",pct:36,velo:94.7,zone:6,dist:{6:26,9:20,5:16,3:14,8:12,2:12}},{pt:"CH",pct:26,velo:87.1,zone:9,dist:{9:30,8:24,6:20,5:12,7:14}},{pt:"SL",pct:21,velo:85.9,zone:7,dist:{7:28,8:22,4:18,5:14,9:18}},{pt:"FF",pct:17,velo:95.3,zone:2,dist:{2:24,1:18,3:16,5:16,4:14,6:12}}] },
       penMix:[{pt:"FF",pct:44,velo:96.1},{pt:"ST",pct:24,velo:82.3},{pt:"SI",pct:18,velo:95.0},{pt:"CU",pct:14,velo:79.8}],
-      hrPct:27.9, xRbi:0.72, rbiPct:45, settersObp:0.339, runnersPA:0.41, parkHR:1.03,
+      hrPct:27.9, xRbi:0.72, rbiPct:45, settersObp:0.339, runnersPA:0.41, parkHR:1.03, carry:1.08,
       season:{hr:33,pa:398,rbi:69,g:95},
       bvp:{ab:22,h:7,hr:3,bb:6,so:7,avg:".318",slg:".773"},
       zones:[0.512,0.798,0.845,0.560,0.812,0.744,0.402,0.598,0.505],
@@ -308,7 +310,7 @@ var DEMO = {
       tags:["Ownage","Traffic ahead","Power form"],
       sp:{ name:"N. Eovaldi", hand:"R", mix:[{pt:"FF",pct:31,velo:95.6,zone:2,dist:{2:24,1:20,3:16,5:14,4:14,6:12}},{pt:"ST",pct:22,velo:81.9,zone:7,dist:{7:30,8:24,4:18,5:14,9:14}},{pt:"FC",pct:20,velo:89.4,zone:4,dist:{4:26,5:20,1:18,7:18,2:10,8:8}},{pt:"CU",pct:16,velo:78.8,zone:8,dist:{8:34,7:24,9:20,5:12}},{pt:"CH",pct:11,velo:88.2,zone:9,dist:{9:30,8:26,6:22,5:12}}] },
       penMix:[{pt:"FF",pct:39,velo:96.8},{pt:"SL",pct:30,velo:86.7},{pt:"SI",pct:19,velo:95.9},{pt:"CH",pct:12,velo:88.0}],
-      hrPct:22.1, xRbi:0.78, rbiPct:47, settersObp:0.355, runnersPA:0.47, parkHR:0.98,
+      hrPct:22.1, xRbi:0.78, rbiPct:47, settersObp:0.355, runnersPA:0.47, parkHR:0.98, carry:1.00,
       season:{hr:24,pa:360,rbi:74,g:88},
       bvp:{ab:14,h:6,hr:2,bb:2,so:3,avg:".429",slg:".929"},
       zones:[0.655,0.720,0.588,0.744,0.690,0.512,0.598,0.455,0.377],
@@ -318,7 +320,7 @@ var DEMO = {
       tags:[],
       sp:{ name:"S. Strider", hand:"R", mix:[{pt:"FF",pct:58,velo:97.4,zone:2,dist:{2:26,1:20,3:18,5:14,4:12,6:10}},{pt:"SL",pct:33,velo:86.8,zone:9,dist:{9:34,8:24,6:18,5:12,3:12}},{pt:"CH",pct:9,velo:88.9,zone:8,dist:{8:32,7:26,9:22,5:12}}] },
       penMix:[{pt:"FF",pct:43,velo:96.6},{pt:"SI",pct:23,velo:95.4},{pt:"SL",pct:22,velo:85.5},{pt:"CU",pct:12,velo:80.1}],
-      hrPct:17.4, xRbi:0.55, rbiPct:37, settersObp:0.298, runnersPA:0.31, parkHR:1.04,
+      hrPct:17.4, xRbi:0.55, rbiPct:37, settersObp:0.298, runnersPA:0.31, parkHR:1.04, carry:1.18,
       season:{hr:18,pa:405,rbi:52,g:96},
       bvp:{ab:11,h:2,hr:1,bb:1,so:6,avg:".182",slg:".455"},
       zones:[0.480,0.610,0.520,0.555,0.588,0.470,0.360,0.310,0.250],
@@ -328,7 +330,7 @@ var DEMO = {
       tags:[],
       sp:{ name:"S. Lugo", hand:"R", mix:[{pt:"SI",pct:24,velo:93.1,zone:4,dist:{4:24,5:18,1:16,7:16,6:14,2:12}},{pt:"CU",pct:21,velo:79.6,zone:8,dist:{8:32,7:24,9:22,5:12}},{pt:"FC",pct:18,velo:88.7,zone:6,dist:{6:26,9:20,3:18,5:14,2:12}},{pt:"SL",pct:15,velo:84.9,zone:9,dist:{9:30,8:24,6:18,5:14}},{pt:"FF",pct:12,velo:93.8,zone:2,dist:{2:24,1:20,3:16,5:16,4:12}},{pt:"CH",pct:10,velo:86.4,zone:7,dist:{7:28,8:24,4:18,5:14,9:16}}] },
       penMix:[{pt:"FF",pct:47,velo:96.2},{pt:"SL",pct:26,velo:86.1},{pt:"CH",pct:15,velo:87.5},{pt:"SI",pct:12,velo:94.8}],
-      hrPct:12.2, xRbi:0.52, rbiPct:35, settersObp:0.315, runnersPA:0.40, parkHR:0.86,
+      hrPct:12.2, xRbi:0.52, rbiPct:35, settersObp:0.315, runnersPA:0.40, parkHR:0.86, carry:0.81,
       season:{hr:15,pa:400,rbi:48,g:94},
       bvp:{ab:16,h:4,hr:0,bb:1,so:5,avg:".250",slg:".375"},
       zones:[0.420,0.640,0.702,0.510,0.655,0.588,0.330,0.470,0.410],
@@ -338,7 +340,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -389,6 +391,11 @@ function visiblePlayers() {
   return ps.filter(function (p) { return String(p.gamePk) === String(state.game); });
 }
 
+function gameFor(p) {
+  var gs = (state.data && state.data.games) || [];
+  for (var i = 0; i < gs.length; i++) if (String(gs[i].gamePk) === String(p.gamePk)) return gs[i];
+  return null;
+}
 function noteFor(p) {
   var parts = [];
   var top = p.sp && p.sp.mix && p.sp.mix[0];
@@ -426,10 +433,34 @@ function diamondSvg(bases) {
 
 /* ---------- spray chart with distance arcs + sectors ----------
    Savant hc units → feet ≈ ×2.31; px = ft × 0.52 at this scale */
+/* wind compass drawn in field coordinates: arrow points the way
+   the ball gets pushed (0° = out to CF = straight up on the chart) */
+function windCompass(g) {
+  if (!g || !g.weather) return "";
+  var w = g.weather;
+  var cx = 36, cy = 38;
+  if (w.relDeg == null) {
+    return '<circle cx="' + cx + '" cy="' + cy + '" r="17" fill="rgba(20,26,36,0.85)" stroke="var(--line)" stroke-width="1"/>' +
+      '<text x="' + cx + '" y="' + (cy + 3) + '" class="svg-cap" text-anchor="middle">ROOF</text>' +
+      '<text x="' + cx + '" y="' + (cy + 30) + '" class="svg-cap" text-anchor="middle">' + w.tempF + '\u00b0</text>';
+  }
+  var rad = w.relDeg * Math.PI / 180;
+  var r = 13;
+  var tx = cx + Math.sin(rad) * r, ty = cy - Math.cos(rad) * r;
+  var bx = cx - Math.sin(rad) * r * 0.75, by = cy + Math.cos(rad) * r * 0.75;
+  var col = (w.relDeg < 67.5 || w.relDeg > 292.5) ? "var(--hr)"
+    : (w.relDeg > 112.5 && w.relDeg < 247.5) ? "#7f95c2" : "var(--chalk)";
+  var ah = 5.5, la = rad + 2.6, ra = rad - 2.6;
+  return '<circle cx="' + cx + '" cy="' + cy + '" r="17" fill="rgba(20,26,36,0.85)" stroke="var(--line)" stroke-width="1"/>' +
+    '<line x1="' + bx + '" y1="' + by + '" x2="' + tx + '" y2="' + ty + '" stroke="' + col + '" stroke-width="2"/>' +
+    '<path d="M ' + tx + ' ' + ty + ' L ' + (tx + Math.sin(la) * ah) + ' ' + (ty - Math.cos(la) * ah) + ' L ' + (tx + Math.sin(ra) * ah) + ' ' + (ty - Math.cos(ra) * ah) + ' Z" fill="' + col + '"/>' +
+    '<text x="' + cx + '" y="' + (cy + 30) + '" class="svg-cap" text-anchor="middle">' + esc(w.label) + '</text>' +
+    '<text x="' + cx + '" y="' + (cy + 41) + '" class="svg-cap" text-anchor="middle">' + w.tempF + '\u00b0 \u00b7 game time</text>';
+}
 var HC_HOME = { x: 125.42, y: 198.27 };
 var F = { hx: 160, hy: 282, k: 1.2 };
 var FT = 0.52;
-function sprayChart(p, activePitch) {
+function sprayChart(p, activePitch, g) {
   if (!p.spray || !p.spray.length) {
     var msg = p.detail === false
       ? (state.demo ? "Full Statcast spray loads on the live server."
@@ -471,6 +502,7 @@ function sprayChart(p, activePitch) {
     '<text x="' + (F.hx - 131) + '" y="' + (F.hy - 131) + '" class="svg-sector" text-anchor="middle">LF</text>' +
     '<text x="' + F.hx + '" y="' + (F.hy - 192) + '" class="svg-sector" text-anchor="middle">CF</text>' +
     '<text x="' + (F.hx + 131) + '" y="' + (F.hy - 131) + '" class="svg-sector" text-anchor="middle">RF</text>' +
+    windCompass(g) +
     dots + '</svg>' +
     '<div class="spray-legend"><span><i class="lg lg-hr"></i> HR</span><span><i class="lg lg-xbh"></i> XBH</span><span><i class="lg lg-1b"></i> 1B</span><span><i class="lg lg-out"></i> Out</span><span class="dim">' + count + '</span></div>' +
     '</div>';
@@ -580,7 +612,7 @@ function scoutCard(p) {
     ownageStrip(p) +
     '<div class="scout-grid">' +
     '<div class="scout-col">' + mixPanel(p, state.arm, state.pitch) + zoneMap(p, state.arm, state.pitch) + '</div>' +
-    sprayChart(p, state.pitch) +
+    sprayChart(p, state.pitch, gameFor(p)) +
     '</div>' +
     '<p class="scout-src mono dim">Arsenal, velo, locations, SLG splits &amp; hit coordinates: Statcast via Baseball Savant · lineups &amp; BvP: MLB Stats API · batter side: ' + esc(p.bats) + 'HB</p>' +
     '</div>';
@@ -591,7 +623,7 @@ var HR_COLS = [
   { key:"hrPct", label:"HR%", render:function (p) { return '<div class="stat-cell"><span class="mono strong hr-num">' + p.hrPct.toFixed(1) + '</span>' + meter(p.hrPct, 35, "var(--hr)") + '</div>'; } },
   { key:"seasonHr", label:"HR (szn)", render:function (p) { return '<span class="mono">' + (p.season ? p.season.hr : "—") + '</span>'; } },
   { key:"parkHR", label:"Park", render:function (p) { return factorChip(p.parkHR); } },
-  { label:"Carry", render:function () { return factorChip(null); } }
+  { key:"carry", label:"Carry", render:function (p) { return factorChip(p.carry); } }
 ];
 var RBI_COLS = [
   { label:"Traffic", render:function (p) { return diamondSvg(trafficBases(p)); } },
@@ -648,7 +680,13 @@ function renderFilter() {
   }).join("");
   document.getElementById("gamefilter").innerHTML = chips;
 }
+function renderDaybar() {
+  document.getElementById("daybar").innerHTML =
+    '<button class="fchip' + (state.day === "today" ? " fchip-on" : "") + '" data-day="today">Today</button>' +
+    '<button class="fchip' + (state.day === "tomorrow" ? " fchip-on" : "") + '" data-day="tomorrow">Tomorrow</button>';
+}
 function render() {
+  renderDaybar();
   document.getElementById("tab-hr").className = "tab" + (state.tab === "hr" ? " tab-on tab-hr" : "");
   document.getElementById("tab-rbi").className = "tab" + (state.tab === "rbi" ? " tab-on tab-rbi" : "");
   var intro = document.getElementById("intro");
@@ -676,12 +714,13 @@ function render() {
 function renderSlate() {
   var games = (state.data && state.data.games) || [];
   document.getElementById("slate").innerHTML = games.map(function (g) {
+    var wxLabel = g.weather ? (g.weather.relDeg == null ? "Roof \u00b7 " + g.weather.tempF + "\u00b0" : g.weather.tempF + "\u00b0 \u00b7 " + g.weather.label) : "wx \u2014";
     return '<div class="game-card"><div class="game-id mono">' + esc(g.away) + ' @ ' + esc(g.home) + '</div>' +
       '<div class="game-park">' + esc(g.park || "") + '</div>' +
-      '<div class="game-line">' + factorChip(g.parkHR) +
-      '<span class="mono dim game-wx">' + (g.lineupsConfirmed ? "lineups ✓" : "lineups TBD") + '</span></div></div>';
+      '<div class="game-line">' + factorChip(g.carry) + '<span class="mono dim game-wx">' + esc(wxLabel) + '</span></div>' +
+      '<div class="game-line" style="margin-top:6px"><span class="chip">' + (g.parkHR != null ? Number(g.parkHR).toFixed(2) + '\u00d7' : '\u2014') + '</span><span class="mono dim game-wx">' + (g.lineupsConfirmed ? "lineups \u2713" : "lineups TBD") + '</span></div></div>';
   }).join("");
-  document.getElementById("slate-meta").textContent = games.length ? games.length + " games" : "no games";
+  document.getElementById("slate-meta").textContent = (games.length ? games.length + " games" : "no games") + " \u00b7 " + state.day;
 }
 function setBanner(kind, msg) {
   var b = document.getElementById("banner");
@@ -692,29 +731,44 @@ function setBanner(kind, msg) {
 
 /* ---------- data loading ---------- */
 function loadBoard() {
+  var day = state.day;
   function attempt(i) {
     if (i >= API_BASES.length) {
-      state.data = DEMO; state.demo = true;
+      state.demo = true;
+      state.boards.today = DEMO;
+      if (state.day === "today") { state.data = DEMO; }
       setBanner("demo", "Showing built-in demo data. Deploy with <span class=\"mono\">server-live.js</span> (or run <span class=\"mono\">node server-live.js</span> locally) and open the served page for live Statcast feeds.");
+      if (state.day === "tomorrow") {
+        renderDaybar();
+        document.getElementById("intro").innerHTML = "";
+        document.getElementById("board").innerHTML = '<div class="loading">Tomorrow\u2019s slate loads on the live server.</div>';
+        return;
+      }
       renderSlate(); render();
       return;
     }
-    fetch(API_BASES[i] + "/api/board")
+    fetch(API_BASES[i] + "/api/board?day=" + day)
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (j) {
         if (!j || !j.players) throw new Error("bad payload");
         if (j.warming) {
           apiBase = API_BASES[i];
-          setBanner("live", "Live · server is assembling tonight’s board from MLB lineups — usually 1–3 minutes. This page refreshes itself.");
-          document.getElementById("board").innerHTML = '<div class="loading">Assembling tonight’s slate… hang tight, this refreshes automatically.</div>';
-          setTimeout(loadBoard, 20000);
+          if (state.day === day) {
+            setBanner("live", "Live \u00b7 assembling the " + day + " board from MLB lineups \u2014 usually 1\u20133 minutes. This page refreshes itself.");
+            document.getElementById("board").innerHTML = '<div class="loading">Assembling the ' + day + ' slate\u2026 hang tight, this refreshes automatically.</div>';
+          }
+          setTimeout(function () { if (state.day === day) loadBoard(); }, 20000);
           return;
         }
         apiBase = API_BASES[i];
-        state.data = j; state.demo = false;
-        var t = j.generatedAt ? new Date(j.generatedAt) : new Date();
-        setBanner("live", "Live · slate assembled " + t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + " · lineups re-check every 30 min · baseline model scores");
-        renderSlate(); render();
+        state.demo = false;
+        state.boards[day] = j;
+        if (state.day === day) {
+          state.data = j;
+          var t = j.generatedAt ? new Date(j.generatedAt) : new Date();
+          setBanner("live", "Live \u00b7 " + day + " slate assembled " + t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + " \u00b7 lineups re-check every 30 min \u00b7 weather-adjusted scores");
+          renderSlate(); render();
+        }
       })
       .catch(function () { attempt(i + 1); });
   }
@@ -760,8 +814,22 @@ function loadPen(p) {
 
 /* ---------- events ---------- */
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-tab],[data-game],[data-sort],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-sort],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
+  if (el.dataset.day) {
+    if (state.day === el.dataset.day) return;
+    state.day = el.dataset.day; state.open = null; state.pitch = null; state.arm = "sp"; state.game = "all";
+    if (state.demo && state.day === "tomorrow") {
+      renderDaybar();
+      document.getElementById("intro").innerHTML = "";
+      document.getElementById("board").innerHTML = '<div class="loading">Tomorrow\u2019s slate loads on the live server.</div>';
+      return;
+    }
+    var cachedB = state.boards[state.day];
+    if (cachedB) { state.data = cachedB; renderSlate(); render(); }
+    else { state.data = null; renderDaybar(); document.getElementById("board").innerHTML = '<div class="loading">Loading the ' + state.day + ' slate\u2026</div>'; loadBoard(); }
+    return;
+  }
   if (el.dataset.tab) { state.tab = el.dataset.tab; state.open = null; state.pitch = null; state.arm = "sp"; render(); return; }
   if (el.dataset.game) { state.game = el.dataset.game; state.open = null; state.pitch = null; state.arm = "sp"; render(); return; }
   if (el.dataset.sort) {

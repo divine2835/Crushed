@@ -199,13 +199,97 @@ const PARK_HR = {
 };
 const RUNNERS_PA = { 1: 0.31, 2: 0.36, 3: 0.43, 4: 0.47, 5: 0.45, 6: 0.42, 7: 0.40, 8: 0.38, 9: 0.36 };
 
+/* ---------------- ballpark geography (approx) --------------
+   lat/lon for the weather forecast; cf = compass bearing from
+   home plate to center field so wind can be expressed relative
+   to the field ("out to CF" etc). Bearings are approximations. */
+const STADIA = {
+  "Coors Field": { lat: 39.756, lon: -104.994, cf: 25 },
+  "Great American Ball Park": { lat: 39.097, lon: -84.507, cf: 118 },
+  "Yankee Stadium": { lat: 40.829, lon: -73.926, cf: 75 },
+  "Citizens Bank Park": { lat: 39.906, lon: -75.166, cf: 20 },
+  "Globe Life Field": { lat: 32.747, lon: -97.084, cf: 65 },
+  "Dodger Stadium": { lat: 34.074, lon: -118.240, cf: 25 },
+  "Truist Park": { lat: 33.891, lon: -84.468, cf: 145 },
+  "Fenway Park": { lat: 42.346, lon: -71.097, cf: 52 },
+  "Citi Field": { lat: 40.757, lon: -73.846, cf: 15 },
+  "Wrigley Field": { lat: 41.948, lon: -87.655, cf: 40 },
+  "Angel Stadium": { lat: 33.800, lon: -117.883, cf: 65 },
+  "American Family Field": { lat: 43.028, lon: -87.971, cf: 130 },
+  "Rogers Centre": { lat: 43.641, lon: -79.389, cf: 15 },
+  "Daikin Park": { lat: 29.757, lon: -95.355, cf: 340 },
+  "Minute Maid Park": { lat: 29.757, lon: -95.355, cf: 340 },
+  "Camden Yards": { lat: 39.284, lon: -76.622, cf: 30 },
+  "Oriole Park at Camden Yards": { lat: 39.284, lon: -76.622, cf: 30 },
+  "Rate Field": { lat: 41.830, lon: -87.634, cf: 135 },
+  "Guaranteed Rate Field": { lat: 41.830, lon: -87.634, cf: 135 },
+  "Chase Field": { lat: 33.445, lon: -112.067, cf: 25 },
+  "Nationals Park": { lat: 38.873, lon: -77.007, cf: 87 },
+  "Target Field": { lat: 44.982, lon: -93.278, cf: 90 },
+  "PNC Park": { lat: 40.447, lon: -80.006, cf: 115 },
+  "Busch Stadium": { lat: 38.623, lon: -90.193, cf: 62 },
+  "Kauffman Stadium": { lat: 39.051, lon: -94.480, cf: 45 },
+  "Petco Park": { lat: 32.707, lon: -117.157, cf: 355 },
+  "loanDepot park": { lat: 25.778, lon: -80.220, cf: 75 },
+  "Comerica Park": { lat: 42.339, lon: -83.049, cf: 145 },
+  "Progressive Field": { lat: 41.496, lon: -81.685, cf: 355 },
+  "T-Mobile Park": { lat: 47.591, lon: -122.332, cf: 45 },
+  "Oracle Park": { lat: 37.778, lon: -122.389, cf: 85 },
+  "George M. Steinbrenner Field": { lat: 27.980, lon: -82.507, cf: 45 },
+  "Sutter Health Park": { lat: 38.580, lon: -121.513, cf: 60 },
+};
+const ROOFED = new Set(["Globe Life Field", "Chase Field", "Rogers Centre", "American Family Field", "Daikin Park", "Minute Maid Park", "loanDepot park"]);
+
+/* game-time forecast from Open-Meteo (free, no API key).
+   relDeg: wind direction relative to the field — 0 = blowing
+   straight out to CF, 90 = L-to-R, 180 = blowing in, 270 = R-to-L */
+async function gameWeather(park, isoStart) {
+  const st = STADIA[park];
+  if (!st) return null;
+  if (ROOFED.has(park)) return { roof: true, tempF: 72, windMph: 0, relDeg: null, label: "Roof", carryWind: 0 };
+  const key = `wx:${park}:${String(isoStart).slice(0, 13)}`;
+  return cached(key, 1 * H, async () => {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${st.lat}&longitude=${st.lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&forecast_days=3&timezone=UTC`;
+    const j = await getJson(url);
+    const times = j.hourly?.time || [];
+    if (!times.length) return null;
+    const target = Date.parse(isoStart);
+    let bi = 0, bd = Infinity;
+    times.forEach((t, i) => {
+      const d = Math.abs(Date.parse(t + ":00Z") - target);
+      if (d < bd) { bd = d; bi = i; }
+    });
+    const tempF = Math.round(j.hourly.temperature_2m[bi]);
+    const windMph = Math.round(j.hourly.wind_speed_10m[bi]);
+    const fromDeg = j.hourly.wind_direction_10m[bi];
+    const toDeg = (fromDeg + 180) % 360;
+    const relDeg = Math.round(((toDeg - st.cf) % 360 + 360) % 360);
+    const carryWind = Math.cos(relDeg * Math.PI / 180) * windMph; // + = out, - = in
+    const dirWord = relDeg < 22.5 || relDeg >= 337.5 ? "Out to CF"
+      : relDeg < 67.5 ? "Out to RF" : relDeg < 112.5 ? "L to R"
+      : relDeg < 157.5 ? "In from RF" : relDeg < 202.5 ? "In from CF"
+      : relDeg < 247.5 ? "In from LF" : relDeg < 292.5 ? "R to L" : "Out to LF";
+    return { roof: false, tempF, windMph, relDeg, label: windMph + " mph " + dirWord, carryWind };
+  });
+}
+
+/* Carry = weather ball-flight factor: temp + wind out-component
+   + altitude. Transparent and clamped; tune freely. */
+function carryFactor(park, wx) {
+  if (!wx) return null;
+  let c = 1 + Math.max(-0.15, Math.min(0.15, ((wx.tempF ?? 72) - 72) * 0.005));
+  c += Math.max(-0.2, Math.min(0.2, (wx.carryWind || 0) * 0.013));
+  if (park === "Coors Field") c += 0.18;
+  return +Math.max(0.6, Math.min(1.7, c)).toFixed(2);
+}
+
 /* ---------------- scoring (swap in your real model) -------- */
-function score(season, slot, parkHR, settersObp) {
+function score(season, slot, parkHR, settersObp, carry) {
   const pa = +season.plateAppearances || 0;
   const hr = +season.homeRuns || 0;
   const g = +season.gamesPlayed || 0;
   const hrRate = pa > 50 ? hr / pa : 0.02;
-  const hrPct = +( (1 - Math.pow(1 - hrRate * (parkHR || 1), 4.3)) * 100 ).toFixed(1);
+  const hrPct = +( (1 - Math.pow(1 - hrRate * (parkHR || 1) * (carry || 1), 4.3)) * 100 ).toFixed(1);
   const xRbi = g > 10 ? +((+season.rbi || 0) / g).toFixed(2) : 0.3;
   const rbiPct = Math.round((1 - Math.exp(-xRbi)) * 100);
   return { hrPct, xRbi, rbiPct, runnersPA: RUNNERS_PA[slot] || 0.4, settersObp };
@@ -234,8 +318,14 @@ async function recentLineup(teamId) {
 }
 
 /* ---------------- board assembly ---------------- */
-let BOARD = null;          // last assembled payload
-let assembling = null;     // in-flight promise
+let BOARDS = { today: null, tomorrow: null };
+let assembling = { today: null, tomorrow: null };
+function dayDate(day) {
+  // approximate US/Eastern so a late-night UTC clock doesn't skip ahead a slate
+  const d = new Date(Date.now() - 5 * 3600_000);
+  if (day === "tomorrow") d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
 
 /* signal tags = the aligned data points the terminal hunts for */
 function tagsFor(p) {
@@ -249,7 +339,7 @@ function tagsFor(p) {
   return t;
 }
 
-async function buildTeamSide(game, sideKey, box) {
+async function buildTeamSide(game, sideKey, box, carry) {
   const team = game.teams[sideKey].team;
   const oppKey = sideKey === "away" ? "home" : "away";
   const oppSP = game.teams[oppKey].probablePitcher;
@@ -294,14 +384,14 @@ async function buildTeamSide(game, sideKey, box) {
         }
         if (obps.length) settersObp = +(obps.reduce((x, y) => x + y, 0) / obps.length).toFixed(3);
       }
-      const sc = score(f.season, f.slot, parkHR, settersObp);
+      const sc = score(f.season, f.slot, parkHR, settersObp, carry);
       const player = {
         id: f.id, name: f.name, slot: f.slot, lineup,
         teamId: team.id, teamAbbr: tInfo.abbreviation || team.name,
         gamePk: game.gamePk, oppTeamId: game.teams[oppKey].team.id,
         bats: p.batSide?.code || "?", sp,
         season: { hr: +f.season.homeRuns, pa: +f.season.plateAppearances, rbi: +f.season.rbi, g: +f.season.gamesPlayed, obp: f.season.obp, slg: f.season.slg },
-        ...sc, parkHR,
+        ...sc, parkHR, carry: carry != null ? carry : null,
         bvp: await bvp(f.id, oppSP.id).catch(() => null),
         vsPitch: agg.vsPitch, zones: agg.zones, spray: agg.spray,
         detail: false,
@@ -327,41 +417,47 @@ async function assembleBoard(date) {
     const box = await boxscore(g.gamePk).catch(() => ({ teams: { away: { players: {} }, home: { players: {} } } }));
     const awayInfo = await teamInfo(g.teams.away.team.id);
     const homeInfo = await teamInfo(g.teams.home.team.id);
+    const wx = await gameWeather(g.venue?.name, g.gameDate).catch(() => null);
+    const carry = carryFactor(g.venue?.name, wx);
     outGames.push({
       gamePk: g.gamePk,
       away: awayInfo.abbreviation || g.teams.away.team.name,
       home: homeInfo.abbreviation || g.teams.home.team.name,
       park: g.venue?.name, parkHR: PARK_HR[g.venue?.name] || 1.0,
-      start: g.gameDate, carry: null, // wire a weather API here
+      start: g.gameDate,
+      carry,
+      weather: wx ? { tempF: wx.tempF, windMph: wx.windMph, relDeg: wx.relDeg, label: wx.roof ? "Roof" : wx.label } : null,
       lineupsConfirmed: !!(box.teams?.away?.battingOrder?.length),
     });
-    players.push(...(await buildTeamSide(g, "away", box)));
-    players.push(...(await buildTeamSide(g, "home", box)));
+    players.push(...(await buildTeamSide(g, "away", box, carry)));
+    players.push(...(await buildTeamSide(g, "home", box, carry)));
   }
   return { date, generatedAt: new Date().toISOString(),
-    modelNote: "hrPct/xRbi are transparent baseline formulas (see server comments) — replace score() with your model.",
+    modelNote: "hrPct is park- and weather-adjusted (Carry); xRbi from lineup context — transparent baseline formulas, replace score() with your model.",
     games: outGames, players };
 }
 
-async function warm() {
-  const date = new Date().toISOString().slice(0, 10);
-  if (assembling) return assembling;
-  assembling = assembleBoard(date)
-    .then((b) => { BOARD = b; console.log(`[warm] board ready: ${b.players.length} players, ${b.games.length} games`); })
-    .catch((e) => console.error("[warm] failed:", e.message))
-    .finally(() => { assembling = null; });
-  return assembling;
+function warmDay(day) {
+  if (assembling[day]) return assembling[day];
+  assembling[day] = assembleBoard(dayDate(day))
+    .then((b) => { BOARDS[day] = b; console.log(`[warm:${day}] board ready: ${b.players.length} players, ${b.games.length} games`); })
+    .catch((e) => console.error(`[warm:${day}] failed:`, e.message))
+    .finally(() => { assembling[day] = null; });
+  return assembling[day];
 }
+async function warm() { await warmDay("today"); warmDay("tomorrow"); }
 
 /* ---------------- routes ---------------- */
 app.get("/api/board", (req, res) => {
-  if (BOARD && BOARD.date === new Date().toISOString().slice(0, 10)) {
-    res.json(BOARD);
-    if (Date.now() - Date.parse(BOARD.generatedAt) > 0.5 * H) warm(); // refresh in background
+  const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
+  const b = BOARDS[day];
+  if (b && b.date === dayDate(day)) {
+    res.json(b);
+    if (Date.now() - Date.parse(b.generatedAt) > 0.5 * H) warmDay(day); // refresh in background
     return;
   }
-  warm(); // kick off in the background — never block the request
-  res.json({ warming: true, games: [], players: [] });
+  warmDay(day); // kick off in the background — never block the request
+  res.json({ warming: true, day, games: [], players: [] });
 });
 
 /* lazy starting-pitcher / any-pitcher arsenal from Statcast */
@@ -398,7 +494,7 @@ app.get("/api/pen/:teamId", async (req, res) => {
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
-app.get("/api/health", (_, res) => res.json({ ok: true, boardReady: !!BOARD, generatedAt: BOARD?.generatedAt || null }));
+app.get("/api/health", (_, res) => res.json({ ok: true, today: !!BOARDS.today, tomorrow: !!BOARDS.tomorrow, generatedAt: BOARDS.today?.generatedAt || null }));
 
 /* ---------------- warm loop (replaces cron) ---------------- */
 app.listen(PORT, () => {
