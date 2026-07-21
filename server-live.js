@@ -456,11 +456,42 @@ const handSplits = (id) => cached(`hs:${id}`, 6 * H, async () => {
   return out;
 });
 
-function numerologyHits(player, personInfo, splits, dayNums) {
+/* career totals + career home/away splits for numerology counters */
+const careerNums = (id) => cached(`car:${id}`, 24 * H, async () => {
+  const out = { hr: null, rbi: null, home: null, away: null };
+  try {
+    const j = await getJson(`${STATS}/people/${id}/stats?stats=career&group=hitting`);
+    const s = j.stats?.[0]?.splits?.[0]?.stat;
+    if (s) { out.hr = +(s.homeRuns || 0); out.rbi = +(s.rbi || 0); }
+  } catch { /* leave nulls */ }
+  try {
+    const j2 = await getJson(`${STATS}/people/${id}/stats?stats=careerStatSplits&group=hitting&sitCodes=h,a`);
+    (j2.stats?.[0]?.splits || []).forEach((s) => {
+      const code = s.split?.code;
+      if (code === "h") out.home = { hr: +(s.stat?.homeRuns || 0), rbi: +(s.stat?.rbi || 0) };
+      if (code === "a") out.away = { hr: +(s.stat?.homeRuns || 0), rbi: +(s.stat?.rbi || 0) };
+    });
+  } catch { /* leave nulls */ }
+  return out;
+});
+
+function numerologyHits(player, personInfo, splits, career, dayNums) {
   const facts = [];
   const push = (label, value) => { if (value != null && !isNaN(value) && value > 0) facts.push({ label, value }); };
   push(`Next HR of the season would be #${player.season.hr + 1}`, player.season.hr + 1);
   push(`Next RBI would be #${player.season.rbi + 1}`, player.season.rbi + 1);
+  if (career) {
+    if (career.hr != null) push(`Next career HR would be #${career.hr + 1}`, career.hr + 1);
+    if (career.rbi != null) push(`Next career RBI would be #${career.rbi + 1}`, career.rbi + 1);
+    // only the venue split that matters TONIGHT: home counters at home, road counters on the road
+    const side = player.homeGame ? "home" : "away";
+    const word = player.homeGame ? "home" : "road";
+    const cv = career[side];
+    if (cv) {
+      push(`Next career ${word} HR would be #${cv.hr + 1}`, cv.hr + 1);
+      push(`Next career ${word} RBI would be #${cv.rbi + 1}`, cv.rbi + 1);
+    }
+  }
   push(`Bats ${ORD(player.slot)}`, player.slot);
   const hand = player.sp && player.sp.hand;
   const code = hand === "L" ? "vl" : hand === "R" ? "vr" : null;
@@ -628,6 +659,7 @@ async function buildTeamSide(game, sideKey, box, carry, dayNums) {
         teamId: team.id, teamAbbr: tInfo.abbreviation || team.name,
         gamePk: game.gamePk, oppTeamId: game.teams[oppKey].team.id,
         bats: p.batSide?.code || "?", sp,
+        homeGame: sideKey === "home",
         hot: rh && rh.pa >= THRESH.hotPa ? rh.slg : null,
         hardHitPct: null, pullPct: null, barrelsByPt: null, vsHand: null,
         season: { hr: +f.season.homeRuns, pa: +f.season.plateAppearances, rbi: +f.season.rbi, g: +f.season.gamesPlayed, obp: f.season.obp, slg: f.season.slg },
@@ -639,7 +671,8 @@ async function buildTeamSide(game, sideKey, box, carry, dayNums) {
       player.tags = tagsFor(player);
       try {
         const splits = await handSplits(f.id).catch(() => ({}));
-        player.numerHits = dayNums ? numerologyHits(player, p, splits, dayNums) : [];
+        const career = await careerNums(f.id).catch(() => null);
+        player.numerHits = dayNums ? numerologyHits(player, p, splits, career, dayNums) : [];
       } catch { player.numerHits = []; }
       out.push(player);
     } catch (e) { console.error(`skip ${f.name}: ${e.message}`); }

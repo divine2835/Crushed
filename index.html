@@ -293,7 +293,7 @@ var DEMO = {
   ],
   players: [
     { id:1, name:"Kyle Schwarber", teamAbbr:"PHI", slot:2, gamePk:101, lineup:"confirmed", bats:"L", detail:true, suggested:true,
-      tags:["Crushes top pitch","Barrels the mix","Zone overlap","Pull-heavy","Ownage","Carry night"], numerHits:[{label:"Bats 2nd",num:2},{label:"Wears #12 \u2192 3",num:3}],
+      tags:["Crushes top pitch","Barrels the mix","Zone overlap","Pull-heavy","Ownage","Carry night"], numerHits:[{label:"Bats 2nd",num:2},{label:"Next career HR would be #326 \u2192 11 (Master) \u2192 2",num:2},{label:"Wears #12 \u2192 3",num:3}],
       sp: PETERSON,
       penMix:[{pt:"FF",pct:46,velo:96.4},{pt:"SL",pct:27,velo:86.0},{pt:"SI",pct:15,velo:95.1},{pt:"CH",pct:12,velo:87.3}],
       hrPct:31.4, xRbi:0.74, rbiPct:46, settersObp:0.344, runnersPA:0.38, parkHR:1.06, carry:1.42,
@@ -334,7 +334,7 @@ var DEMO = {
       vsPitch:{FF:0.702,SL:0.531,CH:0.489,CU:0.458,FC:0.560},
       spray: makeSpray(22,[{x:162,y:46,n:5,sx:26,sy:24,pitch:"FF",results:["home_run","home_run","home_run","double","home_run"]},{x:128,y:42,n:4,sx:30,sy:22,pitch:"SL",results:["home_run","double","home_run","field_out"]},{x:100,y:88,n:4,sx:36,sy:34,pitch:"CH",results:["single","double","field_out","single"]},{x:140,y:74,n:3,sx:30,sy:28,pitch:"CU",results:["double","field_out","home_run"]}]) },
     { id:3, name:"Aaron Judge", teamAbbr:"NYY", slot:2, gamePk:103, lineup:"confirmed", bats:"R", detail:true, suggested:true,
-      tags:["Crushes top pitch","Barrels the mix","Zone overlap","Pull-heavy","Ownage","Carry night"], numerHits:[{label:"Bats 2nd",num:2},{label:"Wears #12 \u2192 3",num:3}],
+      tags:["Crushes top pitch","Barrels the mix","Zone overlap","Pull-heavy","Ownage","Carry night"], numerHits:[{label:"Bats 2nd",num:2},{label:"Next career HR would be #326 \u2192 11 (Master) \u2192 2",num:2},{label:"Wears #12 \u2192 3",num:3}],
       sp:{ name:"B. Bello", hand:"R", mix:[{pt:"SI",pct:36,velo:94.7,zone:6,dist:{6:26,9:20,5:16,3:14,8:12,2:12}},{pt:"CH",pct:26,velo:87.1,zone:9,dist:{9:30,8:24,6:20,5:12,7:14}},{pt:"SL",pct:21,velo:85.9,zone:7,dist:{7:28,8:22,4:18,5:14,9:18}},{pt:"FF",pct:17,velo:95.3,zone:2,dist:{2:24,1:18,3:16,5:16,4:14,6:12}}] },
       penMix:[{pt:"FF",pct:44,velo:96.1},{pt:"ST",pct:24,velo:82.3},{pt:"SI",pct:18,velo:95.0},{pt:"CU",pct:14,velo:79.8}],
       hrPct:27.9, xRbi:0.72, rbiPct:45, settersObp:0.339, runnersPA:0.41, parkHR:1.03, carry:1.08,
@@ -479,24 +479,24 @@ function diamondSvg(bases) {
 function windCompass(g) {
   if (!g || !g.weather) return "";
   var w = g.weather;
-  var cx = 36, cy = 38;
+  var cx = 28, cy = 28;
   if (w.relDeg == null) {
-    return '<circle cx="' + cx + '" cy="' + cy + '" r="17" fill="rgba(20,26,36,0.85)" stroke="var(--line)" stroke-width="1"/>' +
+    return '<circle cx="' + cx + '" cy="' + cy + '" r="14" fill="rgba(20,26,36,0.85)" stroke="var(--line)" stroke-width="1"/>' +
       '<text x="' + cx + '" y="' + (cy + 3) + '" class="svg-cap" text-anchor="middle">ROOF</text>' +
-      '<text x="' + cx + '" y="' + (cy + 30) + '" class="svg-cap" text-anchor="middle">' + w.tempF + '\u00b0</text>';
+      '<text x="8" y="' + (cy + 24) + '" class="svg-cap">' + w.tempF + '\u00b0 \u00b7 game time</text>';
   }
   var rad = w.relDeg * Math.PI / 180;
-  var r = 13;
+  var r = 10.5;
   var tx = cx + Math.sin(rad) * r, ty = cy - Math.cos(rad) * r;
   var bx = cx - Math.sin(rad) * r * 0.75, by = cy + Math.cos(rad) * r * 0.75;
   var col = (w.relDeg < 67.5 || w.relDeg > 292.5) ? "var(--hr)"
     : (w.relDeg > 112.5 && w.relDeg < 247.5) ? "#7f95c2" : "var(--chalk)";
-  var ah = 5.5, la = rad + 2.6, ra = rad - 2.6;
-  return '<circle cx="' + cx + '" cy="' + cy + '" r="17" fill="rgba(20,26,36,0.85)" stroke="var(--line)" stroke-width="1"/>' +
+  var ah = 4.5, la = rad + 2.6, ra = rad - 2.6;
+  return '<circle cx="' + cx + '" cy="' + cy + '" r="14" fill="rgba(20,26,36,0.85)" stroke="var(--line)" stroke-width="1"/>' +
     '<line x1="' + bx + '" y1="' + by + '" x2="' + tx + '" y2="' + ty + '" stroke="' + col + '" stroke-width="2"/>' +
     '<path d="M ' + tx + ' ' + ty + ' L ' + (tx + Math.sin(la) * ah) + ' ' + (ty - Math.cos(la) * ah) + ' L ' + (tx + Math.sin(ra) * ah) + ' ' + (ty - Math.cos(ra) * ah) + ' Z" fill="' + col + '"/>' +
-    '<text x="' + cx + '" y="' + (cy + 30) + '" class="svg-cap" text-anchor="middle">' + esc(w.label) + '</text>' +
-    '<text x="' + cx + '" y="' + (cy + 41) + '" class="svg-cap" text-anchor="middle">' + w.tempF + '\u00b0 \u00b7 game time</text>';
+    '<text x="8" y="' + (cy + 24) + '" class="svg-cap">' + esc(w.label) + '</text>' +
+    '<text x="8" y="' + (cy + 35) + '" class="svg-cap">' + w.tempF + '\u00b0 \u00b7 game time</text>';
 }
 var HC_HOME = { x: 125.42, y: 198.27 };
 var F = { hx: 160, hy: 282, k: 1.2 };
