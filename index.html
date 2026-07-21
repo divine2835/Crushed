@@ -108,6 +108,11 @@ tbody td { padding: 11px 12px; border-top: 1px solid var(--line); vertical-align
 .rstat { display: flex; flex-direction: column; align-items: center; gap: 1px; }
 .rstat-l { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; font-family: 'Oswald', sans-serif; }
 .rstat-v { font-size: 12.5px; font-weight: 600; }
+.glog { margin-top: 10px; overflow-x: auto; border-top: 1px solid var(--line); padding-top: 6px; }
+.glog table { width: 100%; border-collapse: collapse; min-width: 340px; }
+.glog th { font-family: 'Oswald', sans-serif; font-size: 9px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--dim); text-align: left; padding: 3px 7px; white-space: nowrap; }
+.glog td { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--chalk); padding: 4px 7px; border-top: 1px solid var(--line); white-space: nowrap; }
+.glog td.hr-hot { color: var(--hr); font-weight: 600; }
 .own-mini { font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 600; color: var(--ink); background: var(--hot); border-radius: 4px; padding: 1px 6px; letter-spacing: 0.02em; flex: 0 0 auto; }
 .hr-num { color: var(--hr); }
 .rbi-num { color: var(--rbi); }
@@ -304,7 +309,16 @@ var DEMO = {
       hrPct:31.4, xRbi:0.74, rbiPct:46, settersObp:0.344, runnersPA:0.38, parkHR:1.06, carry:1.42,
       season:{hr:32,pa:390,rbi:71,g:96},
       bvp:{ab:27,h:9,hr:4,bb:5,so:8,avg:".333",slg:".815"},
-      recent:{ 7:{g:7,pa:31,hr:4,rbi:9,h:9,xbh:6,bb:5,so:8,avg:".346",obp:".452",slg:".885",ops:"1.337"}, 15:{g:15,pa:66,hr:7,rbi:16,h:17,xbh:10,bb:9,so:18,avg:".298",obp:".394",slg:".702",ops:"1.096"}, 30:{g:30,pa:131,hr:12,rbi:28,h:31,xbh:18,bb:17,so:36,avg:".277",obp:".366",slg:".634",ops:"1.000"} },
+      recent:{ 7:{g:7,pa:31,hr:4,rbi:9,h:9,xbh:6,bb:5,so:8,avg:".346",obp:".452",slg:".885",ops:"1.337"}, 15:{g:15,pa:66,hr:7,rbi:16,h:17,xbh:10,bb:9,so:18,avg:".298",obp:".394",slg:".702",ops:"1.096"}, 30:{g:30,pa:131,hr:12,rbi:28,h:31,xbh:18,bb:17,so:36,avg:".277",obp:".366",slg:".634",ops:"1.000"},
+        games:[
+          {d:"07-19",opp:"NYM",home:false,ab:4,r:2,h:2,hr:1,rbi:3,bb:1,so:1},
+          {d:"07-18",opp:"NYM",home:false,ab:5,r:1,h:1,hr:1,rbi:1,bb:0,so:2},
+          {d:"07-17",opp:"ATL",home:true,ab:4,r:0,h:1,hr:0,rbi:0,bb:1,so:1},
+          {d:"07-16",opp:"ATL",home:true,ab:3,r:1,h:2,hr:1,rbi:2,bb:1,so:0},
+          {d:"07-15",opp:"ATL",home:true,ab:4,r:0,h:0,hr:0,rbi:0,bb:1,so:2},
+          {d:"07-13",opp:"MIA",home:true,ab:4,r:1,h:2,hr:1,rbi:3,bb:0,so:1},
+          {d:"07-12",opp:"MIA",home:true,ab:4,r:0,h:1,hr:0,rbi:0,bb:1,so:1}
+        ] },
       zones:[0.740,0.812,0.455,0.688,0.702,0.398,0.510,0.442,0.290],
       vsPitch:{FF:0.671,SI:0.588,SL:0.402,CH:0.510,CU:0.333},
       spray: makeSpray(11,[{x:168,y:52,n:6,sx:28,sy:26,pitch:"FF",results:["home_run","home_run","double","home_run","field_out","home_run"]},{x:158,y:66,n:4,sx:30,sy:30,pitch:"SI",results:["home_run","double","field_out","home_run"]},{x:118,y:96,n:5,sx:44,sy:40,pitch:"SL",results:["field_out","single","field_out","double","field_out"]},{x:150,y:80,n:3,sx:34,sy:30,pitch:"CH",results:["home_run","field_out","single"]}]) },
@@ -1100,6 +1114,13 @@ function recentPanel(p) {
       body = '<div class="rstats">' + cells.map(function (c) {
         return '<div class="rstat"><span class="rstat-l">' + c[0] + '</span><span class="rstat-v mono">' + c[1] + '</span></div>';
       }).join("") + '</div>';
+      var gl = (data.games || []).slice(0, state.recentWin);
+      if (gl.length) {
+        body += '<div class="glog"><table><thead><tr><th>Date</th><th>Opp</th><th>AB</th><th>R</th><th>H</th><th>HR</th><th>RBI</th><th>BB</th><th>K</th></tr></thead><tbody>' +
+          gl.map(function (g) {
+            return '<tr><td>' + esc((g.d || "").replace("-", "/")) + '</td><td>' + (g.home ? "vs " : "@ ") + esc(g.opp) + '</td><td>' + g.ab + '</td><td>' + g.r + '</td><td>' + g.h + '</td><td class="' + (g.hr > 0 ? "hr-hot" : "") + '">' + g.hr + '</td><td>' + g.rbi + '</td><td>' + g.bb + '</td><td>' + g.so + '</td></tr>';
+          }).join("") + '</tbody></table></div>';
+      }
     }
   }
   return '<div class="zone-panel" style="margin-bottom:14px"><div class="zone-head"><span class="panel-title">Recent form</span><div class="arm-toggle" style="margin-bottom:0">' + chips + '</div></div>' + body + '</div>';

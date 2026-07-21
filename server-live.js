@@ -830,7 +830,23 @@ const recentBox = (id) => cached(`rb:${id}`, 6 * H, async () => {
       ops: s.ab && obpDen ? fmt((s.h + s.bb + s.hbp) / obpDen + tb / s.ab) : "\u2014",
     };
   }
-  return { 7: agg(7), 15: agg(15), 30: agg(30) };
+  const last = logs.slice(0, 30);
+  const perGame = [];
+  for (const r of last) {
+    const x = r.stat || {};
+    let opp = "";
+    try {
+      if (r.opponent?.id) opp = (await teamInfo(r.opponent.id)).abbreviation || r.opponent?.name || "";
+      else opp = r.opponent?.name || "";
+    } catch { opp = r.opponent?.name || ""; }
+    perGame.push({
+      d: String(r.date || "").slice(5), // MM-DD
+      opp, home: !!r.isHome,
+      ab: +x.atBats || 0, r: +x.runs || 0, h: +x.hits || 0,
+      hr: +x.homeRuns || 0, rbi: +x.rbi || 0, bb: +x.baseOnBalls || 0, so: +x.strikeOuts || 0,
+    });
+  }
+  return { 7: agg(7), 15: agg(15), 30: agg(30), games: perGame };
 });
 app.get("/api/recent/:batterId", async (req, res) => {
   try {
