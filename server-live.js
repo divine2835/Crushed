@@ -108,7 +108,7 @@ async function savantRowsRaw(playerId, playerType) {
   await sleep(400); // politeness between heavy pulls
   return parseCsv(await res.text()).map((r) => ({
     pitch_type: r.pitch_type, release_speed: r.release_speed, zone: r.zone,
-    hc_x: r.hc_x, hc_y: r.hc_y, events: r.events, type: r.type,
+    hc_x: r.hc_x, hc_y: r.hc_y, events: r.events, type: r.type, bb_type: r.bb_type,
     launch_speed: r.launch_speed, launch_angle: r.launch_angle,
     stand: r.stand, p_throws: r.p_throws, description: r.description,
     game_date: r.game_date,
@@ -119,7 +119,7 @@ const batterPack = (id) => cached(`bpk:${id}`, 12 * H, async () =>
   batterAggregates(await savantRowsRaw(id, "batter")));
 const pitcherPack = (id) => cached(`ppk:${id}`, 12 * H, async () => {
   const rows = await savantRowsRaw(id, "pitcher");
-  return { mix: arsenalFromRows(rows), swstr: swstrFromRows(rows), n: rows.length };
+  return { mix: arsenalFromRows(rows), swstr: swstrFromRows(rows), n: rows.length, bbByHand: battedByHand(rows, "stand") };
 });
 
 const person = (id) => cached(`person:${id}`, 240 * H, () =>
@@ -199,6 +199,22 @@ function swstrFromRows(rows) {
   return +((w / rows.length) * 100).toFixed(1);
 }
 
+/* batted-ball profile split by the opposing hand: flyballs (Statcast
+   bb_type) and barrels per batted ball. keyField = "p_throws" for a
+   batter's rows, "stand" for a pitcher's rows. */
+function battedByHand(rows, keyField) {
+  const out = { L: { bbe: 0, fb: 0, brl: 0 }, R: { bbe: 0, fb: 0, brl: 0 } };
+  rows.forEach((r) => {
+    if (r.type !== "X") return;
+    const k = r[keyField];
+    if (k !== "L" && k !== "R") return;
+    out[k].bbe++;
+    if (r.bb_type === "fly_ball") out[k].fb++;
+    if (isBarrel(+r.launch_speed, +r.launch_angle)) out[k].brl++;
+  });
+  return out;
+}
+
 function batterAggregates(rows) {
   const vs = {}, z = {};
   const spray = [];
@@ -254,6 +270,7 @@ function batterAggregates(rows) {
     hardHitPct: bbe >= 20 ? Math.round((hard / bbe) * 100) : null,
     pullPct: bbe >= 20 ? Math.round((pulled / bbe) * 100) : null,
     barrelsByPt: bp,
+    bbByHand: battedByHand(rows, "p_throws"),
     vsHand,
   };
 }
@@ -868,7 +885,21 @@ const fullSplits = (type, id) => cached(`fs:${type}:${id}`, 6 * H, async () => {
 });
 app.get("/api/splits/:type/:id", async (req, res) => {
   try {
-    res.json(await fullSplits(req.params.type === "pitcher" ? "pitcher" : "batter", req.params.id));
+    const type = req.params.type === "pitcher" ? "pitcher" : "batter";
+    const out = JSON.parse(JSON.stringify(await fullSplits(type, req.params.id)));
+    try {
+      const hb = type === "batter"
+        ? (await batterPack(req.params.id)).bbByHand
+        : (await pitcherPack(req.params.id)).bbByHand;
+      const pct = (n, d) => (d >= 15 ? Math.round((n / d) * 100) : null); // 15-BBE floor per hand
+      ["vl", "vr"].forEach((code) => {
+        if (!out[code]) return;
+        const v = hb && hb[code === "vl" ? "L" : "R"];
+        out[code].fbPct = v ? pct(v.fb, v.bbe) : null;
+        out[code].brlPct = v ? pct(v.brl, v.bbe) : null;
+      });
+    } catch { /* MLB splits still useful if the Statcast layer fails */ }
+    res.json(out);
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 

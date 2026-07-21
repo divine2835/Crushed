@@ -271,7 +271,7 @@ function makeSpray(seed, clusters) {
   });
   return pts;
 }
-var PETERSON = { name:"D. Peterson", hand:"L", splits:{ vl:{pa:118,ab:105,h:22,hr:2,bb:9,so:34,avg:".210",obp:".277",slg:".314",ops:".591"}, vr:{pa:352,ab:315,h:84,hr:11,bb:31,so:82,avg:".267",obp:".333",slg:".429",ops:".762"} }, mix:[
+var PETERSON = { name:"D. Peterson", hand:"L", splits:{ vl:{pa:118,ab:105,h:22,hr:2,bb:9,so:34,avg:".210",obp:".277",slg:".314",ops:".591",fbPct:33,brlPct:6}, vr:{pa:352,ab:315,h:84,hr:11,bb:31,so:82,avg:".267",obp:".333",slg:".429",ops:".762",fbPct:39,brlPct:9} }, mix:[
   {pt:"FF",pct:33,velo:93.8,zone:2,dist:{1:16,2:26,3:12,4:10,5:14,6:9,7:6,8:4,9:3}},
   {pt:"SL",pct:24,velo:84.1,zone:9,dist:{9:32,8:24,6:16,5:11,7:9,3:8}},
   {pt:"CH",pct:19,velo:85.6,zone:8,dist:{8:30,7:24,9:20,5:14,4:12}},
@@ -310,7 +310,7 @@ var DEMO = {
       hrPct:31.4, xRbi:0.74, rbiPct:46, settersObp:0.344, runnersPA:0.38, parkHR:1.06, carry:1.42,
       season:{hr:32,pa:390,rbi:71,g:96},
       bvp:{ab:27,h:9,hr:4,bb:5,so:8,avg:".333",slg:".815"},
-      bSplits:{ vl:{pa:112,ab:98,h:26,hr:8,rbi:19,bb:12,so:31,avg:".265",obp:".348",slg:".622",ops:".970"}, vr:{pa:278,ab:240,h:66,hr:24,rbi:52,bb:34,so:71,avg:".275",obp:".365",slg:".637",ops:"1.002"} },
+      bSplits:{ vl:{pa:112,ab:98,h:26,hr:8,rbi:19,bb:12,so:31,avg:".265",obp:".348",slg:".622",ops:".970",fbPct:44,brlPct:16}, vr:{pa:278,ab:240,h:66,hr:24,rbi:52,bb:34,so:71,avg:".275",obp:".365",slg:".637",ops:"1.002",fbPct:41,brlPct:14} },
       recent:{ 7:{g:7,pa:31,hr:4,rbi:9,h:9,xbh:6,bb:5,so:8,avg:".346",obp:".452",slg:".885",ops:"1.337"}, 15:{g:15,pa:66,hr:7,rbi:16,h:17,xbh:10,bb:9,so:18,avg:".298",obp:".394",slg:".702",ops:"1.096"}, 30:{g:30,pa:131,hr:12,rbi:28,h:31,xbh:18,bb:17,so:36,avg:".277",obp:".366",slg:".634",ops:"1.000"},
         games:[
           {d:"07-19",opp:"NYM",home:false,ab:4,r:2,h:2,hr:1,rbi:3,bb:1,so:1},
@@ -662,15 +662,16 @@ function mixPanel(p, arm, activePitch) {
       if (!w) {
         rowsHtml = '<p class="mix-caption">No split sample this season yet.</p>';
       } else {
-        var cells = isBat
+        var extras = [["FB%", w.fbPct != null ? w.fbPct + "%" : "\u2014"], ["Brl%", w.brlPct != null ? w.brlPct + "%" : "\u2014"]];
+        var cells = (isBat
           ? [["PA", w.pa], ["AB", w.ab], ["H", w.h], ["HR", w.hr], ["RBI", w.rbi], ["BB", w.bb], ["K", w.so], ["AVG", w.avg], ["OBP", w.obp], ["SLG", w.slg], ["OPS", w.ops]]
-          : [["BF", w.pa], ["AB", w.ab], ["H", w.h], ["HR", w.hr], ["BB", w.bb], ["K", w.so], ["AVG", w.avg], ["OBP", w.obp], ["SLG", w.slg], ["OPS", w.ops]];
+          : [["BF", w.pa], ["AB", w.ab], ["H", w.h], ["HR", w.hr], ["BB", w.bb], ["K", w.so], ["AVG", w.avg], ["OBP", w.obp], ["SLG", w.slg], ["OPS", w.ops]]).concat(extras);
         rowsHtml = '<div class="rstats">' + cells.map(function (c) {
           return '<div class="rstat"><span class="rstat-l">' + c[0] + '</span><span class="rstat-v mono">' + c[1] + '</span></div>';
         }).join("") + '</div>' +
           '<p class="mix-caption">' + (isBat
-            ? last + " season split vs " + (code === "vl" ? "LHP" : "RHP") + " \u00b7 MLB Stats API"
-            : "Opponents\u2019 line vs " + spLast + " when batting " + (code === "vl" ? "left" : "right") + "-handed \u00b7 MLB Stats API") + '</p>';
+            ? last + " season split vs " + (code === "vl" ? "LHP" : "RHP") + " \u00b7 MLB Stats API \u00b7 FB% & Brl% per batted ball via Statcast"
+            : "Opponents\u2019 line vs " + spLast + " when batting " + (code === "vl" ? "left" : "right") + "-handed \u00b7 MLB Stats API \u00b7 FB% & Brl% per batted ball via Statcast") + '</p>';
       }
     }
     return '<div class="mix-panel">' + toggle + rowsHtml + '</div>';
