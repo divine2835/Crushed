@@ -377,7 +377,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -767,12 +767,13 @@ function gameIsHot(p, gamesById) {
   var g = gamesById[p.gamePk];
   return !!((g && g.carry != null && g.carry >= 1.15) || (p.sp && p.sp.swstr != null && p.sp.swstr < 10));
 }
-function synergyScore(p, combo, gamesById) {
+function synergyScore(p, combo, gamesById, stackMode) {
   var s = 0;
   combo.forEach(function (q) {
     if (String(q.gamePk) === String(p.gamePk)) {
+      if (!stackMode) { s -= 3; return; }                 // spread mode: discourage any same-game pairing
       var hot = gameIsHot(p, gamesById);
-      if (q.teamAbbr === p.teamAbbr) s += hot ? 3 : 0;   // same-team stack, rewarded on launch nights
+      if (q.teamAbbr === p.teamAbbr) s += hot ? 3 : 1;    // stack mode: reward same-team, extra on launch nights
       else s -= 2;                                        // both sides of one game fight each other
       if (p.sp && q.sp && p.sp.id && p.sp.id === q.sp.id) s += hot ? 1 : -2;
     }
@@ -791,11 +792,16 @@ function genCombo(size) {
   pool.forEach(function (p) { p._cs = compositeScore(p, TH); });
   pool.sort(function (a, b) { return b._cs - a._cs; });
   var cand = pool.slice(0, Math.max(16, size * 4));
+  var stackMode = !!state.genStack;
+  var uniq = {};
+  pool.forEach(function (p) { uniq[String(p.gamePk)] = 1; });
+  // default = spread: one name per game; only relax if the slate is smaller than the combo
+  var maxPerGame = stackMode ? 2 : (Object.keys(uniq).length >= size ? 1 : 2);
   var combo = [];
   function countGame(pk) { return combo.filter(function (q) { return String(q.gamePk) === String(pk); }).length; }
   while (combo.length < size) {
-    var scored = cand.filter(function (p) { return combo.indexOf(p) === -1 && countGame(p.gamePk) < 2; })
-      .map(function (p) { return { p: p, s: p._cs + synergyScore(p, combo, gamesById) }; })
+    var scored = cand.filter(function (p) { return combo.indexOf(p) === -1 && countGame(p.gamePk) < maxPerGame; })
+      .map(function (p) { return { p: p, s: p._cs + synergyScore(p, combo, gamesById, stackMode) }; })
       .sort(function (a, b) { return b.s - a.s; });
     if (!scored.length) break;
     var pick = scored[Math.floor(Math.random() * Math.min(scored.length, 3))]; // explore among the top 3 for fresh combos
@@ -813,16 +819,18 @@ function genCombo(size) {
       if (String(p.gamePk) === String(q.gamePk) && p.teamAbbr === q.teamAbbr) stacks.push(p.teamAbbr + " stack");
     });
   });
-  state.genResult = { ids: combo.map(function (p) { return p.id; }), blend: blend, joint: joint, covList: covList, daySet: daySet, stacks: stacks, size: size };
+  state.genResult = { ids: combo.map(function (p) { return p.id; }), blend: blend, joint: joint, covList: covList, daySet: daySet, stacks: stackMode ? stacks : [], size: size, mode: stackMode ? "Stack mode" : "Multi-game spread" };
 }
 function generateView() {
   var sizes = [2, 3, 4, 5].map(function (n) {
     return '<button class="gchip' + (state.genSize === n ? " gchip-on" : "") + '" data-gensize="' + n + '">' + n + ' names</button>';
   }).join("");
-  var controls = '<div class="gen-controls">' + sizes + '<button class="gen-btn" data-generate="1">\u2726 Generate</button></div>';
+  var controls = '<div class="gen-controls">' + sizes +
+    '<button class="gchip' + (state.genStack ? " gchip-on" : "") + '" data-genstack="1" title="When on: allows up to two names per game and rewards same-team stacks on launch nights. When off: one name per game, spread across the slate.">\u29c9 Stack ' + (state.genStack ? "on" : "off") + '</button>' +
+    '<button class="gen-btn" data-generate="1">\u2726 Generate</button></div>';
   var r = state.genResult;
   if (!r) {
-    return controls + '<p class="mix-caption" style="padding:10px 6px">Pick a size and hit Generate. The engine blends model HR%, all thirteen signal tags, your numerology alignments, convergence stars, and lineup status \u2014 then builds with stack logic: same-team pairings get rewarded on launch nights, opposite sides of one game get penalized, and no more than two names come from a single game. Generate again for fresh high-scoring variations.</p>';
+    return controls + '<p class="mix-caption" style="padding:10px 6px">Pick a size and hit Generate. The engine blends model HR%, all thirteen signal tags, your numerology alignments, convergence stars, and lineup status \u2014 then spreads names across different games by default (one per game) so a single pitcher dealing can\u2019t kill multiple legs. Flip <b>Stack on</b> to allow up to two names per game with same-team stacks rewarded on launch nights. Generate again for fresh high-scoring variations.</p>';
   }
   if (r.error) return controls + '<div class="loading">' + esc(r.error) + '</div>';
   var players = r.ids.map(function (id) { return byId(id); }).filter(Boolean);
@@ -842,6 +850,7 @@ function generateView() {
   }).join("");
   var meta = '<div class="gen-meta">' +
     '<span class="mono" style="color:var(--hr);font-weight:600">Blend score ' + r.blend + '</span>' +
+    (r.mode ? '<span class="mono dim">' + esc(r.mode) + '</span>' : "") +
     '<span class="mono dim">All-hit estimate: ' + (r.joint >= 1 ? r.joint.toFixed(1) : r.joint.toFixed(2)) + '% \u00b7 baseline model</span>' +
     (r.daySet.length ? '<span class="mono" style="color:#c9a2e8">Day energies covered: ' + (r.covList.length ? r.covList.join(" \u00b7 ") : "none") + ' (' + r.covList.length + ' of ' + r.daySet.length + ')</span>' : "") +
     (r.stacks.length ? '<span class="mono dim">' + esc([...new Set(r.stacks)].join(", ")) + '</span>' : "") +
@@ -1066,7 +1075,7 @@ function loadPen(p) {
 
 /* ---------- events ---------- */
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-generate],[data-sort],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-sort],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -1083,6 +1092,11 @@ document.addEventListener("click", function (e) {
     return;
   }
   if (el.dataset.gensize) { state.genSize = +el.dataset.gensize; render(); return; }
+  if (el.dataset.genstack) {
+    state.genStack = !state.genStack;
+    if (state.genResult && !state.genResult.error) { genCombo(state.genSize); state.open = null; }
+    render(); return;
+  }
   if (el.dataset.generate) { genCombo(state.genSize); state.open = null; render(); return; }
   if (el.dataset.tab) { state.tab = el.dataset.tab; state.open = null; state.pitch = null; state.arm = "sp"; render(); return; }
   if (el.dataset.game) { state.game = el.dataset.game; state.open = null; state.pitch = null; state.arm = "sp"; render(); return; }
