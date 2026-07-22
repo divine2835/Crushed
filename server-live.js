@@ -1021,8 +1021,28 @@ async function gamedayState(gamePk) {
       });
     });
   }
+  const lineups = { away: [], home: [] };
+  try {
+    const box = await getJson(`${STATS}/game/${gamePk}/boxscore`);
+    ["away", "home"].forEach((side) => {
+      const t = box.teams?.[side];
+      if (!t) return;
+      (t.battingOrder || []).forEach((pid) => {
+        const pl = t.players?.["ID" + pid];
+        if (!pl) return;
+        const b = pl.stats?.batting || {};
+        lineups[side].push({
+          id: pid, name: pl.person?.fullName || "", pos: pl.position?.abbreviation || "",
+          ab: +b.atBats || 0, r: +b.runs || 0, h: +b.hits || 0, rbi: +b.rbi || 0,
+          bb: +b.baseOnBalls || 0, so: +b.strikeOuts || 0,
+          avg: pl.seasonStats?.batting?.avg || "",
+        });
+      });
+    });
+  } catch { /* lineup box optional */ }
   const off = ls.offense || {}, def = ls.defense || {};
   return {
+    lineups,
     status: status.abstractGameState || "", detail: status.detailedState || "",
     inning: ls.currentInning || null, half: ls.isTopInning ? "top" : "bottom",
     outs: ls.outs || 0, balls: ls.balls || 0, strikes: ls.strikes || 0,

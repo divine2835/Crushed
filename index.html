@@ -84,6 +84,8 @@ button { font-family: inherit; }
 .gd-pitchlist { margin-top: 8px; }
 .gd-pitchrow { display: flex; gap: 8px; align-items: baseline; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--chalk); padding: 2px 0; }
 .gd-pnum { width: 16px; height: 16px; border-radius: 50%; color: var(--ink); font-weight: 600; font-size: 10px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.gd-ab-on td { background: rgba(242,177,52,0.10); }
+.gd-ab-on td:first-child { border-left: 3px solid var(--hr); }
 .gd-last { font-size: 13px; color: var(--chalk); border-left: 3px solid var(--line); padding: 6px 10px; margin-top: 4px; line-height: 1.5; }
 .live-meta { display: flex; gap: 12px; margin: 0 0 10px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); flex-wrap: wrap; }
 .live-card { border: 1px solid var(--line); border-left: 3px solid var(--rbi); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; background: var(--panel); }
@@ -439,7 +441,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, gameday:{}, gdLoading:{}, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, gameday:{}, gdLoading:{}, gdSide:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -1050,6 +1052,29 @@ function gameByPk(pk) {
   for (var i = 0; i < gs.length; i++) if (String(gs[i].gamePk) === String(pk)) return gs[i];
   return null;
 }
+function luPanel(d, g) {
+  if (!d.lineups || (!d.lineups.away.length && !d.lineups.home.length)) return "";
+  var batSide = d.half === "top" ? "away" : "home";
+  var side = state.gdSide || batSide;
+  var awayAb = g ? esc(g.away) : "Away", homeAb = g ? esc(g.home) : "Home";
+  var chips = '<div class="arm-toggle" style="margin-bottom:8px">' +
+    '<button class="arm' + (side === "away" ? " arm-on" : "") + '" data-gdside="away">' + awayAb + (batSide === "away" ? " \u25cf" : "") + '</button>' +
+    '<button class="arm' + (side === "home" ? " arm-on" : "") + '" data-gdside="home">' + homeAb + (batSide === "home" ? " \u25cf" : "") + '</button></div>';
+  var rows = (d.lineups[side] || []).map(function (r, i) {
+    var isUp = side === batSide && d.batter && String(r.id) === String(d.batter.id);
+    var bp = byId(r.id);
+    var badges = bp ? ((bp.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") + (crossAligned(bp) ? '<span class="star-num" title="Numerology convergence">\u2605</span>' : "") + ownMini(bp)) : "";
+    var out = '<tr class="row' + (isUp ? " gd-ab-on" : "") + '" data-row="' + r.id + '">' +
+      '<td>' + (i + 1) + '</td>' +
+      '<td>' + (isUp ? "\u25b8 " : "") + esc(r.name) + ' <span class="dim" style="font-size:10px">' + esc(r.pos) + '</span> ' + badges + '</td>' +
+      '<td>' + r.ab + '</td><td>' + r.r + '</td><td>' + r.h + '</td><td>' + r.rbi + '</td><td>' + r.bb + '</td><td>' + r.so + '</td>' +
+      '<td class="mono dim">' + esc(r.avg) + '</td></tr>';
+    if (bp && String(state.open) === String(r.id)) out += '<tr class="note-row"><td colspan="9">' + scoutCard(bp) + '</td></tr>';
+    return out;
+  }).join("");
+  return '<div class="gd-panel" style="margin-bottom:12px;flex-basis:100%"><div class="gd-label">Live lineup \u00b7 box</div>' + chips +
+    '<div class="glog" style="border-top:none;padding-top:0;margin-top:0"><table><thead><tr><th>#</th><th>Batter</th><th>AB</th><th>R</th><th>H</th><th>RBI</th><th>BB</th><th>K</th><th>AVG</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+}
 function lgameView() {
   if (state.demo) return '<div class="loading">Live Game view runs on the live server \u2014 once deployed, tap a game chip above to open its live gameday.</div>';
   if (state.game === "all") return '<div class="loading">Tap a game chip above to open its live view \u2014 score, count, bases, the current matchup, and every pitch of the at-bat.</div>';
@@ -1084,12 +1109,12 @@ function lgameView() {
     '<span class="dim">P:</span> ' + (d.pitcher ? esc(d.pitcher.name) : "\u2014") + '<br>' +
     '<span class="dim">AB:</span> ' + batterHtml + '<br>' +
     '<span class="mono dim" style="font-size:11px">On deck: ' + esc(d.onDeck || "\u2014") + ' \u00b7 In the hole: ' + esc(d.inHole || "\u2014") + '</span></div>' +
-    (bp && String(state.open) === String(d.batter.id) ? '<div class="gen-scout" style="margin:10px 0 0">' + scoutCard(bp) + '</div>' : "") +
+    (bp && String(state.open) === String(d.batter.id) && !(d.lineups && (d.lineups.away.length || d.lineups.home.length)) ? '<div class="gen-scout" style="margin:10px 0 0">' + scoutCard(bp) + '</div>' : "") +
     '</div>';
   // strike zone plot of the current at-bat
   var zone = '<div class="gd-panel"><div class="gd-label">This at-bat \u00b7 catcher\u2019s view</div>' + szSvg(d) + pitchListHtml(d) + '</div>';
   var last = d.lastPlay ? '<div class="gd-last">' + esc(d.lastPlay) + '</div>' : "";
-  return bug + '<div class="gd-row">' + matchup + zone + '</div>' + last;
+  return bug + '<div class="gd-row">' + matchup + zone + '</div>' + luPanel(d, g) + last;
 }
 function basesSvg(b) {
   function dia(cx, cy, on) {
@@ -1460,7 +1485,7 @@ function loadPen(p) {
 
 /* ---------- events ---------- */
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-gdside],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -1485,6 +1510,7 @@ document.addEventListener("click", function (e) {
     render(); return;
   }
   if (el.dataset.generate) { genCombo(state.genSize); state.open = null; render(); return; }
+  if (el.dataset.gdside) { state.gdSide = el.dataset.gdside; state.open = null; render(); return; }
   if (el.dataset.god) {
     state.god = !state.god; state.open = null;
     if (state.god && !state.demo && !state.godData[state.day]) loadGod();
@@ -1508,6 +1534,7 @@ document.addEventListener("click", function (e) {
     state.tab = el.dataset.tab; state.open = null; state.pitch = null; state.arm = "sp"; state.openClip = null;
     if (state.tab === "live" && !state.demo) loadLive();
     if (state.tab === "lgame" && !state.demo && state.game !== "all") loadGameday(state.game);
+    state.gdSide = null;
     render(); return;
   }
   if (el.dataset.game) {
