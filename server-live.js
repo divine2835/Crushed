@@ -958,6 +958,23 @@ app.get("/api/live", async (req, res) => {
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
+/* resolve a play UUID to MLB's hosted MP4 so the client can play it
+   inline. We read Savant's own replay page for the play and pull the
+   sporty-clips CDN URL it embeds; the video stays hosted by MLB. */
+const clipUrl = (playId) => cached(`clip:${playId}`, 6 * H, async () => {
+  const r = await fetch(`https://baseballsavant.mlb.com/sporty-videos?playId=${encodeURIComponent(playId)}`);
+  if (!r.ok) throw new Error(`savant ${r.status}`);
+  const page = await r.text();
+  const m = page.match(/https:\/\/sporty-clips\.mlb\.com\/[^"'\s<>]+\.mp4/);
+  if (!m) throw new Error("clip not posted yet");
+  return m[0];
+});
+app.get("/api/clip/:playId", async (req, res) => {
+  try {
+    res.json({ url: await clipUrl(req.params.playId) });
+  } catch (e) { res.status(404).json({ error: e.message }); }
+});
+
 app.get("/api/recent/:batterId", async (req, res) => {
   try {
     res.json(await recentBox(req.params.batterId));

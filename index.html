@@ -70,7 +70,9 @@ button { font-family: inherit; }
 .live-inn, .live-score { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); }
 .live-desc { font-size: 13.5px; color: var(--chalk); line-height: 1.45; }
 .live-batter { font-weight: 600; }
-.live-replay { display: inline-block; margin-top: 7px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #e0635a; text-decoration: none; border: 1px solid rgba(224,99,90,0.45); border-radius: 999px; padding: 3px 10px; }
+.live-replay { display: inline-block; margin-top: 7px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #e0635a; text-decoration: none; background: none; cursor: pointer; border: 1px solid rgba(224,99,90,0.45); border-radius: 999px; padding: 3px 10px; }
+.clip-wrap { margin-top: 10px; }
+.clip-video { width: 100%; max-height: 340px; border-radius: 8px; background: #000; display: block; }
 .gen-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
 .gchip { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 999px; padding: 5px 13px; cursor: pointer; }
 .gchip-on { color: var(--ink); background: var(--hr); border-color: var(--hr); font-weight: 600; }
@@ -412,7 +414,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -982,9 +984,23 @@ function liveList(plays, isDemo) {
         ownMini(bp) +
         (bp.numerHits && bp.numerHits.length ? ' <span class="numchip"><b>' + bp.numerHits.length + '</b>aligned</span>' : "");
     }
-    var replay = pl.playId
-      ? '<a class="live-replay" href="https://baseballsavant.mlb.com/sporty-videos?playId=' + esc(pl.playId) + '" target="_blank" rel="noopener">\u25b6 Watch replay</a>'
-      : '<a class="live-replay" href="https://www.mlb.com/video/search?q=' + encodeURIComponent(pl.batter || "") + '" target="_blank" rel="noopener">\u25b6 Find clip</a>';
+    var replay = "";
+    if (pl.playId) {
+      var openThis = state.openClip === pl.playId;
+      replay = '<button class="live-replay" data-clip="' + esc(pl.playId) + '">' + (openThis ? "\u25a0 Close replay" : "\u25b6 Watch replay") + '</button>';
+      if (openThis) {
+        var cu = state.clips[pl.playId];
+        if (!cu || cu === "loading") {
+          replay += '<p class="mix-caption">Fetching the clip from MLB\u2026</p>';
+        } else if (cu === "fail") {
+          replay += '<p class="mix-caption">Clip isn\u2019t posted yet \u2014 <a href="https://baseballsavant.mlb.com/sporty-videos?playId=' + esc(pl.playId) + '" target="_blank" rel="noopener" style="color:#e0635a">open on Savant</a> or tap again in a minute.</p>';
+        } else {
+          replay += '<div class="clip-wrap"><video class="clip-video" controls autoplay playsinline preload="metadata" src="' + esc(cu) + '"></video></div>';
+        }
+      }
+    } else {
+      replay = '<a class="live-replay" href="https://www.mlb.com/video/search?q=' + encodeURIComponent(pl.batter || "") + '" target="_blank" rel="noopener">\u25b6 Find clip</a>';
+    }
     return '<div class="live-card' + (pl.hr ? " live-hr" : "") + '">' +
       '<div class="live-top"><span class="live-ev">' + (pl.hr ? "Home Run" : esc(pl.event || "Run scores")) + '</span>' +
       '<span class="live-inn">' + (pl.half === "top" ? "T" : "B") + pl.inning + ' \u00b7 ' + esc(pl.away) + '@' + esc(pl.home) + '</span>' +
@@ -1281,7 +1297,7 @@ function loadPen(p) {
 
 /* ---------- events ---------- */
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -1305,8 +1321,22 @@ document.addEventListener("click", function (e) {
     render(); return;
   }
   if (el.dataset.generate) { genCombo(state.genSize); state.open = null; render(); return; }
+  if (el.dataset.clip) {
+    var pid = el.dataset.clip;
+    if (state.openClip === pid) { state.openClip = null; render(); return; }
+    state.openClip = pid;
+    if (!state.clips[pid] || state.clips[pid] === "fail") {
+      state.clips[pid] = "loading";
+      fetch(apiBase + "/api/clip/" + encodeURIComponent(pid))
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then(function (j) { state.clips[pid] = j.url || "fail"; })
+        .catch(function () { state.clips[pid] = "fail"; })
+        .finally(function () { render(); });
+    }
+    render(); return;
+  }
   if (el.dataset.tab) {
-    state.tab = el.dataset.tab; state.open = null; state.pitch = null; state.arm = "sp";
+    state.tab = el.dataset.tab; state.open = null; state.pitch = null; state.arm = "sp"; state.openClip = null;
     if (state.tab === "live" && !state.demo) loadLive();
     render(); return;
   }
@@ -1341,7 +1371,7 @@ document.addEventListener("click", function (e) {
 render();
 loadBoard();
 setInterval(loadBoard, 15 * 60 * 1000); // client re-pulls every 15 min for lineup updates
-setInterval(function () { if (state.tab === "live" && !state.demo) loadLive(true); }, 30 * 1000); // live tab refresh
+setInterval(function () { if (state.tab === "live" && !state.demo && !state.openClip) loadLive(true); }, 30 * 1000); // live tab refresh (paused while a clip is open)
 </script>
 </body>
 </html>
