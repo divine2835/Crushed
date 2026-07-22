@@ -961,17 +961,49 @@ app.get("/api/live", async (req, res) => {
 /* resolve a play UUID to MLB's hosted MP4 so the client can play it
    inline. We read Savant's own replay page for the play and pull the
    sporty-clips CDN URL it embeds; the video stays hosted by MLB. */
-const clipUrl = (playId) => cached(`clip:${playId}`, 6 * H, async () => {
-  const r = await fetch(`https://baseballsavant.mlb.com/sporty-videos?playId=${encodeURIComponent(playId)}`);
-  if (!r.ok) throw new Error(`savant ${r.status}`);
-  const page = await r.text();
-  const m = page.match(/https:\/\/sporty-clips\.mlb\.com\/[^"'\s<>]+\.mp4/);
-  if (!m) throw new Error("clip not posted yet");
-  return m[0];
+const clipUrl = (playId, gamePk) => cached(`clip:${playId}`, 6 * H, async () => {
+  /* 1) Film Room media gateway: JSON, resolves a play UUID directly to
+     MLB-hosted MP4s. Primary source. */
+  try {
+    const q = `query{mediaPlayback(ids:["${playId}"],languagePreference:EN,idType:PLAY_ID){feeds{playbacks{name url}}}}`;
+    const r = await fetch("https://fastball-gateway.mlb.com/graphql?query=" + encodeURIComponent(q));
+    if (r.ok) {
+      const j = await r.json();
+      const feeds = j?.data?.mediaPlayback?.[0]?.feeds || [];
+      for (const f of feeds) {
+        const pbs = f.playbacks || [];
+        const best = pbs.find((p) => /mp4/i.test(p.name || "") && /\.mp4/.test(p.url || ""))
+          || pbs.find((p) => /\.mp4/.test(p.url || ""));
+        if (best) return best.url;
+      }
+    }
+  } catch { /* fall through */ }
+  /* 2) Official Stats API game content: highlight items carry MP4
+     playbacks; match the item to this play's UUID. */
+  try {
+    if (gamePk) {
+      const j = await getJson(`${STATS}/game/${gamePk}/content`);
+      const items = j?.highlights?.highlights?.items || [];
+      for (const it of items) {
+        const ids = [it.guid, it.mediaPlaybackId, it.playId].filter(Boolean).map(String);
+        if (!ids.some((x) => x.indexOf(playId) !== -1)) continue;
+        const best = (it.playbacks || []).find((p) => /\.mp4/.test(p.url || ""));
+        if (best) return best.url;
+      }
+    }
+  } catch { /* fall through */ }
+  /* 3) Savant replay page as last resort */
+  const r2 = await fetch(`https://baseballsavant.mlb.com/sporty-videos?playId=${encodeURIComponent(playId)}`);
+  if (r2.ok) {
+    const page = await r2.text();
+    const m = page.match(/https:\/\/sporty-clips\.mlb\.com\/[^"'\s<>]+\.mp4/);
+    if (m) return m[0];
+  }
+  throw new Error("clip not posted yet");
 });
 app.get("/api/clip/:playId", async (req, res) => {
   try {
-    res.json({ url: await clipUrl(req.params.playId) });
+    res.json({ url: await clipUrl(req.params.playId, req.query.gamePk) });
   } catch (e) { res.status(404).json({ error: e.message }); }
 });
 

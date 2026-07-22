@@ -987,13 +987,13 @@ function liveList(plays, isDemo) {
     var replay = "";
     if (pl.playId) {
       var openThis = state.openClip === pl.playId;
-      replay = '<button class="live-replay" data-clip="' + esc(pl.playId) + '">' + (openThis ? "\u25a0 Close replay" : "\u25b6 Watch replay") + '</button>';
+      replay = '<button class="live-replay" data-clip="' + esc(pl.playId) + '" data-gamepk="' + pl.gamePk + '">' + (openThis ? "\u25a0 Close replay" : "\u25b6 Watch replay") + '</button>';
       if (openThis) {
         var cu = state.clips[pl.playId];
         if (!cu || cu === "loading") {
           replay += '<p class="mix-caption">Fetching the clip from MLB\u2026</p>';
         } else if (cu === "fail") {
-          replay += '<p class="mix-caption">Clip isn\u2019t posted yet \u2014 <a href="https://baseballsavant.mlb.com/sporty-videos?playId=' + esc(pl.playId) + '" target="_blank" rel="noopener" style="color:#e0635a">open on Savant</a> or tap again in a minute.</p>';
+          replay += '<p class="mix-caption">Clip isn\u2019t posted yet \u2014 <a href="https://www.mlb.com/video/search?q=' + encodeURIComponent('playid="' + pl.playId + '"') + '" target="_blank" rel="noopener" style="color:#e0635a">open in MLB Film Room</a> or tap again in a minute.</p>';
         } else {
           replay += '<div class="clip-wrap"><video class="clip-video" controls autoplay playsinline preload="metadata" src="' + esc(cu) + '"></video></div>';
         }
@@ -1327,7 +1327,7 @@ document.addEventListener("click", function (e) {
     state.openClip = pid;
     if (!state.clips[pid] || state.clips[pid] === "fail") {
       state.clips[pid] = "loading";
-      fetch(apiBase + "/api/clip/" + encodeURIComponent(pid))
+      fetch(apiBase + "/api/clip/" + encodeURIComponent(pid) + (el.dataset.gamepk ? "?gamePk=" + encodeURIComponent(el.dataset.gamepk) : ""))
         .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
         .then(function (j) { state.clips[pid] = j.url || "fail"; })
         .catch(function () { state.clips[pid] = "fail"; })
