@@ -73,6 +73,18 @@ button { font-family: inherit; }
 .god-reason { font-size: 12.5px; color: #e8d5a8; font-style: italic; margin-top: 3px; line-height: 1.45; }
 .tab-live { color: #e0635a; border-color: rgba(224,99,90,0.55); }
 .tab-on.tab-live { color: var(--ink); background: #e0635a; border-color: #e0635a; }
+.gd-bug { display: flex; align-items: center; justify-content: center; gap: 14px; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--panel); margin-bottom: 12px; flex-wrap: wrap; }
+.gd-team { font-family: 'Oswald', sans-serif; font-size: 16px; letter-spacing: 0.08em; }
+.gd-runs { font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 600; color: var(--hr); }
+.gd-mid { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--dim); text-align: center; }
+.gd-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.gd-panel { flex: 1; min-width: 250px; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--panel); }
+.gd-label { font-family: 'Oswald', sans-serif; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); margin-bottom: 8px; }
+.gd-vs { font-size: 13.5px; line-height: 1.7; }
+.gd-pitchlist { margin-top: 8px; }
+.gd-pitchrow { display: flex; gap: 8px; align-items: baseline; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--chalk); padding: 2px 0; }
+.gd-pnum { width: 16px; height: 16px; border-radius: 50%; color: var(--ink); font-weight: 600; font-size: 10px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.gd-last { font-size: 13px; color: var(--chalk); border-left: 3px solid var(--line); padding: 6px 10px; margin-top: 4px; line-height: 1.5; }
 .live-meta { display: flex; gap: 12px; margin: 0 0 10px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); flex-wrap: wrap; }
 .live-card { border: 1px solid var(--line); border-left: 3px solid var(--rbi); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; background: var(--panel); }
 .live-card.live-hr { border-left-color: var(--hr); }
@@ -238,7 +250,8 @@ footer p { font-size: 11px; }
     <button role="tab" id="tab-rbi" class="tab" data-tab="rbi">RBI Board</button>
     <button role="tab" id="tab-num" class="tab" data-tab="num">Numerology</button>
     <button role="tab" id="tab-gen" class="tab tab-gen" data-tab="gen">Generate</button>
-    <button role="tab" id="tab-live" class="tab tab-live" data-tab="live">Live</button>
+    <button role="tab" id="tab-live" class="tab tab-live" data-tab="live">Live Runs</button>
+    <button role="tab" id="tab-lgame" class="tab tab-live" data-tab="lgame">Live Game</button>
   </nav>
 
   <div class="filterbar" id="gamefilter"></div>
@@ -426,7 +439,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, gameday:{}, gdLoading:{}, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -1022,6 +1035,98 @@ function liveList(plays, isDemo) {
       (isDemo ? "" : replay) + '</div>';
   }).join("");
 }
+function loadGameday(pk, quiet) {
+  if (state.demo || !pk || pk === "all") return;
+  if (state.gdLoading[pk]) return;
+  state.gdLoading[pk] = true;
+  fetch(apiBase + "/api/gameday/" + encodeURIComponent(pk))
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (j) { state.gameday[pk] = j; })
+    .catch(function () { if (!state.gameday[pk]) state.gameday[pk] = { error: true }; })
+    .finally(function () { state.gdLoading[pk] = false; if (state.tab === "lgame") render(); });
+}
+function gameByPk(pk) {
+  var gs = (state.data && state.data.games) || [];
+  for (var i = 0; i < gs.length; i++) if (String(gs[i].gamePk) === String(pk)) return gs[i];
+  return null;
+}
+function lgameView() {
+  if (state.demo) return '<div class="loading">Live Game view runs on the live server \u2014 once deployed, tap a game chip above to open its live gameday.</div>';
+  if (state.game === "all") return '<div class="loading">Tap a game chip above to open its live view \u2014 score, count, bases, the current matchup, and every pitch of the at-bat.</div>';
+  var g = gameByPk(state.game);
+  var d = state.gameday[state.game];
+  if (!d) return '<div class="loading">Loading the live game\u2026</div>';
+  if (d.error) return '<div class="loading">Couldn\u2019t reach the game feed \u2014 it retries automatically.</div>';
+  var away = g ? esc(g.away) : "AWAY", home = g ? esc(g.home) : "HOME";
+  if (d.status === "Preview") {
+    return '<div class="gd-bug"><span class="gd-team">' + away + '</span><span class="gd-mid">' + esc(d.detail || "Scheduled") + ' \u00b7 first pitch hasn\u2019t happened yet</span><span class="gd-team">' + home + '</span></div>';
+  }
+  var outsDots = "";
+  for (var o = 0; o < 3; o++) outsDots += o < d.outs ? "\u25cf" : "\u25cb";
+  var arrow = d.half === "top" ? "\u25b2" : "\u25bc";
+  var mid = d.status === "Final"
+    ? "FINAL"
+    : arrow + (d.inning || "") + " \u00b7 " + outsDots + " \u00b7 " + d.balls + "-" + d.strikes;
+  var bug = '<div class="gd-bug"><span class="gd-team">' + away + '</span><span class="gd-runs">' + d.awayRuns + '</span>' +
+    '<span class="gd-mid">' + mid + basesSvg(d.bases) + '</span>' +
+    '<span class="gd-runs">' + d.homeRuns + '</span><span class="gd-team">' + home + '</span></div>';
+  if (d.status === "Final") {
+    return bug + (d.lastPlay ? '<div class="gd-last">' + esc(d.lastPlay) + '</div>' : "");
+  }
+  // matchup panel with board cross-reference
+  var bp = d.batter ? byId(d.batter.id) : null;
+  var badges = bp ? ((bp.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") + (crossAligned(bp) ? '<span class="star-num" title="Numerology convergence">\u2605</span>' : "") + batTag(bp) + ownMini(bp)) : "";
+  var batterHtml = d.batter
+    ? (bp ? '<span class="live-batter" data-row="' + d.batter.id + '" style="cursor:pointer;text-decoration:underline dotted">' + esc(d.batter.name) + '</span> ' + badges
+          : '<span class="live-batter">' + esc(d.batter.name) + '</span>')
+    : "\u2014";
+  var matchup = '<div class="gd-panel"><div class="gd-label">At the plate</div><div class="gd-vs">' +
+    '<span class="dim">P:</span> ' + (d.pitcher ? esc(d.pitcher.name) : "\u2014") + '<br>' +
+    '<span class="dim">AB:</span> ' + batterHtml + '<br>' +
+    '<span class="mono dim" style="font-size:11px">On deck: ' + esc(d.onDeck || "\u2014") + ' \u00b7 In the hole: ' + esc(d.inHole || "\u2014") + '</span></div>' +
+    (bp && String(state.open) === String(d.batter.id) ? '<div class="gen-scout" style="margin:10px 0 0">' + scoutCard(bp) + '</div>' : "") +
+    '</div>';
+  // strike zone plot of the current at-bat
+  var zone = '<div class="gd-panel"><div class="gd-label">This at-bat \u00b7 catcher\u2019s view</div>' + szSvg(d) + pitchListHtml(d) + '</div>';
+  var last = d.lastPlay ? '<div class="gd-last">' + esc(d.lastPlay) + '</div>' : "";
+  return bug + '<div class="gd-row">' + matchup + zone + '</div>' + last;
+}
+function basesSvg(b) {
+  function dia(cx, cy, on) {
+    return '<polygon points="' + cx + ',' + (cy - 6) + ' ' + (cx + 6) + ',' + cy + ' ' + cx + ',' + (cy + 6) + ' ' + (cx - 6) + ',' + cy + '" fill="' + (on ? "var(--hr)" : "none") + '" stroke="var(--dim)" stroke-width="1"/>';
+  }
+  return '<svg width="56" height="34" viewBox="0 0 56 34" style="display:block;margin:4px auto 0">' +
+    dia(28, 8, b && b.second) + dia(46, 22, b && b.first) + dia(10, 22, b && b.third) + '</svg>';
+}
+function szSvg(d) {
+  var W = 210, Hh = 240, cx = W / 2;
+  var sx = function (x) { return cx + x * 52; };
+  var sy = function (z) { return 228 - (z - 1.0) * 62; };
+  var zx = sx(-0.83), zw = sx(0.83) - sx(-0.83);
+  var zy = sy(d.szTop), zh = sy(d.szBot) - sy(d.szTop);
+  var dots = d.pitches.map(function (p, i) {
+    if (p.x == null || p.z == null) return "";
+    var col = pInfo(p.code).color;
+    return '<circle cx="' + sx(p.x).toFixed(1) + '" cy="' + sy(p.z).toFixed(1) + '" r="9" fill="' + col + '" stroke="var(--ink)" stroke-width="1.5"/>' +
+      '<text x="' + sx(p.x).toFixed(1) + '" y="' + (sy(p.z) + 3.5).toFixed(1) + '" text-anchor="middle" font-size="9" font-weight="700" fill="var(--ink)">' + (i + 1) + '</text>';
+  }).join("");
+  return '<svg width="100%" viewBox="0 0 ' + W + ' ' + Hh + '" style="max-width:230px;display:block;margin:0 auto">' +
+    '<rect x="' + zx + '" y="' + zy + '" width="' + zw + '" height="' + zh + '" fill="rgba(143,162,189,0.08)" stroke="var(--dim)" stroke-width="1"/>' +
+    '<line x1="' + zx + '" y1="' + (zy + zh / 3) + '" x2="' + (zx + zw) + '" y2="' + (zy + zh / 3) + '" stroke="var(--line)"/>' +
+    '<line x1="' + zx + '" y1="' + (zy + 2 * zh / 3) + '" x2="' + (zx + zw) + '" y2="' + (zy + 2 * zh / 3) + '" stroke="var(--line)"/>' +
+    '<line x1="' + (zx + zw / 3) + '" y1="' + zy + '" x2="' + (zx + zw / 3) + '" y2="' + (zy + zh) + '" stroke="var(--line)"/>' +
+    '<line x1="' + (zx + 2 * zw / 3) + '" y1="' + zy + '" x2="' + (zx + 2 * zw / 3) + '" y2="' + (zy + zh) + '" stroke="var(--line)"/>' +
+    dots + '</svg>';
+}
+function pitchListHtml(d) {
+  if (!d.pitches.length) return '<p class="mix-caption">Waiting on the first pitch of the at-bat\u2026</p>';
+  return '<div class="gd-pitchlist">' + d.pitches.map(function (p, i) {
+    return '<div class="gd-pitchrow"><span class="gd-pnum" style="background:' + pInfo(p.code).color + '">' + (i + 1) + '</span>' +
+      '<span>' + esc(p.type || pInfo(p.code).label) + '</span>' +
+      (p.mph ? '<span class="dim">' + p.mph + ' mph</span>' : "") +
+      '<span class="dim">\u00b7 ' + esc(p.result) + '</span></div>';
+  }).join("") + '</div>';
+}
 function loadGod() {
   if (state.demo || state.godLoading) return;
   state.godLoading = true;
@@ -1069,6 +1174,7 @@ function render() {
   document.getElementById("tab-num").className = "tab" + (state.tab === "num" ? " tab-on tab-num" : "");
   document.getElementById("tab-gen").className = "tab tab-gen" + (state.tab === "gen" ? " tab-on" : "");
   document.getElementById("tab-live").className = "tab tab-live" + (state.tab === "live" ? " tab-on" : "");
+  document.getElementById("tab-lgame").className = "tab tab-live" + (state.tab === "lgame" ? " tab-on" : "");
   var intro = document.getElementById("intro");
   var board = document.getElementById("board");
   if (!state.data) { board.innerHTML = '<div class="loading">Syncing tonight\u2019s slate from Statcast…</div>'; return; }
@@ -1076,6 +1182,11 @@ function render() {
   if (state.god) {
     intro.innerHTML = 'GOD mode overrides the tabs while it\u2019s lit \u2014 tap the gold button again to return. Names still open their full scouting cards.';
     board.innerHTML = godView();
+    return;
+  }
+  if (state.tab === "lgame") {
+    intro.innerHTML = 'The live gameday for one game \u2014 score, count, outs, bases, the current pitcher-vs-batter matchup with your scouting badges, and every pitch of the at-bat plotted in the zone. Tap a game chip to pick the game; it refreshes every 15 seconds.';
+    board.innerHTML = lgameView();
     return;
   }
   if (state.tab === "live") {
@@ -1396,9 +1507,14 @@ document.addEventListener("click", function (e) {
   if (el.dataset.tab) {
     state.tab = el.dataset.tab; state.open = null; state.pitch = null; state.arm = "sp"; state.openClip = null;
     if (state.tab === "live" && !state.demo) loadLive();
+    if (state.tab === "lgame" && !state.demo && state.game !== "all") loadGameday(state.game);
     render(); return;
   }
-  if (el.dataset.game) { state.game = el.dataset.game; state.open = null; state.pitch = null; state.arm = "sp"; render(); return; }
+  if (el.dataset.game) {
+    state.game = el.dataset.game; state.open = null; state.pitch = null; state.arm = "sp";
+    if (state.tab === "lgame" && !state.demo && state.game !== "all") loadGameday(state.game);
+    render(); return;
+  }
   if (el.dataset.sort) {
     if (state.tab === "hr") state.hrSort = el.dataset.sort; else state.rbiSort = el.dataset.sort;
     render(); return;
@@ -1430,6 +1546,7 @@ render();
 loadBoard();
 setInterval(loadBoard, 15 * 60 * 1000); // client re-pulls every 15 min for lineup updates
 setInterval(function () { if (state.tab === "live" && !state.demo && !state.openClip) loadLive(true); }, 30 * 1000); // live tab refresh (paused while a clip is open)
+setInterval(function () { if (state.tab === "lgame" && !state.demo && state.game !== "all") loadGameday(state.game, true); }, 15 * 1000); // gameday refresh
 </script>
 </body>
 </html>

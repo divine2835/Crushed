@@ -987,6 +987,59 @@ app.get("/api/god", async (req, res) => {
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
+/* live game state for the Live Game tab: score bug, count/outs, bases,
+   current matchup, and the current at-bat's pitch locations. */
+async function gamedayState(gamePk) {
+  const ls = await getJson(`${STATS}/game/${gamePk}/linescore`);
+  const pbp = await getJson(`${STATS}/game/${gamePk}/playByPlay`);
+  let status = {};
+  try {
+    const sch = await getJson(`${STATS}/schedule?gamePk=${gamePk}`);
+    status = sch?.dates?.[0]?.games?.[0]?.status || {};
+  } catch { /* status optional */ }
+  const plays = pbp.allPlays || [];
+  const cur = plays.length ? plays[plays.length - 1] : null;
+  let lastDesc = "";
+  for (let i = plays.length - 1; i >= 0; i--) {
+    if (plays[i].about?.isComplete && plays[i].result?.description) { lastDesc = plays[i].result.description; break; }
+  }
+  let szTop = 3.4, szBot = 1.6;
+  const pitches = [];
+  if (cur) {
+    (cur.playEvents || []).forEach((e) => {
+      if (!e.isPitch || !e.pitchData) return;
+      const c = e.pitchData.coordinates || {};
+      if (e.pitchData.strikeZoneTop) szTop = +e.pitchData.strikeZoneTop;
+      if (e.pitchData.strikeZoneBottom) szBot = +e.pitchData.strikeZoneBottom;
+      pitches.push({
+        x: c.pX != null ? +c.pX : null,
+        z: c.pZ != null ? +c.pZ : null,
+        mph: e.pitchData.startSpeed ? +(+e.pitchData.startSpeed).toFixed(1) : null,
+        code: e.details?.type?.code || "",
+        type: e.details?.type?.description || "",
+        result: e.details?.description || "",
+      });
+    });
+  }
+  const off = ls.offense || {}, def = ls.defense || {};
+  return {
+    status: status.abstractGameState || "", detail: status.detailedState || "",
+    inning: ls.currentInning || null, half: ls.isTopInning ? "top" : "bottom",
+    outs: ls.outs || 0, balls: ls.balls || 0, strikes: ls.strikes || 0,
+    awayRuns: ls.teams?.away?.runs ?? 0, homeRuns: ls.teams?.home?.runs ?? 0,
+    bases: { first: !!off.first, second: !!off.second, third: !!off.third },
+    batter: off.batter ? { id: off.batter.id, name: off.batter.fullName } : null,
+    pitcher: def.pitcher ? { id: def.pitcher.id, name: def.pitcher.fullName } : null,
+    onDeck: off.onDeck?.fullName || "", inHole: off.inHole?.fullName || "",
+    lastPlay: lastDesc, szTop, szBot, pitches,
+  };
+}
+app.get("/api/gameday/:gamePk", async (req, res) => {
+  try {
+    res.json(await cached(`gd:${req.params.gamePk}`, 12 * 1000, () => gamedayState(req.params.gamePk)));
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 /* live scoring plays across the slate: every HR/RBI play from MLB's
    play-by-play feeds, merged newest-first. Cached 25s so any number of
    viewers costs one pull per game per refresh window. */
