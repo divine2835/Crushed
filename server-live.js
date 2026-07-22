@@ -903,6 +903,90 @@ app.get("/api/splits/:type/:id", async (req, res) => {
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
+/* ============================================================
+   GOD MODE — the engine's own ten for the day. A judgment model,
+   deliberately separate from the boards: raw thump, "due" droughts,
+   two-week heat, matchup gut reads, and a deterministic daily hunch
+   dial (seeded by the date, so the list is fixed for the day).
+   ============================================================ */
+function hash32(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+async function godPicks(board) {
+  const date = board.date;
+  const pool = (board.players || []).filter((p) => p.season && p.season.pa >= 100);
+  pool.forEach((p) => { p._pr = (p.season.hr || 0) / Math.max(1, p.season.pa); });
+  const cands = pool.slice()
+    .sort((a, b) => (b._pr * (b.parkHR || 1) * (b.carry || 1)) - (a._pr * (a.parkHR || 1) * (a.carry || 1)))
+    .slice(0, 25);
+  const scored = [];
+  for (const p of cands) {
+    let drought = null, l15 = null;
+    try {
+      const rb = await recentBox(p.id);
+      const g = rb.games || [];
+      drought = g.findIndex((x) => x.hr > 0);
+      if (drought === -1) drought = g.length;
+      l15 = rb[15];
+    } catch { /* judge without the logs */ }
+    const reasons = [];
+    let s = p._pr * 500;
+    if ((p.season.hr || 0) >= 20) { s += 4; reasons.push(`${p.season.hr} bombs already \u2014 elite thump`); }
+    if (drought != null && drought >= 5 && drought <= 15 && p._pr >= 0.035) {
+      s += Math.min(15, drought * 1.2);
+      reasons.push(`${drought} games since his last homer \u2014 that streak breaks`);
+    } else if (drought != null && drought <= 1 && p._pr >= 0.04) {
+      s += 3; reasons.push("homered in his last game and the swing is loud");
+    }
+    if (l15 && parseFloat(l15.slg) >= 0.5) { s += 4; reasons.push("bat has been scorching for two weeks"); }
+    const opp = p.bats === "S" || (p.bats === "L" && p.sp?.hand === "R") || (p.bats === "R" && p.sp?.hand === "L");
+    if (opp) s += 3;
+    if (p.sp && p.sp.swstr != null && p.sp.swstr < 10) { s += 4; reasons.push(`${p.sp.name} doesn't miss bats \u2014 everything gets put in play`); }
+    if ((p.carry || 1) >= 1.15) { s += 4; reasons.push("the ball is flying in this weather"); }
+    if ((p.parkHR || 1) >= 1.15) { s += 3; reasons.push("the park plays small"); }
+    if (p.bvp && p.bvp.ab >= 8 && parseFloat(p.bvp.slg) >= 0.6) { s += 3; reasons.push("has hurt this arm before"); }
+    const hunch = mulberry32(hash32(date + ":" + p.id))() * 6;
+    s += hunch;
+    if (hunch > 4.5) reasons.push("and the gut says tonight");
+    scored.push({ p, s, reasons });
+  }
+  scored.sort((a, b) => b.s - a.s);
+  const out = [], perGame = {};
+  for (const c of scored) {
+    if (out.length >= 10) break;
+    const g = String(c.p.gamePk);
+    if ((perGame[g] || 0) >= 2) continue;
+    perGame[g] = (perGame[g] || 0) + 1;
+    out.push({
+      id: c.p.id, name: c.p.name, teamAbbr: c.p.teamAbbr, slot: c.p.slot, gamePk: c.p.gamePk,
+      sp: c.p.sp ? { name: c.p.sp.name, hand: c.p.sp.hand } : null,
+      hrPct: c.p.hrPct,
+      reason: c.reasons.slice(0, 2).join(" \u00b7 ") || "pure instinct \u2014 the profile smells like a homer",
+    });
+  }
+  return out;
+}
+app.get("/api/god", async (req, res) => {
+  const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
+  const date = dayDate(day);
+  try {
+    const b = BOARDS[day];
+    if (!b || b.date !== date || !(b.players || []).length) return res.json({ warming: true, picks: [] });
+    const picks = await cached(`god:${date}`, 3 * H, async () => godPicks(b));
+    res.json({ date, picks });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 /* live scoring plays across the slate: every HR/RBI play from MLB's
    play-by-play feeds, merged newest-first. Cached 25s so any number of
    viewers costs one pull per game per refresh window. */

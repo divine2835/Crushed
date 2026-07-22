@@ -59,6 +59,18 @@ button { font-family: inherit; }
 .tab-on.tab-num { color: var(--ink); background: #c9a2e8; border-color: #c9a2e8; }
 .tab-gen { color: var(--hr); border-color: rgba(242,177,52,0.55); }
 .tab-on.tab-gen { color: var(--ink); background: var(--hr); border-color: var(--hr); }
+.god-btn { font-family: 'Oswald', sans-serif; font-weight: 600; letter-spacing: 0.12em; font-size: 12px; background: none; border: 1px solid rgba(242,177,52,0.6); color: var(--hr); border-radius: 999px; padding: 6px 16px; cursor: pointer; }
+.god-on { color: var(--ink); border-color: #f2b134; background: linear-gradient(90deg, #f2b134, #ffe08a, #f2b134); background-size: 200% 100%; animation: godsheen 2.2s linear infinite, godpulse 1.6s ease-in-out infinite; }
+@keyframes godsheen { 0% { background-position: 0 0; } 100% { background-position: 200% 0; } }
+@keyframes godpulse { 0%, 100% { box-shadow: 0 0 8px rgba(242,177,52,0.35); } 50% { box-shadow: 0 0 24px rgba(242,177,52,0.8); } }
+.god-head { border: 1px solid rgba(242,177,52,0.6); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; background: linear-gradient(180deg, rgba(242,177,52,0.10), rgba(242,177,52,0.02)); }
+.god-title { font-family: 'Oswald', sans-serif; font-size: 18px; letter-spacing: 0.14em; color: var(--hr); }
+.god-sub { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); margin-top: 4px; }
+.god-card { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--line); border-left: 3px solid var(--hr); border-radius: 8px; padding: 11px 13px; margin-bottom: 10px; background: var(--panel); cursor: pointer; flex-wrap: wrap; }
+.god-card:hover { background: rgba(242,177,52,0.05); }
+.god-rank { font-family: 'Oswald', sans-serif; font-size: 20px; color: var(--hr); width: 26px; flex: 0 0 auto; line-height: 1.1; }
+.god-main { flex: 1; min-width: 200px; }
+.god-reason { font-size: 12.5px; color: #e8d5a8; font-style: italic; margin-top: 3px; line-height: 1.45; }
 .tab-live { color: #e0635a; border-color: rgba(224,99,90,0.55); }
 .tab-on.tab-live { color: var(--ink); background: #e0635a; border-color: #e0635a; }
 .live-meta { display: flex; gap: 12px; margin: 0 0 10px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); flex-wrap: wrap; }
@@ -414,7 +426,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -1010,10 +1022,45 @@ function liveList(plays, isDemo) {
       (isDemo ? "" : replay) + '</div>';
   }).join("");
 }
+function loadGod() {
+  if (state.demo || state.godLoading) return;
+  state.godLoading = true;
+  fetch(apiBase + "/api/god?day=" + state.day)
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (j) {
+      if (j.warming) { state.godData[state.day] = { warming: true }; }
+      else { state.godData[state.day] = { picks: j.picks || [] }; }
+    })
+    .catch(function () { state.godData[state.day] = { error: true }; })
+    .finally(function () { state.godLoading = false; if (state.god) render(); });
+}
+function godView() {
+  var head = '<div class="god-head"><div class="god-title">\u2726 GOD MODE</div>' +
+    '<div class="god-sub">The engine\u2019s ten for the ' + state.day + ' slate \u2014 judgment over data: raw thump, due droughts, two-week heat, matchup gut reads, and a daily hunch. Fixed for the day. Separate from the boards, the model, and the numbers.</div></div>';
+  if (state.demo) return head + '<div class="loading">GOD mode wakes on the live server \u2014 it reads the whole slate\u2019s game logs before it speaks.</div>';
+  var d = state.godData[state.day];
+  if (!d || state.godLoading) return head + '<div class="loading">The engine is reading the slate\u2019s game logs\u2026 the first summon of the day takes up to a minute, then it\u2019s instant.</div>';
+  if (d.warming) return head + '<div class="loading">The board is still assembling \u2014 summon again in a couple minutes.</div>';
+  if (d.error) return head + '<div class="loading">The summon failed \u2014 tap GOD off and on to retry.</div>';
+  if (!d.picks.length) return head + '<div class="loading">No worthy names on this slate yet \u2014 wait for lineups.</div>';
+  return head + d.picks.map(function (pk, i) {
+    var bp = byId(pk.id);
+    var badges = bp ? ((bp.suggested ? '<span class="star" title="Also a board suggested play">\u2605</span>' : "") + (crossAligned(bp) ? '<span class="star-num" title="Also numerology-aligned">\u2605</span>' : "") + batTag(bp) + ownMini(bp)) : "";
+    var out = '<div class="god-card" data-row="' + pk.id + '">' +
+      '<span class="god-rank">' + (i + 1) + '</span>' +
+      '<div class="god-main"><span class="player-name">' + esc(pk.name) + '</span> ' + badges +
+      '<span class="player-team" style="display:block">' + esc(pk.teamAbbr) + ' \u00b7 #' + pk.slot + (pk.sp ? ' \u00b7 vs ' + esc(pk.sp.name) + pitParen(pk.sp) : "") + '</span>' +
+      '<div class="god-reason">\u201c' + esc(pk.reason) + '\u201d</div></div>' +
+      '<span class="gen-hr">' + (pk.hrPct != null ? pk.hrPct.toFixed(1) + "%" : "") + '</span></div>';
+    if (bp && String(state.open) === String(pk.id)) out += '<div class="gen-scout">' + scoutCard(bp) + '</div>';
+    return out;
+  }).join("");
+}
 function renderDaybar() {
   document.getElementById("daybar").innerHTML =
     '<button class="fchip' + (state.day === "today" ? " fchip-on" : "") + '" data-day="today">Today</button>' +
-    '<button class="fchip' + (state.day === "tomorrow" ? " fchip-on" : "") + '" data-day="tomorrow">Tomorrow</button>';
+    '<button class="fchip' + (state.day === "tomorrow" ? " fchip-on" : "") + '" data-day="tomorrow">Tomorrow</button>' +
+    '<button class="god-btn' + (state.god ? " god-on" : "") + '" data-god="1" aria-pressed="' + !!state.god + '">GOD</button>';
 }
 function render() {
   renderDaybar();
@@ -1026,6 +1073,11 @@ function render() {
   var board = document.getElementById("board");
   if (!state.data) { board.innerHTML = '<div class="loading">Syncing tonight\u2019s slate from Statcast…</div>'; return; }
   renderFilter();
+  if (state.god) {
+    intro.innerHTML = 'GOD mode overrides the tabs while it\u2019s lit \u2014 tap the gold button again to return. Names still open their full scouting cards.';
+    board.innerHTML = godView();
+    return;
+  }
   if (state.tab === "live") {
     intro.innerHTML = 'Every scoring play on the slate as it happens \u2014 home runs in gold, RBI plays in green \u2014 with your stars, ownage, and alignment counts stamped on batters from your boards. \u25b6 opens MLB\u2019s official replay of the play.';
     board.innerHTML = liveView();
@@ -1297,12 +1349,13 @@ function loadPen(p) {
 
 /* ---------- events ---------- */
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
     state.day = el.dataset.day; state.open = null; state.pitch = null; state.arm = "sp"; state.game = "all"; state.genResult = null; state.liveData = null;
     if (state.tab === "live" && !state.demo) loadLive();
+    if (state.god && !state.demo && !state.godData[state.day]) loadGod();
     if (state.demo && state.day === "tomorrow") {
       renderDaybar();
       document.getElementById("intro").innerHTML = "";
@@ -1321,6 +1374,11 @@ document.addEventListener("click", function (e) {
     render(); return;
   }
   if (el.dataset.generate) { genCombo(state.genSize); state.open = null; render(); return; }
+  if (el.dataset.god) {
+    state.god = !state.god; state.open = null;
+    if (state.god && !state.demo && !state.godData[state.day]) loadGod();
+    render(); return;
+  }
   if (el.dataset.clip) {
     var pid = el.dataset.clip;
     if (state.openClip === pid) { state.openClip = null; render(); return; }
