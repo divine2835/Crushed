@@ -59,6 +59,18 @@ button { font-family: inherit; }
 .tab-on.tab-num { color: var(--ink); background: #c9a2e8; border-color: #c9a2e8; }
 .tab-gen { color: var(--hr); border-color: rgba(242,177,52,0.55); }
 .tab-on.tab-gen { color: var(--ink); background: var(--hr); border-color: var(--hr); }
+.tab-live { color: #e0635a; border-color: rgba(224,99,90,0.55); }
+.tab-on.tab-live { color: var(--ink); background: #e0635a; border-color: #e0635a; }
+.live-meta { display: flex; gap: 12px; margin: 0 0 10px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); flex-wrap: wrap; }
+.live-card { border: 1px solid var(--line); border-left: 3px solid var(--rbi); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; background: var(--panel); }
+.live-card.live-hr { border-left-color: var(--hr); }
+.live-top { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 5px; }
+.live-ev { font-family: 'Oswald', sans-serif; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 8px; border-radius: 4px; background: rgba(79,195,138,0.15); color: var(--rbi); }
+.live-hr .live-ev { background: rgba(242,177,52,0.15); color: var(--hr); }
+.live-inn, .live-score { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); }
+.live-desc { font-size: 13.5px; color: var(--chalk); line-height: 1.45; }
+.live-batter { font-weight: 600; }
+.live-replay { display: inline-block; margin-top: 7px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #e0635a; text-decoration: none; border: 1px solid rgba(224,99,90,0.45); border-radius: 999px; padding: 3px 10px; }
 .gen-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
 .gchip { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 999px; padding: 5px 13px; cursor: pointer; }
 .gchip-on { color: var(--ink); background: var(--hr); border-color: var(--hr); font-weight: 600; }
@@ -212,6 +224,7 @@ footer p { font-size: 11px; }
     <button role="tab" id="tab-rbi" class="tab" data-tab="rbi">RBI Board</button>
     <button role="tab" id="tab-num" class="tab" data-tab="num">Numerology</button>
     <button role="tab" id="tab-gen" class="tab tab-gen" data-tab="gen">Generate</button>
+    <button role="tab" id="tab-live" class="tab tab-live" data-tab="live">Live</button>
   </nav>
 
   <div class="filterbar" id="gamefilter"></div>
@@ -399,7 +412,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -933,6 +946,54 @@ function generateView() {
     '</div>';
   return controls + '<div class="gen-card">' + rows + meta + '</div>';
 }
+function loadLive(quiet) {
+  if (state.demo) { render(); return; }
+  if (!quiet) state.liveLoading = true;
+  fetch(apiBase + "/api/live?day=" + state.day)
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (j) {
+      state.liveData = j.plays || [];
+      var d = new Date();
+      state.liveUpdated = ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+    })
+    .catch(function () { if (!state.liveData) state.liveData = []; })
+    .finally(function () { state.liveLoading = false; if (state.tab === "live") render(); });
+}
+var DEMO_PLAYS = [
+  { gamePk: 101, away: "PHI", home: "NYM", inning: 1, half: "top", event: "Home Run", hr: true, desc: "Kyle Schwarber homers (33) on a fly ball to right field.", batterId: 1, batter: "Kyle Schwarber", rbi: 1, awayScore: 1, homeScore: 0, playId: null },
+  { gamePk: 102, away: "LAD", home: "COL", inning: 1, half: "bottom", event: "Double", hr: false, desc: "Hunter Goodman doubles on a line drive. Two runs score.", batterId: 8, batter: "Hunter Goodman", rbi: 2, awayScore: 0, homeScore: 2, playId: null }
+];
+function liveView() {
+  if (state.demo) return liveList(DEMO_PLAYS, true);
+  if (!state.liveData) return '<div class="loading">Pulling live scoring plays from the slate\u2026</div>';
+  return liveList(state.liveData, false);
+}
+function liveList(plays, isDemo) {
+  var filtered = state.game === "all" ? plays : plays.filter(function (pl) { return String(pl.gamePk) === String(state.game); });
+  var head = '<div class="live-meta"><span>Scoring plays \u00b7 ' + filtered.length + '</span><span>auto-refreshes every 30s</span>' +
+    (isDemo ? '<span>demo sample</span>' : (state.liveUpdated ? '<span>updated ' + state.liveUpdated + '</span>' : "")) + '</div>';
+  if (!filtered.length) return head + '<div class="loading">No scoring plays yet \u2014 runs land here the moment they cross the plate.</div>';
+  return head + filtered.map(function (pl) {
+    var bp = pl.batterId != null ? byId(pl.batterId) : null;
+    var badges = "";
+    if (bp) {
+      badges = (bp.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") +
+        (crossAligned(bp) ? '<span class="star-num" title="Numerology convergence">\u2605</span>' : "") +
+        ownMini(bp) +
+        (bp.numerHits && bp.numerHits.length ? ' <span class="numchip"><b>' + bp.numerHits.length + '</b>aligned</span>' : "");
+    }
+    var replay = pl.playId
+      ? '<a class="live-replay" href="https://baseballsavant.mlb.com/sporty-videos?playId=' + esc(pl.playId) + '" target="_blank" rel="noopener">\u25b6 Watch replay</a>'
+      : '<a class="live-replay" href="https://www.mlb.com/video/search?q=' + encodeURIComponent(pl.batter || "") + '" target="_blank" rel="noopener">\u25b6 Find clip</a>';
+    return '<div class="live-card' + (pl.hr ? " live-hr" : "") + '">' +
+      '<div class="live-top"><span class="live-ev">' + (pl.hr ? "Home Run" : esc(pl.event || "Run scores")) + '</span>' +
+      '<span class="live-inn">' + (pl.half === "top" ? "T" : "B") + pl.inning + ' \u00b7 ' + esc(pl.away) + '@' + esc(pl.home) + '</span>' +
+      '<span class="live-score">' + esc(pl.away) + ' ' + pl.awayScore + ', ' + esc(pl.home) + ' ' + pl.homeScore + '</span>' +
+      (pl.rbi ? '<span class="live-inn">' + pl.rbi + ' RBI</span>' : "") + '</div>' +
+      '<div class="live-desc"><span class="live-batter">' + esc(pl.batter) + '</span> ' + badges + ' \u2014 ' + esc(pl.desc) + '</div>' +
+      (isDemo ? "" : replay) + '</div>';
+  }).join("");
+}
 function renderDaybar() {
   document.getElementById("daybar").innerHTML =
     '<button class="fchip' + (state.day === "today" ? " fchip-on" : "") + '" data-day="today">Today</button>' +
@@ -944,10 +1005,16 @@ function render() {
   document.getElementById("tab-rbi").className = "tab" + (state.tab === "rbi" ? " tab-on tab-rbi" : "");
   document.getElementById("tab-num").className = "tab" + (state.tab === "num" ? " tab-on tab-num" : "");
   document.getElementById("tab-gen").className = "tab tab-gen" + (state.tab === "gen" ? " tab-on" : "");
+  document.getElementById("tab-live").className = "tab tab-live" + (state.tab === "live" ? " tab-on" : "");
   var intro = document.getElementById("intro");
   var board = document.getElementById("board");
   if (!state.data) { board.innerHTML = '<div class="loading">Syncing tonight\u2019s slate from Statcast…</div>'; return; }
   renderFilter();
+  if (state.tab === "live") {
+    intro.innerHTML = 'Every scoring play on the slate as it happens \u2014 home runs in gold, RBI plays in green \u2014 with your stars, ownage, and alignment counts stamped on batters from your boards. \u25b6 opens MLB\u2019s official replay of the play.';
+    board.innerHTML = liveView();
+    return;
+  }
   if (state.tab === "gen") {
     intro.innerHTML = 'The combo engine: model HR% + signal tags + numerology alignments + convergence + lineup status, assembled with stack logic. Tap any name for its full scouting card. Estimates come from the baseline model \u2014 not betting advice.';
     board.innerHTML = generateView();
@@ -1218,7 +1285,8 @@ document.addEventListener("click", function (e) {
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
-    state.day = el.dataset.day; state.open = null; state.pitch = null; state.arm = "sp"; state.game = "all"; state.genResult = null;
+    state.day = el.dataset.day; state.open = null; state.pitch = null; state.arm = "sp"; state.game = "all"; state.genResult = null; state.liveData = null;
+    if (state.tab === "live" && !state.demo) loadLive();
     if (state.demo && state.day === "tomorrow") {
       renderDaybar();
       document.getElementById("intro").innerHTML = "";
@@ -1237,7 +1305,11 @@ document.addEventListener("click", function (e) {
     render(); return;
   }
   if (el.dataset.generate) { genCombo(state.genSize); state.open = null; render(); return; }
-  if (el.dataset.tab) { state.tab = el.dataset.tab; state.open = null; state.pitch = null; state.arm = "sp"; render(); return; }
+  if (el.dataset.tab) {
+    state.tab = el.dataset.tab; state.open = null; state.pitch = null; state.arm = "sp";
+    if (state.tab === "live" && !state.demo) loadLive();
+    render(); return;
+  }
   if (el.dataset.game) { state.game = el.dataset.game; state.open = null; state.pitch = null; state.arm = "sp"; render(); return; }
   if (el.dataset.sort) {
     if (state.tab === "hr") state.hrSort = el.dataset.sort; else state.rbiSort = el.dataset.sort;
@@ -1269,6 +1341,7 @@ document.addEventListener("click", function (e) {
 render();
 loadBoard();
 setInterval(loadBoard, 15 * 60 * 1000); // client re-pulls every 15 min for lineup updates
+setInterval(function () { if (state.tab === "live" && !state.demo) loadLive(true); }, 30 * 1000); // live tab refresh
 </script>
 </body>
 </html>

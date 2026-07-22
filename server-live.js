@@ -903,6 +903,61 @@ app.get("/api/splits/:type/:id", async (req, res) => {
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
+/* live scoring plays across the slate: every HR/RBI play from MLB's
+   play-by-play feeds, merged newest-first. Cached 25s so any number of
+   viewers costs one pull per game per refresh window. */
+app.get("/api/live", async (req, res) => {
+  const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
+  const date = dayDate(day);
+  try {
+    const plays = await cached(`liveplays:${date}`, 25 * 1000, async () => {
+      let games = BOARDS[day] && BOARDS[day].date === date ? BOARDS[day].games : null;
+      if (!games || !games.length) {
+        const sc = await getJson(`${STATS}/schedule?sportId=1&date=${date}`);
+        games = [];
+        for (const d of sc.dates || []) {
+          for (const g of d.games || []) {
+            try {
+              games.push({
+                gamePk: g.gamePk,
+                away: (await teamInfo(g.teams.away.team.id)).abbreviation || "AWY",
+                home: (await teamInfo(g.teams.home.team.id)).abbreviation || "HOM",
+              });
+            } catch { /* skip */ }
+          }
+        }
+      }
+      const out = [];
+      for (const g of games) {
+        try {
+          const pbp = await getJson(`${STATS}/game/${g.gamePk}/playByPlay`);
+          (pbp.allPlays || []).forEach((p) => {
+            if (!p.about?.isScoringPlay) return;
+            let playId = null;
+            (p.playEvents || []).forEach((ev) => { if (ev.playId) playId = ev.playId; });
+            out.push({
+              gamePk: g.gamePk, away: g.away, home: g.home,
+              inning: p.about?.inning, half: p.about?.halfInning,
+              event: p.result?.event || "",
+              desc: p.result?.description || "",
+              batterId: p.matchup?.batter?.id || null,
+              batter: p.matchup?.batter?.fullName || "",
+              rbi: +(p.result?.rbi || 0),
+              hr: p.result?.event === "Home Run",
+              awayScore: p.result?.awayScore, homeScore: p.result?.homeScore,
+              t: p.about?.endTime || "",
+              playId,
+            });
+          });
+        } catch { /* game feed unavailable; skip */ }
+      }
+      out.sort((a, b) => (a.t < b.t ? 1 : -1));
+      return out;
+    });
+    res.json({ date, plays });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 app.get("/api/recent/:batterId", async (req, res) => {
   try {
     res.json(await recentBox(req.params.batterId));
