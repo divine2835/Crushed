@@ -187,8 +187,8 @@ tbody td { padding: 11px 12px; border-top: 1px solid var(--line); vertical-align
 .arm { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 0.05em; font-size: 11.5px; background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 5px; padding: 5px 10px; cursor: pointer; }
 .arm:focus-visible { outline: 2px solid var(--chalk); outline-offset: 2px; }
 .arm-on { color: var(--chalk); border-color: var(--line-strong); background: var(--panel-2); }
-.mix-cols { display: grid; grid-template-columns: 1.2fr 1.4fr 0.6fr 0.9fr; gap: 8px; font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; padding: 0 6px 6px; }
-.mix-row { display: grid; grid-template-columns: 1.2fr 1.4fr 0.6fr 0.9fr; gap: 8px; align-items: center; width: 100%; text-align: left; background: none; border: 1px solid transparent; border-radius: 6px; padding: 7px 6px; cursor: pointer; color: var(--chalk); font-size: 13px; }
+.mix-cols { display: grid; grid-template-columns: 1.2fr 1.3fr 0.55fr 0.45fr 0.8fr; gap: 8px; font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; padding: 0 6px 6px; }
+.mix-row { display: grid; grid-template-columns: 1.2fr 1.3fr 0.55fr 0.45fr 0.8fr; gap: 8px; align-items: center; width: 100%; text-align: left; background: none; border: 1px solid transparent; border-radius: 6px; padding: 7px 6px; cursor: pointer; color: var(--chalk); font-size: 13px; }
 .mix-row:hover { background: var(--panel); }
 .mix-row.mix-on { border-color: var(--line-strong); background: var(--panel-2); }
 .mix-row.mix-dim { opacity: 0.35; }
@@ -365,6 +365,7 @@ var DEMO = {
         ] },
       zones:[0.740,0.812,0.455,0.688,0.702,0.398,0.510,0.442,0.290],
       vsPitch:{FF:0.671,SI:0.588,SL:0.402,CH:0.510,CU:0.333},
+      hrByPt:{FF:14,SI:6,SL:4,CH:5,CU:1},
       spray: makeSpray(11,[{x:168,y:52,n:6,sx:28,sy:26,pitch:"FF",results:["home_run","home_run","double","home_run","field_out","home_run"]},{x:158,y:66,n:4,sx:30,sy:30,pitch:"SI",results:["home_run","double","field_out","home_run"]},{x:118,y:96,n:5,sx:44,sy:40,pitch:"SL",results:["field_out","single","field_out","double","field_out"]},{x:150,y:80,n:3,sx:34,sy:30,pitch:"CH",results:["home_run","field_out","single"]}]) },
     { id:7, name:"Trea Turner", teamAbbr:"PHI", slot:1, gamePk:101, lineup:"confirmed", bats:"R", detail:false, suggested:false,
       tags:[],
@@ -728,7 +729,7 @@ function mixPanel(p, arm, activePitch) {
       : (p.sp && p.sp.mixFail ? "Savant arsenal fetch failed \u2014 check the server logs and re-tap." : "Arsenal not synced yet.");
     rowsHtml = '<p class="mix-caption">' + armMsg + '</p>';
   } else {
-    rowsHtml = '<div class="mix-cols mono"><span>Pitch</span><span>Usage</span><span>Velo</span><span>' + last + ' SLG</span></div>' +
+    rowsHtml = '<div class="mix-cols mono"><span>Pitch</span><span>Usage</span><span>Velo</span><span>HR</span><span>' + last + ' SLG</span></div>' +
       mix.map(function (m) {
         var slg = p.vsPitch ? p.vsPitch[m.pt] : null;
         var dim = activePitch && activePitch !== m.pt ? " mix-dim" : "";
@@ -737,6 +738,7 @@ function mixPanel(p, arm, activePitch) {
           '<span class="mix-label"><i class="swatch" style="background:' + pInfo(m.pt).color + '"></i>' + pInfo(m.pt).label + '</span>' +
           '<span class="mix-bar-cell">' + meter(m.pct, 60, pInfo(m.pt).color) + '<em>' + m.pct + '%</em></span>' +
           '<span class="mono dim">' + (m.velo ? m.velo.toFixed(1) : "\u2014") + '</span>' +
+          '<span class="mono" style="' + (p.hrByPt && p.hrByPt[m.pt] ? "color:var(--hr);font-weight:600" : "color:var(--dim)") + '">' + (p.hrByPt ? (p.hrByPt[m.pt] || 0) : "\u2014") + '</span>' +
           '<span class="mono" style="color:' + heat(slg) + ';font-weight:600">' + fmtSlg(slg) + '</span></button>';
       }).join("") +
       '<p class="mix-caption">Tap a pitch to isolate it on the spray chart and see its full location pattern in the zone map.</p>';
@@ -1399,6 +1401,7 @@ function loadDetail(p) {
       p.hardHitPct = j.hardHitPct != null ? j.hardHitPct : null;
       p.pullPct = j.pullPct != null ? j.pullPct : null;
       p.barrelsByPt = j.barrelsByPt || null;
+      p.hrByPt = j.hrByPt || null;
       p.vsHand = j.vsHand || null;
       p.detail = true;
       p.detailFail = false;

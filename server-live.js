@@ -221,6 +221,7 @@ function batterAggregates(rows) {
   const spray = [];
   let bbe = 0, hard = 0, pulled = 0;
   const bp = {}; // barrels / batted balls by pitch type
+  const hrp = {}; // season HR count by pitch type
   const hand = { L: { ab: 0, tb: 0 }, R: { ab: 0, tb: 0 } };
   rows.forEach((r) => {
     const ev = r.events;
@@ -252,6 +253,7 @@ function batterAggregates(rows) {
         bp[r.pitch_type] = bp[r.pitch_type] || { bbe: 0, barrels: 0 };
         bp[r.pitch_type].bbe++;
         if (isBarrel(lsp, la)) bp[r.pitch_type].barrels++;
+        if (r.events === "home_run") hrp[r.pitch_type] = (hrp[r.pitch_type] || 0) + 1;
       }
       spray.push({ x: +(+r.hc_x).toFixed(1), y: +(+r.hc_y).toFixed(1), pt: r.pitch_type, ev, d: r.game_date });
     }
@@ -271,6 +273,7 @@ function batterAggregates(rows) {
     hardHitPct: bbe >= 20 ? Math.round((hard / bbe) * 100) : null,
     pullPct: bbe >= 20 ? Math.round((pulled / bbe) * 100) : null,
     barrelsByPt: bp,
+    hrByPt: hrp,
     bbByHand: battedByHand(rows, "p_throws"),
     vsHand,
   };
@@ -847,7 +850,7 @@ async function buildTeamSide(game, sideKey, box, carry, dayNums) {
         bats: p.batSide?.code || "?", sp,
         homeGame: sideKey === "home",
         hot: rh && rh.pa >= THRESH.hotPa ? rh.slg : null,
-        hardHitPct: null, pullPct: null, barrelsByPt: null, vsHand: null,
+        hardHitPct: null, pullPct: null, barrelsByPt: null, hrByPt: null, vsHand: null,
         season: { hr: +f.season.homeRuns, pa: +f.season.plateAppearances, rbi: +f.season.rbi, g: +f.season.gamesPlayed, obp: f.season.obp, slg: f.season.slg },
         ...sc, parkHR, carry: carry != null ? carry : null,
         bvp: await bvp(f.id, oppSP.id).catch(() => null),
@@ -924,7 +927,7 @@ async function enrichDay(day) {
         const agg = await batterPack(p.id);
         p.vsPitch = agg.vsPitch; p.zones = agg.zones; p.spray = agg.spray;
         p.hardHitPct = agg.hardHitPct; p.pullPct = agg.pullPct;
-        p.barrelsByPt = agg.barrelsByPt; p.vsHand = agg.vsHand;
+        p.barrelsByPt = agg.barrelsByPt; p.hrByPt = agg.hrByPt; p.vsHand = agg.vsHand;
         p.detail = true;
         if (p.sp && p.sp.id && (!p.sp.mix || p.sp.swstr == null)) {
           const pk = await pitcherPack(p.sp.id).catch(() => null);
