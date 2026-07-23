@@ -875,7 +875,11 @@ function numerologyView(players) {
    ============================================================ */
 function compositeScore(p, TH) {
   var s = p.hrPct || 0;
-  s += (p.tags ? p.tags.length : 0) * (TH.tagWeight || 3);
+  var LA = state.data && state.data.learning;
+  s += (p.tags || []).reduce(function (acc, t) {
+    var m = (LA && LA.tagAdj && LA.tagAdj[t]) ? LA.tagAdj[t] : 1;
+    return acc + (TH.tagWeight || 3) * m;
+  }, 0);
   s += Math.min(4, (p.numerHits ? p.numerHits.length : 0)) * 2;
   if (crossAligned(p)) s += 5;
   if (p.lineup === "confirmed") s += 3;
@@ -943,7 +947,24 @@ function generateView() {
   var sizes = [2, 3, 4, 5].map(function (n) {
     return '<button class="gchip' + (state.genSize === n ? " gchip-on" : "") + '" data-gensize="' + n + '">' + n + ' names</button>';
   }).join("");
-  var controls = '<div class="gen-controls">' + sizes +
+  var LA = state.data && state.data.learning;
+  var calib = "";
+  if (LA) {
+    if (LA.days < 3) {
+      calib = '<div class="live-meta" style="margin-bottom:10px"><span>Self-calibration \u00b7 warming up \u00b7 ' + LA.days + ' graded day' + (LA.days === 1 ? "" : "s") + ' \u00b7 weights adjust after day 3</span></div>';
+    } else {
+      var best = null, worst = null;
+      Object.keys(LA.tagAdj || {}).forEach(function (t) {
+        if (!best || LA.tagAdj[t] > LA.tagAdj[best]) best = t;
+        if (!worst || LA.tagAdj[t] < LA.tagAdj[worst]) worst = t;
+      });
+      calib = '<div class="live-meta" style="margin-bottom:10px"><span>Self-calibration \u00b7 day ' + LA.days + ' \u00b7 ' + LA.samples + ' player-nights graded</span>' +
+        (best ? '<span style="color:var(--hr)">sharpest: ' + esc(best) + ' \u00d7' + LA.tagAdj[best] + '</span>' : "") +
+        (worst ? '<span>dulled: ' + esc(worst) + ' \u00d7' + LA.tagAdj[worst] + '</span>' : "") +
+        (LA.last ? '<span>last graded: stars ' + LA.last.starsHit + '/' + LA.last.starsN + ' HR \u00b7 slate ' + LA.last.hits + '/' + LA.last.n + '</span>' : "") + '</div>';
+    }
+  }
+  var controls = calib + '<div class="gen-controls">' + sizes +
     '<button class="gchip' + (state.genStack ? " gchip-on" : "") + '" data-genstack="1" title="When on: allows up to two names per game and rewards same-team stacks on launch nights. When off: one name per game, spread across the slate.">\u29c9 Stack ' + (state.genStack ? "on" : "off") + '</button>' +
     '<button class="gen-btn" data-generate="1">\u2726 Generate</button></div>';
   var r = state.genResult;

@@ -36,6 +36,7 @@
    ============================================================ */
 
 const express = require("express");
+const fs = require("fs");
 const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -650,7 +651,147 @@ function tagsFor(p) {
   if (p.hrPct >= THRESH.hrPct) t.push("Power form");
   return t;
 }
-function starScore(p) { return p.hrPct + p.tags.length * THRESH.tagWeight; }
+/* ============================================================
+   SELF-CALIBRATION — a nightly feedback loop. Each day's board is
+   snapshotted; once its games go Final, outcomes are graded and a
+   small online logistic model re-weights every signal by how well
+   it actually predicted homers. Honest learning: it sharpens over
+   weeks of graded nights, it does not become psychic. State persists
+   to disk, and to the GitHub repo when GITHUB_TOKEN + GITHUB_REPO
+   env vars are set (Render's free-tier disk resets on deploys).
+   ============================================================ */
+const LEARN_FILE = "learn-state.json";
+const LEARN_TAGS = ["Crushes top pitch", "Ownage", "Platoon edge", "Reverse split", "Hot bat", "Hard contact", "Pull-heavy", "Hittable arm", "Barrels the mix", "Zone overlap", "HR park", "Carry night", "Traffic ahead", "Power form"];
+let LEARN = null;
+function freshLearn() {
+  const tags = {};
+  LEARN_TAGS.forEach((t) => { tags[t] = 0; });
+  return { v: 1, days: 0, samples: 0, w: { bias: -2.38, hrPct: 3.0, numer: 0, confirmed: 0, carry: 0, park: 0, tags }, history: [], pending: {} };
+}
+function sigmoid(z) { return 1 / (1 + Math.exp(-z)); }
+function predictHr(row) {
+  const w = LEARN.w;
+  let z = w.bias + w.hrPct * (row.hrPct / 100) + w.numer * (Math.min(4, row.numer) / 4)
+    + w.confirmed * (row.confirmed ? 1 : 0) + w.carry * ((row.carry || 1) - 1) + w.park * ((row.park || 1) - 1);
+  (row.tags || []).forEach((t) => { if (w.tags[t] != null) z += w.tags[t]; });
+  return sigmoid(z);
+}
+function trainOn(rows, results) {
+  const lr = 0.08, clip = (v) => Math.max(-2, Math.min(2, v));
+  let n = 0, hits = 0, starsN = 0, starsHit = 0;
+  for (let epoch = 0; epoch < 3; epoch++) {
+    rows.forEach((r) => {
+      const out = results[r.id];
+      if (!out) return;
+      const y = out.hr > 0 ? 1 : 0;
+      if (epoch === 0) {
+        n++; if (y) hits++;
+        if (r.star) { starsN++; if (y) starsHit++; }
+      }
+      const g = y - predictHr(r);
+      const w = LEARN.w;
+      w.bias = clip(w.bias + lr * g);
+      w.hrPct = clip(w.hrPct + lr * g * (r.hrPct / 100));
+      w.numer = clip(w.numer + lr * g * (Math.min(4, r.numer) / 4));
+      w.confirmed = clip(w.confirmed + lr * g * (r.confirmed ? 1 : 0));
+      w.carry = clip(w.carry + lr * g * ((r.carry || 1) - 1));
+      w.park = clip(w.park + lr * g * ((r.park || 1) - 1));
+      (r.tags || []).forEach((t) => { if (w.tags[t] != null) w.tags[t] = clip(w.tags[t] + lr * g); });
+    });
+  }
+  return { n, hits, starsN, starsHit };
+}
+function tagMult(tag) {
+  if (!LEARN || LEARN.days < 3) return 1; // no opinions before a few graded days
+  const w = LEARN.w.tags[tag] || 0;
+  return Math.max(0.4, Math.min(2.2, 1 + w * 1.2));
+}
+function learnSummary() {
+  if (!LEARN) return null;
+  const adj = {};
+  LEARN_TAGS.forEach((t) => { adj[t] = +tagMult(t).toFixed(2); });
+  return { days: LEARN.days, samples: LEARN.samples, tagAdj: adj, last: LEARN.history[0] || null };
+}
+async function ghLearn(method, content) {
+  const token = process.env.GITHUB_TOKEN, repo = process.env.GITHUB_REPO;
+  if (!token || !repo) return null;
+  const path = process.env.GITHUB_LEARN_PATH || LEARN_FILE;
+  const url = `https://api.github.com/repos/${repo}/contents/${path}`;
+  const headers = { Authorization: `Bearer ${token}`, "User-Agent": "crushed", Accept: "application/vnd.github+json" };
+  if (method === "GET") {
+    const r = await fetch(url, { headers });
+    if (!r.ok) return null;
+    const j = await r.json();
+    LEARN_SHA = j.sha;
+    return JSON.parse(Buffer.from(j.content, "base64").toString("utf8"));
+  }
+  const body = { message: "learn-state update", content: Buffer.from(content).toString("base64") };
+  if (LEARN_SHA) body.sha = LEARN_SHA;
+  const r = await fetch(url, { method: "PUT", headers, body: JSON.stringify(body) });
+  if (r.ok) { const j = await r.json(); LEARN_SHA = j.content?.sha || LEARN_SHA; }
+  return null;
+}
+let LEARN_SHA = null;
+async function loadLearn() {
+  try { const gh = await ghLearn("GET"); if (gh && gh.v) { LEARN = gh; console.log(`[learn] loaded from GitHub: day ${LEARN.days}`); return; } } catch { /* try disk */ }
+  try { LEARN = JSON.parse(fs.readFileSync(LEARN_FILE, "utf8")); console.log(`[learn] loaded from disk: day ${LEARN.days}`); return; } catch { /* fresh */ }
+  LEARN = freshLearn();
+  console.log("[learn] fresh state");
+}
+async function saveLearn() {
+  const s = JSON.stringify(LEARN);
+  try { fs.writeFileSync(LEARN_FILE, s); } catch { /* disk optional */ }
+  try { await ghLearn("PUT", s); } catch { /* github optional */ }
+}
+function snapshotLearning(b) {
+  if (!LEARN) return;
+  LEARN.pending[b.date] = (b.players || []).map((p) => ({
+    id: p.id, gamePk: p.gamePk, hrPct: p.hrPct || 0,
+    numer: (p.numerHits || []).length, confirmed: p.lineup === "confirmed",
+    carry: p.carry || 1, park: p.parkHR || 1, tags: p.tags || [], star: !!p.suggested,
+  }));
+  saveLearn();
+}
+async function gradeLearning() {
+  if (!LEARN) return;
+  const today = dayDate("today");
+  for (const date of Object.keys(LEARN.pending)) {
+    if (date >= today) continue;
+    const rows = LEARN.pending[date];
+    const pks = [...new Set(rows.map((r) => r.gamePk))];
+    let allFinal = true;
+    const res = {};
+    for (const pk of pks) {
+      try {
+        const sch = await getJson(`${STATS}/schedule?gamePk=${pk}`);
+        const st = sch?.dates?.[0]?.games?.[0]?.status?.abstractGameState;
+        if (st !== "Final") { allFinal = false; break; }
+        const box = await getJson(`${STATS}/game/${pk}/boxscore`);
+        ["away", "home"].forEach((side) => {
+          const t = box.teams?.[side];
+          if (!t) return;
+          Object.values(t.players || {}).forEach((pl) => {
+            const bt = pl.stats?.batting;
+            if (!bt || pl.person?.id == null) return;
+            res[pl.person.id] = { hr: +bt.homeRuns || 0, rbi: +bt.rbi || 0 };
+          });
+        });
+      } catch { allFinal = false; break; }
+    }
+    if (!allFinal) continue; // postponed / suspended — try again next hour
+    const st2 = trainOn(rows, res);
+    LEARN.days++; LEARN.samples += st2.n;
+    LEARN.history.unshift({ date, n: st2.n, hits: st2.hits, starsN: st2.starsN, starsHit: st2.starsHit });
+    LEARN.history = LEARN.history.slice(0, 14);
+    delete LEARN.pending[date];
+    await saveLearn();
+    console.log(`[learn] graded ${date}: ${st2.hits}/${st2.n} homered \u00b7 stars ${st2.starsHit}/${st2.starsN} \u00b7 day ${LEARN.days}`);
+  }
+}
+
+function starScore(p) {
+  return p.hrPct + p.tags.reduce((s, t) => s + THRESH.tagWeight * tagMult(t), 0);
+}
 
 async function buildTeamSide(game, sideKey, box, carry, dayNums) {
   const team = game.teams[sideKey].team;
@@ -758,6 +899,7 @@ async function assembleBoard(date) {
   return { date, generatedAt: new Date().toISOString(),
     numerology: dayNums,
     thresholds: THRESH,
+    learning: learnSummary(),
     modelNote: "hrPct is park- and weather-adjusted (Carry); xRbi from lineup context — transparent baseline formulas, replace score() with your model.",
     games: outGames, players };
 }
@@ -802,6 +944,7 @@ async function enrichDay(day) {
   }
   b.generatedAt = new Date().toISOString();
   b.enriched = true;
+  if (day === "today") snapshotLearning(b);
   console.log(`[enrich:${day}] Statcast signals applied to stars`);
 }
 
@@ -1005,6 +1148,10 @@ async function godPicks(board) {
   }
   return out;
 }
+app.get("/api/learning", (req, res) => {
+  res.json(LEARN ? { days: LEARN.days, samples: LEARN.samples, w: LEARN.w, history: LEARN.history, pendingDates: Object.keys(LEARN.pending) } : { days: 0 });
+});
+
 app.get("/api/god", async (req, res) => {
   const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
   const date = dayDate(day);
@@ -1235,6 +1382,8 @@ app.get("/api/health", (_, res) => res.json({ ok: true, today: !!BOARDS.today, t
 /* ---------------- warm loop (replaces cron) ---------------- */
 app.listen(PORT, () => {
   console.log(`Crushed live on :${PORT}`);
+  loadLearn().then(() => gradeLearning());
+  setInterval(gradeLearning, 60 * 60 * 1000); // grade finished days hourly
   warm();
   setInterval(warm, 30 * 60 * 1000); // lineups firm up through the afternoon
 });
