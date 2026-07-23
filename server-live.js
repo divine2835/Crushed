@@ -492,7 +492,24 @@ const careerNums = (id) => cached(`car:${id}`, 24 * H, async () => {
   return out;
 });
 
-function numerologyHits(player, personInfo, splits, career, dayNums) {
+/* HR/RBI totals while batting in a specific lineup slot (b1-b9),
+   season and career - feeds the batting-spot numerology counters */
+const slotSplits = (id, slot) => cached(`ss:${id}:${slot}`, 6 * H, async () => {
+  const out = { season: null, career: null };
+  const grab = (j) => {
+    const s = j?.stats?.[0]?.splits?.[0]?.stat;
+    return s ? { hr: +(s.homeRuns || 0), rbi: +(s.rbi || 0) } : null;
+  };
+  try {
+    out.season = grab(await getJson(`${STATS}/people/${id}/stats?stats=statSplits&group=hitting&season=${SEASON}&sitCodes=b${slot}`));
+  } catch { /* optional */ }
+  try {
+    out.career = grab(await getJson(`${STATS}/people/${id}/stats?stats=careerStatSplits&group=hitting&sitCodes=b${slot}`));
+  } catch { /* optional */ }
+  return out;
+});
+
+function numerologyHits(player, personInfo, splits, career, slotSp, dayNums) {
   const facts = [];
   const push = (label, value) => { if (value != null && !isNaN(value) && value > 0) facts.push({ label, value }); };
   push(`Next HR of the season would be #${player.season.hr + 1}`, player.season.hr + 1);
@@ -510,6 +527,17 @@ function numerologyHits(player, personInfo, splits, career, dayNums) {
     }
   }
   push(`Bats ${ORD(player.slot)}`, player.slot);
+  if (slotSp) {
+    const so = ORD(player.slot);
+    if (slotSp.season) {
+      push(`Next HR batting ${so} would be #${slotSp.season.hr + 1}`, slotSp.season.hr + 1);
+      push(`Next RBI batting ${so} would be #${slotSp.season.rbi + 1}`, slotSp.season.rbi + 1);
+    }
+    if (slotSp.career) {
+      push(`Next career HR batting ${so} would be #${slotSp.career.hr + 1}`, slotSp.career.hr + 1);
+      push(`Next career RBI batting ${so} would be #${slotSp.career.rbi + 1}`, slotSp.career.rbi + 1);
+    }
+  }
   const hand = player.sp && player.sp.hand;
   const code = hand === "L" ? "vl" : hand === "R" ? "vr" : null;
   if (code && splits && splits[code]) {
@@ -689,7 +717,8 @@ async function buildTeamSide(game, sideKey, box, carry, dayNums) {
       try {
         const splits = await handSplits(f.id).catch(() => ({}));
         const career = await careerNums(f.id).catch(() => null);
-        player.numerHits = dayNums ? numerologyHits(player, p, splits, career, dayNums) : [];
+        const slotSp = await slotSplits(f.id, player.slot).catch(() => null);
+        player.numerHits = dayNums ? numerologyHits(player, p, splits, career, slotSp, dayNums) : [];
       } catch { player.numerHits = []; }
       out.push(player);
     } catch (e) { console.error(`skip ${f.name}: ${e.message}`); }

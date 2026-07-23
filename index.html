@@ -119,7 +119,7 @@ button { font-family: inherit; }
 .num-badge { font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: var(--ink); background: #c9a2e8; border-radius: 5px; padding: 1px 8px; font-size: 13px; }
 .numchips { display: flex; flex-wrap: wrap; gap: 6px; }
 .numchip { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: #c9a2e8; border: 1px solid rgba(201,162,232,0.45); background: rgba(201,162,232,0.08); border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
-.numchip b { margin-right: 3px; }
+.numchip b { margin-right: 3px; color: var(--hr); }
 
 .filterbar { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 10px; scrollbar-width: thin; }
 .fchip { flex: 0 0 auto; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 999px; padding: 4px 12px; cursor: pointer; white-space: nowrap; }
@@ -346,7 +346,7 @@ var DEMO = {
   ],
   players: [
     { id:1, name:"Kyle Schwarber", teamAbbr:"PHI", slot:2, gamePk:101, lineup:"confirmed", bats:"L", detail:true, suggested:true,
-      tags:["Crushes top pitch","Barrels the mix","Zone overlap","Pull-heavy","Ownage","Carry night"], numerHits:[{label:"Bats 2nd",num:2},{label:"Next career HR would be #326 \u2192 11 (Master) \u2192 2",num:2},{label:"Wears #12 \u2192 3",num:3}],
+      tags:["Crushes top pitch","Barrels the mix","Zone overlap","Pull-heavy","Ownage","Carry night"], numerHits:[{label:"Bats 2nd",num:2},{label:"Next HR batting 2nd would be #11 (Master) \u2192 2",num:2},{label:"Next career HR would be #326 \u2192 11 (Master) \u2192 2",num:2},{label:"Wears #12 \u2192 3",num:3}],
       sp: PETERSON,
       penMix:[{pt:"FF",pct:46,velo:96.4},{pt:"SL",pct:27,velo:86.0},{pt:"SI",pct:15,velo:95.1},{pt:"CH",pct:12,velo:87.3}],
       hrPct:31.4, xRbi:0.74, rbiPct:46, settersObp:0.344, runnersPA:0.38, parkHR:1.06, carry:1.42,
@@ -398,7 +398,7 @@ var DEMO = {
       vsPitch:{FF:0.702,SL:0.531,CH:0.489,CU:0.458,FC:0.560},
       spray: makeSpray(22,[{x:162,y:46,n:5,sx:26,sy:24,pitch:"FF",results:["home_run","home_run","home_run","double","home_run"]},{x:128,y:42,n:4,sx:30,sy:22,pitch:"SL",results:["home_run","double","home_run","field_out"]},{x:100,y:88,n:4,sx:36,sy:34,pitch:"CH",results:["single","double","field_out","single"]},{x:140,y:74,n:3,sx:30,sy:28,pitch:"CU",results:["double","field_out","home_run"]}]) },
     { id:3, name:"Aaron Judge", teamAbbr:"NYY", slot:2, gamePk:103, lineup:"confirmed", bats:"R", detail:true, suggested:true,
-      tags:["Crushes top pitch","Barrels the mix","Zone overlap","Pull-heavy","Ownage","Carry night"], numerHits:[{label:"Bats 2nd",num:2},{label:"Next career HR would be #326 \u2192 11 (Master) \u2192 2",num:2},{label:"Wears #12 \u2192 3",num:3}],
+      tags:["Crushes top pitch","Barrels the mix","Zone overlap","Pull-heavy","Ownage","Carry night"], numerHits:[{label:"Bats 2nd",num:2},{label:"Next HR batting 2nd would be #11 (Master) \u2192 2",num:2},{label:"Next career HR would be #326 \u2192 11 (Master) \u2192 2",num:2},{label:"Wears #12 \u2192 3",num:3}],
       sp:{ name:"B. Bello", hand:"R", mix:[{pt:"SI",pct:36,velo:94.7,zone:6,dist:{6:26,9:20,5:16,3:14,8:12,2:12}},{pt:"CH",pct:26,velo:87.1,zone:9,dist:{9:30,8:24,6:20,5:12,7:14}},{pt:"SL",pct:21,velo:85.9,zone:7,dist:{7:28,8:22,4:18,5:14,9:18}},{pt:"FF",pct:17,velo:95.3,zone:2,dist:{2:24,1:18,3:16,5:16,4:14,6:12}}] },
       penMix:[{pt:"FF",pct:44,velo:96.1},{pt:"ST",pct:24,velo:82.3},{pt:"SI",pct:18,velo:95.0},{pt:"CU",pct:14,velo:79.8}],
       hrPct:27.9, xRbi:0.72, rbiPct:45, settersObp:0.339, runnersPA:0.41, parkHR:1.03, carry:1.08,
