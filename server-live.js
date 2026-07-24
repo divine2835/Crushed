@@ -1307,6 +1307,56 @@ app.get("/api/gameday/:gamePk", async (req, res) => {
    batters from the board who best exploit each arm. */
 /* pick the opposing batters best matched to THIS pitcher's specific
    weaknesses: his weak batter-side, his bleeder pitch, then raw power */
+/* pitcher's season line vs each opposing batting-order slot (b1-b9);
+   a slot is "weak" when he's been hurt there over a real sample */
+const pitcherSlotSplits = (id) => cached(`pslot:${id}`, 6 * H, async () => {
+  const codes = "b1,b2,b3,b4,b5,b6,b7,b8,b9";
+  const j = await getJson(`${STATS}/people/${id}/stats?stats=statSplits&group=pitching&season=${SEASON}&sitCodes=${codes}`);
+  const out = [];
+  (j.stats?.[0]?.splits || []).forEach((s) => {
+    const code = s.split?.code || "";
+    const m = code.match(/^b([1-9])$/);
+    if (!m) return;
+    const x = s.stat || {};
+    const bf = +(x.battersFaced || x.plateAppearances || 0);
+    const opsN = x.ops && x.ops !== "-.--" ? parseFloat(x.ops) : null;
+    out.push({
+      slot: +m[1], bf, hr: +(x.homeRuns || 0),
+      ops: x.ops || "\u2014",
+      weak: !!(bf >= 15 && opsN != null && opsN >= 0.8),
+    });
+  });
+  out.sort((a, b) => a.slot - b.slot);
+  return out;
+});
+
+/* the opposing lineup in batting order, flagged wherever a batter sits
+   in one of this pitcher's weak spots (slot / side / bleeder pitch) */
+function buildWeakLineup(facing, slots, bleed, weakSide) {
+  const weakBySlot = {};
+  (slots || []).forEach((s) => { if (s.weak) weakBySlot[s.slot] = s; });
+  return facing.slice().sort((a, b) => (a.slot || 9) - (b.slot || 9)).map((p) => {
+    const matches = [];
+    const ws = weakBySlot[p.slot];
+    if (ws) matches.push(`his weak slot \u00b7 ${ws.ops} OPS`);
+    if (weakSide) {
+      const sideChar = weakSide.side === "LHB" ? "L" : "R";
+      if (p.bats === sideChar || p.bats === "S") matches.push("weak side");
+    }
+    if (bleed) {
+      const slg = p.vsPitch ? p.vsPitch[bleed.pt] : null;
+      if (slg != null && slg >= 0.55) matches.push(slg.toFixed(3).replace(/^0\./, ".") + " vs bleeder");
+      else if (p.hrByPt && (p.hrByPt[bleed.pt] || 0) >= 3) matches.push(p.hrByPt[bleed.pt] + " HR off bleeder");
+    }
+    return {
+      id: p.id, name: p.name, slot: p.slot, bats: p.bats, lineup: p.lineup,
+      hrPct: p.hrPct, star: !!p.suggested,
+      cross: !!(p.suggested && p.numerHits && p.numerHits.length),
+      matches,
+    };
+  });
+}
+
 function pickTargets(facing, bleed, weakSide) {
   const scored = facing.map((p) => {
     let fit = p.hrPct || 0;
@@ -1383,13 +1433,16 @@ app.get("/api/weak", async (req, res) => {
         const score = hr9 * 12 + (brl != null ? brl : 7) * 1.2 + (fb != null ? fb : 36) * 0.25
           + Math.max(0, 11 - swstr) * 2.2 + ((g.carry || 1) - 1) * 30 + ((g.parkHR || 1) - 1) * 20;
         const targets = pickTargets(sp.facing, bleed, weakSide);
+        let slots = [];
+        try { slots = await pitcherSlotSplits(sp.id); } catch { /* optional */ }
+        const lineup = buildWeakLineup(sp.facing, slots, bleed, weakSide);
         list.push({
           id: sp.id, name: sp.name, hand: sp.hand,
           team: g.away === sp.oppAbbr ? g.home : g.away, opp: sp.oppAbbr,
           park: g.park, carry: g.carry, gamePk: sp.gamePk,
           hr9: sea ? sea.hr9 : null, hrAllowed: sea ? sea.hr : (pk && pk.dmg ? pk.dmg.hrAllowed : null),
           era: sea ? sea.era : "\u2014", swstr: pk ? pk.swstr : null, brl, fb,
-          bleed, weakSide, targets, score: +score.toFixed(1),
+          bleed, weakSide, targets, slots, lineup, score: +score.toFixed(1),
         });
       }
       list.sort((a, z) => z.score - a.score);

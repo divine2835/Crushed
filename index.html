@@ -83,6 +83,11 @@ button { font-family: inherit; }
 .wk-chip b { color: #ef8354; margin-right: 3px; font-weight: 600; }
 .wk-line { font-size: 12.5px; color: var(--chalk); margin: 3px 0; line-height: 1.5; }
 .wk-line .hot { color: var(--hr); font-weight: 600; }
+.wk-hot-row td { background: rgba(242,177,52,0.10); }
+.wk-hot-row td:first-child { border-left: 3px solid var(--hr); }
+.wk-match { font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: var(--hr); border: 1px solid rgba(242,177,52,0.4); border-radius: 999px; padding: 0 6px; margin-left: 4px; white-space: nowrap; }
+.wk-toggle { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #ef8354; margin-top: 9px; cursor: pointer; }
+.wk-exp { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
 .wk-targets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
 .wk-tchip { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--chalk); border: 1px solid rgba(242,177,52,0.4); background: rgba(242,177,52,0.06); border-radius: 999px; padding: 3px 10px; cursor: pointer; }
 .tab-live { color: #e0635a; border-color: rgba(224,99,90,0.55); }
@@ -457,7 +462,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -1228,13 +1233,44 @@ function weakView() {
           return '<span class="wk-tchip" data-row="' + t.id + '">' + (t.star ? '<span class="star">\u2605</span>' : "") + (t.cross ? '<span class="star-num">\u2605</span>' : "") + esc(t.name) + ' \u00b7 ' + (t.hrPct != null ? t.hrPct.toFixed(1) + "%" : "") + (t.why ? ' <span class="dim">\u00b7 ' + esc(t.why) + '</span>' : "") + '</span>';
         }).join("") + '</div>'
       : "";
-    var out = '<div class="weak-card">' +
+    var isOpen = String(state.weakOpen) === String(w.id);
+    var out = '<div class="weak-card" data-wk="' + w.id + '" style="cursor:pointer">' +
       '<div class="wk-head"><span class="wk-rank">' + (i + 1) + '</span>' +
       '<span class="wk-name">' + esc(w.name) + '</span>' +
       '<span class="wk-sub">' + (w.hand === "L" ? "LHP" : w.hand === "R" ? "RHP" : "") + ' \u00b7 ' + esc(w.team || "") + ' vs ' + esc(w.opp || "") + ' \u00b7 ' + esc(w.park || "") + (w.carry ? ' \u00b7 Carry ' + w.carry.toFixed(2) + '\u00d7' : "") + '</span></div>' +
       '<div class="wk-chips">' + chips + '</div>' + bleed + side + targets;
+    out += '<div class="wk-toggle">' + (isOpen ? "\u25b4 Hide lineup & slot splits" : "\u25be Tap for lineup & his slot-by-slot splits") + '</div>';
+    if (isOpen) {
+      var exp = '<div class="wk-exp">';
+      if (w.slots && w.slots.length) {
+        exp += '<div class="gd-label">His season line by opposing lineup slot</div>' +
+          '<div class="glog" style="border-top:none;padding-top:0;margin-top:0;margin-bottom:12px"><table><thead><tr><th>Slot</th><th>BF</th><th>HR</th><th>OPS against</th></tr></thead><tbody>' +
+          w.slots.map(function (s) {
+            return '<tr class="' + (s.weak ? "wk-hot-row" : "") + '"><td>' + s.slot + '</td><td>' + s.bf + '</td><td>' + s.hr + '</td><td>' + esc(String(s.ops)) + (s.weak ? ' <span class="wk-match">weak spot</span>' : "") + '</td></tr>';
+          }).join("") + '</tbody></table></div>';
+      }
+      if (w.lineup && w.lineup.length) {
+        exp += '<div class="gd-label">' + esc(w.opp || "Opposing") + ' lineup \u00b7 highlighted = sitting in his weak spots</div>' +
+          '<div class="glog" style="border-top:none;padding-top:0;margin-top:0"><table><thead><tr><th>#</th><th>Batter</th><th>HR%</th><th>Fit</th></tr></thead><tbody>' +
+          w.lineup.map(function (l) {
+            var hl = l.matches && l.matches.length;
+            var badges = (l.star ? '<span class="star">\u2605</span>' : "") + (l.cross ? '<span class="star-num">\u2605</span>' : "");
+            var row = '<tr class="row ' + (hl ? "wk-hot-row" : "") + '" data-row="' + l.id + '">' +
+              '<td>' + (l.slot || "") + '</td>' +
+              '<td>' + luDot(l.lineup) + badges + esc(l.name) + (l.bats ? ' <span class="hand-tag">' + (l.bats === "L" ? "LHB" : l.bats === "R" ? "RHB" : "SHB") + '</span>' : "") + '</td>' +
+              '<td class="mono">' + (l.hrPct != null ? l.hrPct.toFixed(1) + "%" : "") + '</td>' +
+              '<td>' + (hl ? l.matches.map(function (mm) { return '<span class="wk-match">' + esc(mm) + '</span>'; }).join("") : '<span class="dim mono" style="font-size:10px">\u2014</span>') + '</td></tr>';
+            if (String(state.open) === String(l.id)) {
+              var bp2 = byId(l.id);
+              if (bp2) row += '<tr class="note-row"><td colspan="4">' + scoutCard(bp2) + '</td></tr>';
+            }
+            return row;
+          }).join("") + '</tbody></table></div>';
+      }
+      out += exp + '</div>';
+    }
     var openT = (w.targets || []).filter(function (t) { return String(state.open) === String(t.id); })[0];
-    if (openT) {
+    if (openT && !isOpen) {
       var bp = byId(openT.id);
       if (bp) out += '<div class="gen-scout" style="margin-top:10px">' + scoutCard(bp) + '</div>';
     }
@@ -1581,7 +1617,7 @@ function loadPen(p) {
 
 /* ---------- events ---------- */
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-gdside],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-gdside],[data-wk],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -1608,6 +1644,11 @@ document.addEventListener("click", function (e) {
   }
   if (el.dataset.generate) { genCombo(state.genSize); state.open = null; render(); return; }
   if (el.dataset.gdside) { state.gdSide = el.dataset.gdside; state.open = null; render(); return; }
+  if (el.dataset.wk) {
+    state.weakOpen = String(state.weakOpen) === String(el.dataset.wk) ? null : el.dataset.wk;
+    state.open = null;
+    render(); return;
+  }
   if (el.dataset.god) {
     state.god = !state.god; state.open = null;
     if (state.god && !state.demo && !state.godData[state.day]) loadGod();
