@@ -86,6 +86,8 @@ button { font-family: inherit; }
 .wk-hot-row td { background: rgba(242,177,52,0.10); }
 .wk-hot-row td:first-child { border-left: 3px solid var(--hr); }
 .wk-match { font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: var(--hr); border: 1px solid rgba(242,177,52,0.4); border-radius: 999px; padding: 0 6px; margin-left: 4px; white-space: nowrap; }
+.num-flash { color: #c9a2e8; font-weight: 700; animation: numpulse 1.4s ease-in-out infinite; }
+@keyframes numpulse { 0%, 100% { opacity: 1; text-shadow: 0 0 6px rgba(201,162,232,0.5); } 50% { opacity: 0.55; text-shadow: 0 0 14px rgba(201,162,232,0.95); } }
 .wk-toggle { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #ef8354; margin-top: 9px; cursor: pointer; }
 .wk-exp { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
 .wk-targets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
@@ -1251,18 +1253,19 @@ function weakView() {
       }
       if (w.lineup && w.lineup.length) {
         exp += '<div class="gd-label">' + esc(w.opp || "Opposing") + ' lineup \u00b7 highlighted = sitting in his weak spots</div>' +
-          '<div class="glog" style="border-top:none;padding-top:0;margin-top:0"><table><thead><tr><th>#</th><th>Batter</th><th>HR%</th><th>Fit</th></tr></thead><tbody>' +
+          '<div class="glog" style="border-top:none;padding-top:0;margin-top:0"><table><thead><tr><th>#</th><th>Batter</th><th>Slot HR</th><th>HR%</th><th>Fit</th></tr></thead><tbody>' +
           w.lineup.map(function (l) {
             var hl = l.matches && l.matches.length;
             var badges = (l.star ? '<span class="star">\u2605</span>' : "") + (l.cross ? '<span class="star-num">\u2605</span>' : "");
             var row = '<tr class="row ' + (hl ? "wk-hot-row" : "") + '" data-row="' + l.id + '">' +
               '<td>' + (l.slot || "") + '</td>' +
               '<td>' + luDot(l.lineup) + badges + esc(l.name) + (l.bats ? ' <span class="hand-tag">' + (l.bats === "L" ? "LHB" : l.bats === "R" ? "RHB" : "SHB") + '</span>' : "") + '</td>' +
+              '<td class="mono' + (l.slotAligned ? " num-flash" : " dim") + '"' + (l.slotAligned ? ' title="His next HR from this slot aligns with the day\u2019s numbers"' : "") + '>' + (l.slotHr != null ? l.slotHr : "\u2014") + '</td>' +
               '<td class="mono">' + (l.hrPct != null ? l.hrPct.toFixed(1) + "%" : "") + '</td>' +
               '<td>' + (hl ? l.matches.map(function (mm) { return '<span class="wk-match">' + esc(mm) + '</span>'; }).join("") : '<span class="dim mono" style="font-size:10px">\u2014</span>') + '</td></tr>';
             if (String(state.open) === String(l.id)) {
               var bp2 = byId(l.id);
-              if (bp2) row += '<tr class="note-row"><td colspan="4">' + scoutCard(bp2) + '</td></tr>';
+              if (bp2) row += '<tr class="note-row"><td colspan="5">' + scoutCard(bp2) + '</td></tr>';
             }
             return row;
           }).join("") + '</tbody></table></div>';

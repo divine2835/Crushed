@@ -1332,7 +1332,7 @@ const pitcherSlotSplits = (id) => cached(`pslot:${id}`, 6 * H, async () => {
 
 /* the opposing lineup in batting order, flagged wherever a batter sits
    in one of this pitcher's weak spots (slot / side / bleeder pitch) */
-function buildWeakLineup(facing, slots, bleed, weakSide) {
+function buildWeakLineup(facing, slots, bleed, weakSide, slotHrById) {
   const weakBySlot = {};
   (slots || []).forEach((s) => { if (s.weak) weakBySlot[s.slot] = s; });
   return facing.slice().sort((a, b) => (a.slot || 9) - (b.slot || 9)).map((p) => {
@@ -1352,6 +1352,8 @@ function buildWeakLineup(facing, slots, bleed, weakSide) {
       id: p.id, name: p.name, slot: p.slot, bats: p.bats, lineup: p.lineup,
       hrPct: p.hrPct, star: !!p.suggested,
       cross: !!(p.suggested && p.numerHits && p.numerHits.length),
+      slotHr: slotHrById && slotHrById[p.id] != null ? slotHrById[p.id] : null,
+      slotAligned: !!(p.numerHits && p.numerHits.some((h) => (h.label || "").indexOf(`Next HR batting ${ORD(p.slot)}`) === 0)),
       matches,
     };
   });
@@ -1435,7 +1437,14 @@ app.get("/api/weak", async (req, res) => {
         const targets = pickTargets(sp.facing, bleed, weakSide);
         let slots = [];
         try { slots = await pitcherSlotSplits(sp.id); } catch { /* optional */ }
-        const lineup = buildWeakLineup(sp.facing, slots, bleed, weakSide);
+        const slotHrById = {};
+        for (const fp of sp.facing) {
+          try {
+            const ss = await slotSplits(fp.id, fp.slot);
+            slotHrById[fp.id] = ss && ss.season ? ss.season.hr : null;
+          } catch { slotHrById[fp.id] = null; }
+        }
+        const lineup = buildWeakLineup(sp.facing, slots, bleed, weakSide, slotHrById);
         list.push({
           id: sp.id, name: sp.name, hand: sp.hand,
           team: g.away === sp.oppAbbr ? g.home : g.away, opp: sp.oppAbbr,
