@@ -553,6 +553,59 @@ const slotSplits = (id, slot) => cached(`ss:${id}:${slot}`, 6 * H, async () => {
   return out;
 });
 
+/* ============================================================
+   EASTERN ASTROLOGY — 2026, Year of the Fire Horse.
+   Signs use the user's app dialect: Cat in the 4th seat (Vietnamese
+   lineage), Ox naming kept. Boundaries come from an explicit Lunar
+   New Year table, never a plain Jan 1 cutoff. Tiers for a Horse year:
+   friendly (Tiger/Dog trine, Goat secret friend) > Year Rider (Horse,
+   own-year amplified energy per the user's school) > neutral >
+   enemy (Ox harm, Cat break) > direct clash (Rat, hardest opposition).
+   ============================================================ */
+const LNY = {
+  1970: "02-06", 1971: "01-27", 1972: "02-15", 1973: "02-03", 1974: "01-23",
+  1975: "02-11", 1976: "01-31", 1977: "02-18", 1978: "02-07", 1979: "01-28",
+  1980: "02-16", 1981: "02-05", 1982: "01-25", 1983: "02-13", 1984: "02-02",
+  1985: "02-20", 1986: "02-09", 1987: "01-29", 1988: "02-17", 1989: "02-06",
+  1990: "01-27", 1991: "02-15", 1992: "02-04", 1993: "01-23", 1994: "02-10",
+  1995: "01-31", 1996: "02-19", 1997: "02-07", 1998: "01-28", 1999: "02-16",
+  2000: "02-05", 2001: "01-24", 2002: "02-12", 2003: "02-01", 2004: "01-22",
+  2005: "02-09", 2006: "01-29", 2007: "02-18", 2008: "02-07", 2009: "01-26",
+  2010: "02-14",
+};
+const ZODIAC_ANIMALS = ["Rat", "Ox", "Tiger", "Cat", "Dragon", "Snake", "Horse", "Goat", "Monkey", "Rooster", "Dog", "Pig"];
+const ZODIAC_ELEMENTS = { 0: "Metal", 1: "Metal", 2: "Water", 3: "Water", 4: "Wood", 5: "Wood", 6: "Fire", 7: "Fire", 8: "Earth", 9: "Earth" };
+const HORSE_YEAR_TIERS = {
+  Tiger: { tier: 1, band: "friendly", reason: "trine ally of the Horse year" },
+  Dog: { tier: 1, band: "friendly", reason: "trine ally of the Horse year" },
+  Goat: { tier: 1, band: "friendly", reason: "secret friend of the Horse" },
+  Horse: { tier: 2, band: "rider", reason: "Year Rider \u2014 his own Fire Horse year, amplified energy" },
+  Dragon: { tier: 3, band: "neutral", reason: "neutral to the Horse year" },
+  Snake: { tier: 3, band: "neutral", reason: "neutral to the Horse year" },
+  Monkey: { tier: 3, band: "neutral", reason: "neutral to the Horse year" },
+  Rooster: { tier: 3, band: "neutral", reason: "neutral to the Horse year" },
+  Pig: { tier: 3, band: "neutral", reason: "neutral to the Horse year" },
+  Ox: { tier: 4, band: "enemy", reason: "the harm \u2014 enemy of the Horse year" },
+  Cat: { tier: 4, band: "enemy", reason: "the break \u2014 enemy of the Horse year" },
+  Rat: { tier: 5, band: "clash", reason: "direct clash with the Horse \u2014 hardest opposition" },
+};
+function zodiacFor(birthDate) {
+  if (!birthDate) return null;
+  const m = String(birthDate).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const y = +m[1], mmdd = `${m[2]}-${m[3]}`;
+  let effYear = y;
+  if (+m[2] <= 2) {
+    const lny = LNY[y] || "02-04"; // approx fallback outside table range
+    if (mmdd < lny) effYear = y - 1;
+  }
+  const idx = ((effYear - 1996) % 12 + 12) % 12;
+  const sign = ZODIAC_ANIMALS[idx];
+  const element = ZODIAC_ELEMENTS[effYear % 10];
+  const rel = HORSE_YEAR_TIERS[sign];
+  return { sign, element, year: effYear, tier: rel.tier, band: rel.band, reason: rel.reason };
+}
+
 function numerologyHits(player, personInfo, splits, career, slotSp, dayNums) {
   const facts = [];
   const push = (label, value) => { if (value != null && !isNaN(value) && value > 0) facts.push({ label, value }); };
@@ -903,6 +956,7 @@ async function buildTeamSide(game, sideKey, box, carry, dayNums) {
         const career = await careerNums(f.id).catch(() => null);
         const slotSp = await slotSplits(f.id, player.slot).catch(() => null);
         player.numerHits = dayNums ? numerologyHits(player, p, splits, career, slotSp, dayNums) : [];
+        player.zodiac = zodiacFor(p && p.birthDate);
       } catch { player.numerHits = []; }
       out.push(player);
     } catch (e) { console.error(`skip ${f.name}: ${e.message}`); }
@@ -1332,6 +1386,18 @@ const pitcherSlotSplits = (id) => cached(`pslot:${id}`, 6 * H, async () => {
 
 /* the opposing lineup in batting order, flagged wherever a batter sits
    in one of this pitcher's weak spots (slot / side / bleeder pitch) */
+/* stamp day-number alignments onto a pitcher's slot rows (cloned:
+   the splits cache is per-pitcher, the flags are per-day) */
+function annotateSlots(slots, daySet) {
+  const set = daySet || [];
+  return (slots || []).map((s) => ({
+    ...s,
+    slotAligned: set.indexOf(reduceNum(s.slot)) !== -1,
+    hrAligned: set.indexOf(reduceNum(s.hr + 1)) !== -1,
+    nextHr: s.hr + 1,
+  }));
+}
+
 function buildWeakLineup(facing, slots, bleed, weakSide, slotHrById) {
   const weakBySlot = {};
   (slots || []).forEach((s) => { if (s.weak) weakBySlot[s.slot] = s; });
@@ -1437,6 +1503,7 @@ app.get("/api/weak", async (req, res) => {
         const targets = pickTargets(sp.facing, bleed, weakSide);
         let slots = [];
         try { slots = await pitcherSlotSplits(sp.id); } catch { /* optional */ }
+        slots = annotateSlots(slots, b.numerology && b.numerology.set);
         const slotHrById = {};
         for (const fp of sp.facing) {
           try {
