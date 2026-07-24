@@ -71,6 +71,20 @@ button { font-family: inherit; }
 .god-rank { font-family: 'Oswald', sans-serif; font-size: 20px; color: var(--hr); width: 26px; flex: 0 0 auto; line-height: 1.1; }
 .god-main { flex: 1; min-width: 200px; }
 .god-reason { font-size: 12.5px; color: #e8d5a8; font-style: italic; margin-top: 3px; line-height: 1.45; }
+.tab-weak { color: #ef8354; border-color: rgba(239,131,84,0.55); }
+.tab-on.tab-weak { color: var(--ink); background: #ef8354; border-color: #ef8354; }
+.weak-card { border: 1px solid var(--line); border-left: 3px solid #ef8354; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; background: var(--panel); }
+.wk-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 7px; }
+.wk-rank { font-family: 'Oswald', sans-serif; font-size: 19px; color: #ef8354; }
+.wk-name { font-weight: 700; font-size: 15.5px; }
+.wk-sub { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); }
+.wk-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 7px; }
+.wk-chip { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--chalk); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; }
+.wk-chip b { color: #ef8354; margin-right: 3px; font-weight: 600; }
+.wk-line { font-size: 12.5px; color: var(--chalk); margin: 3px 0; line-height: 1.5; }
+.wk-line .hot { color: var(--hr); font-weight: 600; }
+.wk-targets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
+.wk-tchip { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--chalk); border: 1px solid rgba(242,177,52,0.4); background: rgba(242,177,52,0.06); border-radius: 999px; padding: 3px 10px; cursor: pointer; }
 .tab-live { color: #e0635a; border-color: rgba(224,99,90,0.55); }
 .tab-on.tab-live { color: var(--ink); background: #e0635a; border-color: #e0635a; }
 .gd-bug { display: flex; align-items: center; justify-content: center; gap: 14px; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--panel); margin-bottom: 12px; flex-wrap: wrap; }
@@ -254,6 +268,7 @@ footer p { font-size: 11px; }
     <button role="tab" id="tab-gen" class="tab tab-gen" data-tab="gen">Generate</button>
     <button role="tab" id="tab-live" class="tab tab-live" data-tab="live">Live Runs</button>
     <button role="tab" id="tab-lgame" class="tab tab-live" data-tab="lgame">Live Game</button>
+    <button role="tab" id="tab-weak" class="tab tab-weak" data-tab="weak">Weak Spots</button>
   </nav>
 
   <div class="filterbar" id="gamefilter"></div>
@@ -442,7 +457,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, gameday:{}, gdLoading:{}, gdSide:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -1175,6 +1190,57 @@ function pitchListHtml(d) {
       '<span class="dim">\u00b7 ' + esc(p.result) + '</span></div>';
   }).join("") + '</div>';
 }
+function loadWeak() {
+  if (state.demo || state.weakLoading) return;
+  if (Object.prototype.hasOwnProperty.call(state.weak, state.day)) return;
+  state.weakLoading = true;
+  fetch(apiBase + "/api/weak?day=" + state.day)
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (j) { state.weak[state.day] = j.warming ? { warming: true } : { pitchers: j.pitchers || [] }; })
+    .catch(function () { state.weak[state.day] = { error: true }; })
+    .finally(function () { state.weakLoading = false; if (state.tab === "weak") render(); });
+}
+function weakView() {
+  if (state.demo) return '<div class="loading">Weak Spots ranks the slate\u2019s starters on the live server \u2014 damage profiles need the Statcast feeds.</div>';
+  var d = state.weak[state.day];
+  if (!d || state.weakLoading) return '<div class="loading">Profiling tonight\u2019s arms\u2026 first build of the day reads every starter\u2019s season (up to a minute), instant after.</div>';
+  if (d.warming) return '<div class="loading">The board is still assembling \u2014 check back in a couple minutes.</div>';
+  if (d.error) return '<div class="loading">Couldn\u2019t build the list \u2014 switch tabs and back to retry.</div>';
+  if (!d.pitchers.length) return '<div class="loading">No probable starters posted yet.</div>';
+  var filtered = state.game === "all" ? d.pitchers : d.pitchers.filter(function (w) { return String(w.gamePk) === String(state.game); });
+  return filtered.map(function (w, i) {
+    var chips = [
+      w.hr9 != null ? '<span class="wk-chip"><b>' + w.hr9.toFixed(2) + '</b>HR/9</span>' : "",
+      w.hrAllowed != null ? '<span class="wk-chip"><b>' + w.hrAllowed + '</b>HR allowed</span>' : "",
+      w.brl != null ? '<span class="wk-chip"><b>' + w.brl + '%</b>Brl allowed</span>' : "",
+      w.fb != null ? '<span class="wk-chip"><b>' + w.fb + '%</b>FB allowed</span>' : "",
+      w.swstr != null ? '<span class="wk-chip"><b>' + w.swstr + '%</b>SwStr</span>' : "",
+      '<span class="wk-chip"><b>' + esc(String(w.era)) + '</b>ERA</span>'
+    ].join("");
+    var bleed = w.bleed
+      ? '<div class="wk-line">Bleeds: <span class="hot">' + pInfo(w.bleed.pt).label + '</span> \u2014 ' + w.bleed.slg.toFixed(3).replace(/^0\./, ".") + ' SLG allowed' + (w.bleed.hr ? ' \u00b7 ' + w.bleed.hr + ' HR' : "") + '</div>'
+      : "";
+    var side = w.weakSide
+      ? '<div class="wk-line">Weak side: <span class="hot">vs ' + esc(w.weakSide.side) + '</span> \u2014 ' + esc(String(w.weakSide.ops)) + ' OPS against' + (w.weakSide.hr ? ' \u00b7 ' + w.weakSide.hr + ' HR' : "") + '</div>'
+      : "";
+    var targets = w.targets && w.targets.length
+      ? '<div class="wk-targets"><span class="wk-sub">Target:</span>' + w.targets.map(function (t) {
+          return '<span class="wk-tchip" data-row="' + t.id + '">' + (t.star ? '<span class="star">\u2605</span>' : "") + (t.cross ? '<span class="star-num">\u2605</span>' : "") + esc(t.name) + ' \u00b7 ' + (t.hrPct != null ? t.hrPct.toFixed(1) + "%" : "") + (t.why ? ' <span class="dim">\u00b7 ' + esc(t.why) + '</span>' : "") + '</span>';
+        }).join("") + '</div>'
+      : "";
+    var out = '<div class="weak-card">' +
+      '<div class="wk-head"><span class="wk-rank">' + (i + 1) + '</span>' +
+      '<span class="wk-name">' + esc(w.name) + '</span>' +
+      '<span class="wk-sub">' + (w.hand === "L" ? "LHP" : w.hand === "R" ? "RHP" : "") + ' \u00b7 ' + esc(w.team || "") + ' vs ' + esc(w.opp || "") + ' \u00b7 ' + esc(w.park || "") + (w.carry ? ' \u00b7 Carry ' + w.carry.toFixed(2) + '\u00d7' : "") + '</span></div>' +
+      '<div class="wk-chips">' + chips + '</div>' + bleed + side + targets;
+    var openT = (w.targets || []).filter(function (t) { return String(state.open) === String(t.id); })[0];
+    if (openT) {
+      var bp = byId(openT.id);
+      if (bp) out += '<div class="gen-scout" style="margin-top:10px">' + scoutCard(bp) + '</div>';
+    }
+    return out + '</div>';
+  }).join("") || '<div class="loading">No starters in this game filter.</div>';
+}
 function loadGod() {
   if (state.demo || state.godLoading) return;
   state.godLoading = true;
@@ -1223,6 +1289,7 @@ function render() {
   document.getElementById("tab-gen").className = "tab tab-gen" + (state.tab === "gen" ? " tab-on" : "");
   document.getElementById("tab-live").className = "tab tab-live" + (state.tab === "live" ? " tab-on" : "");
   document.getElementById("tab-lgame").className = "tab tab-live" + (state.tab === "lgame" ? " tab-on" : "");
+  document.getElementById("tab-weak").className = "tab tab-weak" + (state.tab === "weak" ? " tab-on" : "");
   var intro = document.getElementById("intro");
   var board = document.getElementById("board");
   if (!state.data) { board.innerHTML = '<div class="loading">Syncing tonight\u2019s slate from Statcast…</div>'; return; }
@@ -1230,6 +1297,11 @@ function render() {
   if (state.god) {
     intro.innerHTML = 'GOD mode overrides the tabs while it\u2019s lit \u2014 tap the gold button again to return. Names still open their full scouting cards.';
     board.innerHTML = godView();
+    return;
+  }
+  if (state.tab === "weak") {
+    intro.innerHTML = 'Tonight\u2019s starters ranked most-exploitable first \u2014 a transparent damage score from HR/9, barrels and flyballs allowed, whiff-lessness, and tonight\u2019s park and weather. Each card shows the pitch that bleeds, the batter side that hurts him, and the hitters from your boards best built to make him pay. Tap a target for his full scouting card.';
+    board.innerHTML = weakView();
     return;
   }
   if (state.tab === "lgame") {
@@ -1513,8 +1585,9 @@ document.addEventListener("click", function (e) {
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
-    state.day = el.dataset.day; state.open = null; state.pitch = null; state.arm = "sp"; state.game = "all"; state.genResult = null; state.liveData = null;
+    state.day = el.dataset.day; state.open = null; state.pitch = null; state.arm = "sp"; state.game = "all"; state.genResult = null; state.liveData = null; delete state.weak[el.dataset.day];
     if (state.tab === "live" && !state.demo) loadLive();
+    if (state.tab === "weak" && !state.demo) loadWeak();
     if (state.god && !state.demo && !state.godData[state.day]) loadGod();
     if (state.demo && state.day === "tomorrow") {
       renderDaybar();
@@ -1558,12 +1631,15 @@ document.addEventListener("click", function (e) {
     state.tab = el.dataset.tab; state.open = null; state.pitch = null; state.arm = "sp"; state.openClip = null;
     if (state.tab === "live" && !state.demo) loadLive();
     if (state.tab === "lgame" && !state.demo && state.game !== "all") loadGameday(state.game);
+    if (state.tab === "weak" && !state.demo) loadWeak();
     state.gdSide = null;
     render(); return;
   }
   if (el.dataset.game) {
     state.game = el.dataset.game; state.open = null; state.pitch = null; state.arm = "sp";
     if (state.tab === "lgame" && !state.demo && state.game !== "all") loadGameday(state.game);
+    if (state.tab === "weak" && !state.demo) loadWeak();
+    state.gdSide = null;
     render(); return;
   }
   if (el.dataset.sort) {

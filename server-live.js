@@ -116,11 +116,28 @@ async function savantRowsRaw(playerId, playerType) {
   }));
 }
 /* small cached packs (a few KB each) */
+/* damage a pitcher has allowed, per pitch and overall (from his rows) */
+function pitcherDamage(rows) {
+  const ab = {}, tb = {}, hrpt = {};
+  let hr = 0;
+  rows.forEach((r) => {
+    if (!r.pitch_type) return;
+    if (AB_END.has(r.events)) {
+      ab[r.pitch_type] = (ab[r.pitch_type] || 0) + 1;
+      tb[r.pitch_type] = (tb[r.pitch_type] || 0) + (TB[r.events] || 0);
+    }
+    if (r.events === "home_run") { hrpt[r.pitch_type] = (hrpt[r.pitch_type] || 0) + 1; hr++; }
+  });
+  const vs = {};
+  Object.keys(ab).forEach((pt) => { if (ab[pt] >= 15) vs[pt] = +(tb[pt] / ab[pt]).toFixed(3); });
+  return { vsPitchAllowed: vs, hrByPtAllowed: hrpt, hrAllowed: hr };
+}
+
 const batterPack = (id) => cached(`bpk:${id}`, 12 * H, async () =>
   batterAggregates(await savantRowsRaw(id, "batter")));
 const pitcherPack = (id) => cached(`ppk:${id}`, 12 * H, async () => {
   const rows = await savantRowsRaw(id, "pitcher");
-  return { mix: arsenalFromRows(rows), swstr: swstrFromRows(rows), n: rows.length, bbByHand: battedByHand(rows, "stand") };
+  return { mix: arsenalFromRows(rows), swstr: swstrFromRows(rows), n: rows.length, bbByHand: battedByHand(rows, "stand"), dmg: pitcherDamage(rows) };
 });
 
 const person = (id) => cached(`person:${id}`, 240 * H, () =>
@@ -129,6 +146,19 @@ const person = (id) => cached(`person:${id}`, 240 * H, () =>
 const teamInfo = (id) => cached(`team:${id}`, 240 * H, () =>
   getJson(`${STATS}/teams/${id}`).then((j) => j.teams?.[0] || {}));
 
+function ipToDec(ip) {
+  const s = String(ip || "0"), parts = s.split(".");
+  return (+parts[0] || 0) + ((+parts[1] || 0) / 3);
+}
+const seasonPitching = (id) => cached(`sp2:${id}`, 6 * H, async () => {
+  const j = await getJson(`${STATS}/people/${id}/stats?stats=season&group=pitching&season=${SEASON}`);
+  const s = j.stats?.[0]?.splits?.[0]?.stat || {};
+  const ip = ipToDec(s.inningsPitched);
+  return {
+    ip: +ip.toFixed(1), hr: +(s.homeRuns || 0), era: s.era || "\u2014",
+    hr9: ip > 0 ? +((+(s.homeRuns || 0) * 9) / ip).toFixed(2) : null,
+  };
+});
 const seasonHitting = (id) => cached(`sh:${id}`, 6 * H, async () => {
   const j = await getJson(`${STATS}/people/${id}/stats?stats=season&group=hitting&season=${SEASON}`);
   return j.stats?.[0]?.splits?.[0]?.stat || null;
@@ -1269,6 +1299,103 @@ async function gamedayState(gamePk) {
 app.get("/api/gameday/:gamePk", async (req, res) => {
   try {
     res.json(await cached(`gd:${req.params.gamePk}`, 12 * 1000, () => gamedayState(req.params.gamePk)));
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+/* Pitchers' Weak Spots: tonight's starters ranked most-exploitable
+   first — damage profile + bleeder pitch + weak side + the opposing
+   batters from the board who best exploit each arm. */
+/* pick the opposing batters best matched to THIS pitcher's specific
+   weaknesses: his weak batter-side, his bleeder pitch, then raw power */
+function pickTargets(facing, bleed, weakSide) {
+  const scored = facing.map((p) => {
+    let fit = p.hrPct || 0;
+    const why = [];
+    if (weakSide) {
+      const sideChar = weakSide.side === "LHB" ? "L" : "R";
+      if (p.bats === sideChar || p.bats === "S") {
+        fit += 12;
+        why.push((p.bats === "S" ? "SHB" : weakSide.side) + " into his weak side");
+      }
+    }
+    if (bleed) {
+      const slg = p.vsPitch ? p.vsPitch[bleed.pt] : null;
+      if (slg != null && slg >= 0.55) { fit += 10; why.push(slg.toFixed(3).replace(/^0\./, ".") + " vs his bleeder"); }
+      const hrs = p.hrByPt ? p.hrByPt[bleed.pt] || 0 : 0;
+      if (hrs >= 3) { fit += 6; why.push(hrs + " HR off that pitch"); }
+    }
+    return { p, fit, why };
+  });
+  scored.sort((a, b) => b.fit - a.fit);
+  return scored.slice(0, 3).map((s) => ({
+    id: s.p.id, name: s.p.name, hrPct: s.p.hrPct,
+    star: !!s.p.suggested, cross: !!(s.p.suggested && s.p.numerHits && s.p.numerHits.length),
+    why: s.why.slice(0, 2).join(" \u00b7 "),
+  }));
+}
+
+app.get("/api/weak", async (req, res) => {
+  const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
+  const date = dayDate(day);
+  try {
+    const b = BOARDS[day];
+    if (!b || b.date !== date || !(b.players || []).length) return res.json({ warming: true, pitchers: [] });
+    const out = await cached(`weak:${date}`, 0.5 * H, async () => {
+      const byPk = {};
+      (b.games || []).forEach((g) => { byPk[g.gamePk] = g; });
+      const sps = {};
+      (b.players || []).forEach((p) => {
+        if (!p.sp || !p.sp.id) return;
+        if (!sps[p.sp.id]) sps[p.sp.id] = { id: p.sp.id, name: p.sp.name, hand: p.sp.hand, gamePk: p.gamePk, oppAbbr: p.teamAbbr, facing: [] };
+        sps[p.sp.id].facing.push(p);
+      });
+      const list = [];
+      for (const sp of Object.values(sps)) {
+        const g = byPk[sp.gamePk] || {};
+        let pk = null, spl = null, sea = null;
+        try { pk = await pitcherPack(sp.id); } catch { /* judge without statcast */ }
+        try { spl = await fullSplits("pitcher", sp.id); } catch { /* optional */ }
+        try { sea = await seasonPitching(sp.id); } catch { /* optional */ }
+        const bh = pk && pk.bbByHand ? pk.bbByHand : null;
+        const bbe = bh ? bh.L.bbe + bh.R.bbe : 0;
+        const brl = bh && bbe >= 30 ? Math.round(((bh.L.brl + bh.R.brl) / bbe) * 100) : null;
+        const fb = bh && bbe >= 30 ? Math.round(((bh.L.fb + bh.R.fb) / bbe) * 100) : null;
+        let bleed = null;
+        if (pk && pk.dmg) {
+          Object.keys(pk.dmg.vsPitchAllowed).forEach((pt) => {
+            const slg = pk.dmg.vsPitchAllowed[pt];
+            if (!bleed || slg > bleed.slg) bleed = { pt, slg, hr: pk.dmg.hrByPtAllowed[pt] || 0 };
+          });
+        }
+        let weakSide = null;
+        if (spl) {
+          const L = spl.vl, R = spl.vr;
+          const ops = (x) => (x && x.ops !== "\u2014" ? parseFloat(x.ops) : null);
+          const lo = ops(L), ro = ops(R);
+          if (lo != null || ro != null) {
+            weakSide = (lo || 0) >= (ro || 0)
+              ? { side: "LHB", ops: L.ops, hr: L.hr }
+              : { side: "RHB", ops: R.ops, hr: R.hr };
+          }
+        }
+        const hr9 = sea && sea.hr9 != null ? sea.hr9 : 1.1;
+        const swstr = pk && pk.swstr != null ? pk.swstr : 10;
+        const score = hr9 * 12 + (brl != null ? brl : 7) * 1.2 + (fb != null ? fb : 36) * 0.25
+          + Math.max(0, 11 - swstr) * 2.2 + ((g.carry || 1) - 1) * 30 + ((g.parkHR || 1) - 1) * 20;
+        const targets = pickTargets(sp.facing, bleed, weakSide);
+        list.push({
+          id: sp.id, name: sp.name, hand: sp.hand,
+          team: g.away === sp.oppAbbr ? g.home : g.away, opp: sp.oppAbbr,
+          park: g.park, carry: g.carry, gamePk: sp.gamePk,
+          hr9: sea ? sea.hr9 : null, hrAllowed: sea ? sea.hr : (pk && pk.dmg ? pk.dmg.hrAllowed : null),
+          era: sea ? sea.era : "\u2014", swstr: pk ? pk.swstr : null, brl, fb,
+          bleed, weakSide, targets, score: +score.toFixed(1),
+        });
+      }
+      list.sort((a, z) => z.score - a.score);
+      return list;
+    });
+    res.json({ date, pitchers: out });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
