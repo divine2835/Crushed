@@ -374,26 +374,36 @@ async function gameWeather(park, isoStart) {
   const key = `wx:${park}:${String(isoStart).slice(0, 13)}`;
   return cached(key, 1 * H, async () => {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${st.lat}&longitude=${st.lon}&hourly=temperature_2m,wind_speed_10m,wind_direction_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&forecast_days=3&timezone=UTC`;
-    const j = await getJson(url);
-    const times = j.hourly?.time || [];
-    if (!times.length) return null;
-    const target = Date.parse(isoStart);
-    let bi = 0, bd = Infinity;
-    times.forEach((t, i) => {
-      const d = Math.abs(Date.parse(t + ":00Z") - target);
-      if (d < bd) { bd = d; bi = i; }
-    });
-    const tempF = Math.round(j.hourly.temperature_2m[bi]);
-    const windMph = Math.round(j.hourly.wind_speed_10m[bi]);
-    const fromDeg = j.hourly.wind_direction_10m[bi];
-    const toDeg = (fromDeg + 180) % 360;
-    const relDeg = Math.round(((toDeg - st.cf) % 360 + 360) % 360);
-    const carryWind = Math.cos(relDeg * Math.PI / 180) * windMph; // + = out, - = in
-    const dirWord = relDeg < 22.5 || relDeg >= 337.5 ? "Out to CF"
-      : relDeg < 67.5 ? "Out to RF" : relDeg < 112.5 ? "L to R"
-      : relDeg < 157.5 ? "In from RF" : relDeg < 202.5 ? "In from CF"
-      : relDeg < 247.5 ? "In from LF" : relDeg < 292.5 ? "R to L" : "Out to LF";
-    return { roof: false, tempF, windMph, relDeg, label: windMph + " mph " + dirWord, carryWind };
+    let lastErr = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const j = await getJson(url);
+        const times = j.hourly?.time || [];
+        if (!times.length) throw new Error("empty forecast payload");
+        const target = Date.parse(isoStart);
+        let bi = 0, bd = Infinity;
+        times.forEach((t, i) => {
+          const d = Math.abs(Date.parse(t + ":00Z") - target);
+          if (d < bd) { bd = d; bi = i; }
+        });
+        const tempF = Math.round(j.hourly.temperature_2m[bi]);
+        const windMph = Math.round(j.hourly.wind_speed_10m[bi]);
+        const fromDeg = j.hourly.wind_direction_10m[bi];
+        const toDeg = (fromDeg + 180) % 360;
+        const relDeg = Math.round(((toDeg - st.cf) % 360 + 360) % 360);
+        const carryWind = Math.cos(relDeg * Math.PI / 180) * windMph; // + = out, - = in
+        const dirWord = relDeg < 22.5 || relDeg >= 337.5 ? "Out to CF"
+          : relDeg < 67.5 ? "Out to RF" : relDeg < 112.5 ? "L to R"
+          : relDeg < 157.5 ? "In from RF" : relDeg < 202.5 ? "In from CF"
+          : relDeg < 247.5 ? "In from LF" : relDeg < 292.5 ? "R to L" : "Out to LF";
+        return { roof: false, tempF, windMph, relDeg, label: windMph + " mph " + dirWord, carryWind };
+      } catch (e) {
+        lastErr = e;
+        if (attempt === 0) await sleep(1500); // one retry before giving up
+      }
+    }
+    console.error(`[weather] ${park}: ${lastErr ? lastErr.message : "unknown failure"}`);
+    throw lastErr || new Error("weather fetch failed");
   });
 }
 
@@ -965,6 +975,29 @@ function warmDay(day) {
 }
 async function warm() { await warmDay("today"); warmDay("tomorrow"); }
 
+/* heal boards whose outdoor games are missing weather (fetch failed at
+   assembly): retry every cycle and patch the board + carries in place */
+async function weatherBackfill() {
+  for (const day of ["today", "tomorrow"]) {
+    const b = BOARDS[day];
+    if (!b || !b.games) continue;
+    for (const g of b.games) {
+      if (g.weather || !STADIA[g.park] || ROOFED.has(g.park)) continue;
+      try {
+        const wx = await gameWeather(g.park, g.start || `${b.date}T23:00:00Z`);
+        if (!wx) continue;
+        g.weather = { tempF: wx.tempF, windMph: wx.windMph, relDeg: wx.relDeg, label: wx.roof ? "Roof" : wx.label };
+        const c = carryFactor(g.park, wx);
+        if (c != null) {
+          g.carry = c;
+          (b.players || []).forEach((p) => { if (String(p.gamePk) === String(g.gamePk)) p.carry = c; });
+        }
+        console.log(`[weather] backfilled ${g.park} (${day})`);
+      } catch { /* logged inside gameWeather; retried next cycle */ }
+    }
+  }
+}
+
 /* ---------------- routes ---------------- */
 app.get("/api/board", (req, res) => {
   const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
@@ -1387,6 +1420,8 @@ app.listen(PORT, () => {
   console.log(`Crushed live on :${PORT}`);
   loadLearn().then(() => gradeLearning());
   setInterval(gradeLearning, 60 * 60 * 1000); // grade finished days hourly
+  setTimeout(weatherBackfill, 90 * 1000);
+  setInterval(weatherBackfill, 10 * 60 * 1000); // heal missing outdoor weather
   warm();
   setInterval(warm, 30 * 60 * 1000); // lineups firm up through the afternoon
 });
