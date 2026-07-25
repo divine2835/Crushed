@@ -1255,6 +1255,7 @@ function fnumView() {
       (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") +
       (crossAligned(p) ? '<span class="star-num" title="Numerology convergence">\u2605</span>' : "") +
       '<span class="player-name">' + esc(p.name) + '</span>' + batTag(p) +
+      (p.zodiac ? '<span class="astro-sign astro-' + p.zodiac.band + '" style="font-size:9.5px;padding:1px 7px" title="' + esc(p.zodiac.element + " " + p.zodiac.sign + " \u2014 " + p.zodiac.reason) + '">' + esc(p.zodiac.sign) + '</span>' : "") +
       fnCell("LP", p.chart.lp, daySet) + fnCell("PY", p.chart.py, daySet) + fnCell("PM", p.chart.pm, daySet) +
       (p._fnAl ? '<span class="fn-al">' + p._fnAl + '/3 aligned</span>' : "") +
       '<span class="gen-hr">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "") + '</span></div>';
