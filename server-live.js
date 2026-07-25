@@ -606,6 +606,40 @@ function zodiacFor(birthDate) {
   return { sign, element, year: effYear, tier: rel.tier, band: rel.band, reason: rel.reason };
 }
 
+/* Full numerology chart: Life Path + Personal Year + Personal Month.
+   Personal Year uses the BIRTHDAY-FLIP school (calibrated against the
+   user's app: 11/15/1994 in July 2026 = PY 8, PM 6): the new personal
+   year begins on the player's birthday, so before it he still rides
+   the prior universal year. Masters held un-reduced when they appear
+   as components or totals, matching the rest of the system. */
+function chartPiece(total) {
+  const st = stepsOf(total);
+  const v = st[st.length - 1];
+  const master = st.some((s) => MASTERS.indexOf(s) !== -1);
+  return { v, total, master, path: pathStr(total) };
+}
+function masterKeep(n) { return MASTERS.indexOf(n) !== -1 ? n : reduceNum(n); }
+function chartFor(birthDate, dateISO) {
+  if (!birthDate) return null;
+  const bm = birthDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const tm = String(dateISO || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!bm || !tm) return null;
+  const by = +bm[1], bmo = +bm[2], bda = +bm[3];
+  const ty = +tm[1], tmo = +tm[2], tda = +tm[3];
+  const yearSum = (y) => String(y).split("").reduce((s, d) => s + +d, 0);
+  // Life Path: all-digit pool of YYYYMMDD — the exact math of the
+  // existing "Birthday life path" chip, so the two can never disagree
+  const lp = chartPiece(String(birthDate).slice(0, 10).replace(/-/g, "").split("").reduce((s, d) => s + +d, 0));
+  // Personal Year: birthday-flip — before the birthday, prior year rules
+  const hadBirthday = tmo > bmo || (tmo === bmo && tda >= bda);
+  const useYear = hadBirthday ? ty : ty - 1;
+  const py = chartPiece(masterKeep(bmo) + masterKeep(reduceNum(bda)) + masterKeep(reduceNum(yearSum(useYear))));
+  // Personal Month: PY (master preserved) + current calendar month
+  const pyVal = MASTERS.indexOf(py.total) !== -1 ? py.total : py.v;
+  const pm = chartPiece(pyVal + tmo);
+  return { lp, py, pm, pyBasisYear: useYear };
+}
+
 function numerologyHits(player, personInfo, splits, career, slotSp, dayNums) {
   const facts = [];
   const push = (label, value) => { if (value != null && !isNaN(value) && value > 0) facts.push({ label, value }); };
@@ -957,6 +991,7 @@ async function buildTeamSide(game, sideKey, box, carry, dayNums) {
         const slotSp = await slotSplits(f.id, player.slot).catch(() => null);
         player.numerHits = dayNums ? numerologyHits(player, p, splits, career, slotSp, dayNums) : [];
         player.zodiac = zodiacFor(p && p.birthDate);
+        player.chart = chartFor(p && p.birthDate, b.date);
       } catch { player.numerHits = []; }
       out.push(player);
     } catch (e) { console.error(`skip ${f.name}: ${e.message}`); }

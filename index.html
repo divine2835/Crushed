@@ -73,6 +73,13 @@ button { font-family: inherit; }
 .god-reason { font-size: 12.5px; color: #e8d5a8; font-style: italic; margin-top: 3px; line-height: 1.45; }
 .tab-astro { color: #57c7a0; border-color: rgba(87,199,160,0.5); }
 .tab-on.tab-astro { color: var(--ink); background: #57c7a0; border-color: #57c7a0; }
+.fn-banner { border: 1px solid rgba(201,162,232,0.5); border-radius: 10px; padding: 13px 15px; margin-bottom: 14px; background: linear-gradient(180deg, rgba(201,162,232,0.09), rgba(201,162,232,0.02)); }
+.fn-title { font-family: 'Oswald', sans-serif; font-size: 17px; letter-spacing: 0.12em; color: #c9a2e8; }
+.fn-sub { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); margin-top: 4px; line-height: 1.6; }
+.fn-cell { font-family: 'IBM Plex Mono', monospace; font-size: 11px; border: 1px solid var(--line); color: var(--dim); border-radius: 999px; padding: 2px 9px; }
+.fn-cell.num-flash { border-color: rgba(201,162,232,0.6); }
+.fn-m { font-size: 8px; vertical-align: super; color: var(--hr); margin-left: 1px; font-weight: 700; }
+.fn-al { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #c9a2e8; border: 1px solid rgba(201,162,232,0.45); border-radius: 999px; padding: 1px 8px; }
 .astro-banner { border: 1px solid rgba(87,199,160,0.5); border-radius: 10px; padding: 13px 15px; margin-bottom: 14px; background: linear-gradient(180deg, rgba(87,199,160,0.09), rgba(87,199,160,0.02)); }
 .astro-year { font-family: 'Oswald', sans-serif; font-size: 17px; letter-spacing: 0.12em; color: #57c7a0; }
 .astro-sub { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); margin-top: 4px; line-height: 1.6; }
@@ -293,6 +300,7 @@ footer p { font-size: 11px; }
     <button role="tab" id="tab-lgame" class="tab tab-live" data-tab="lgame">Live Game</button>
     <button role="tab" id="tab-weak" class="tab tab-weak" data-tab="weak">Weak Spots</button>
     <button role="tab" id="tab-astro" class="tab tab-astro" data-tab="astro">Eastern Astrology</button>
+    <button role="tab" id="tab-fnum" class="tab" data-tab="fnum">Full Numerology</button>
   </nav>
 
   <div class="filterbar" id="gamefilter"></div>
@@ -384,7 +392,7 @@ var DEMO = {
     { gamePk:106, away:"KC", home:"SEA", park:"T-Mobile Park", parkHR:0.86, carry:0.81, weather:{ tempF:66, windMph:9, relDeg:180, label:"9 mph In from CF" }, lineupsConfirmed:false }
   ],
   players: [
-    { id:1, name:"Kyle Schwarber", teamAbbr:"PHI", slot:2, gamePk:101, lineup:"confirmed", bats:"L", detail:true, suggested:true, zodiac:{sign:"Rooster",element:"Water",year:1993,tier:3,band:"neutral",reason:"neutral to the Horse year"},
+    { id:1, name:"Kyle Schwarber", teamAbbr:"PHI", slot:2, gamePk:101, lineup:"confirmed", bats:"L", detail:true, suggested:true, zodiac:{sign:"Rooster",element:"Water",year:1993,tier:3,band:"neutral",reason:"neutral to the Horse year"}, chart:{lp:{v:3,total:30,master:false,path:"30 \u2192 3"},py:{v:9,total:9,master:false,path:"9"},pm:{v:7,total:16,master:false,path:"16 \u2192 7"}},
       tags:["Crushes top pitch","Barrels the mix","Zone overlap","Pull-heavy","Ownage","Carry night"], numerHits:[{label:"Bats 2nd",num:2},{label:"Next HR batting 2nd would be #11 (Master) \u2192 2",num:2},{label:"Next career HR would be #326 \u2192 11 (Master) \u2192 2",num:2},{label:"Wears #12 \u2192 3",num:3}],
       sp: PETERSON,
       penMix:[{pt:"FF",pct:46,velo:96.4},{pt:"SL",pct:27,velo:86.0},{pt:"SI",pct:15,velo:95.1},{pt:"CH",pct:12,velo:87.3}],
@@ -406,28 +414,28 @@ var DEMO = {
       vsPitch:{FF:0.671,SI:0.588,SL:0.402,CH:0.510,CU:0.333},
       hrByPt:{FF:14,SI:6,SL:4,CH:5,CU:1},
       spray: makeSpray(11,[{x:168,y:52,n:6,sx:28,sy:26,pitch:"FF",results:["home_run","home_run","double","home_run","field_out","home_run"]},{x:158,y:66,n:4,sx:30,sy:30,pitch:"SI",results:["home_run","double","field_out","home_run"]},{x:118,y:96,n:5,sx:44,sy:40,pitch:"SL",results:["field_out","single","field_out","double","field_out"]},{x:150,y:80,n:3,sx:34,sy:30,pitch:"CH",results:["home_run","field_out","single"]}]) },
-    { id:7, name:"Trea Turner", teamAbbr:"PHI", slot:1, gamePk:101, lineup:"confirmed", bats:"R", detail:false, suggested:false, zodiac:{sign:"Rooster",element:"Water",year:1993,tier:3,band:"neutral",reason:"neutral to the Horse year"},
+    { id:7, name:"Trea Turner", teamAbbr:"PHI", slot:1, gamePk:101, lineup:"confirmed", bats:"R", detail:false, suggested:false, zodiac:{sign:"Rooster",element:"Water",year:1993,tier:3,band:"neutral",reason:"neutral to the Horse year"}, chart:{lp:{v:4,total:31,master:false,path:"31 \u2192 4"},py:{v:1,total:10,master:false,path:"10 \u2192 1"},pm:{v:8,total:8,master:false,path:"8"}},
       tags:[],
       sp: PETERSON,
       hrPct:14.8, xRbi:0.53, rbiPct:41, settersObp:null, runnersPA:0.31, parkHR:1.06, carry:1.42,
       season:{hr:12,pa:398,rbi:49,g:93},
       bvp:{ab:21,h:6,hr:1,bb:2,so:4,avg:".286",slg:".429"},
       zones:null, vsPitch:null, spray:null },
-    { id:8, name:"Francisco Lindor", teamAbbr:"NYM", slot:1, gamePk:101, lineup:"confirmed", bats:"S", detail:false, suggested:false, zodiac:{sign:"Rooster",element:"Water",year:1993,tier:3,band:"neutral",reason:"neutral to the Horse year"},
+    { id:8, name:"Francisco Lindor", teamAbbr:"NYM", slot:1, gamePk:101, lineup:"confirmed", bats:"S", detail:false, suggested:false, zodiac:{sign:"Rooster",element:"Water",year:1993,tier:3,band:"neutral",reason:"neutral to the Horse year"}, chart:{lp:{v:2,total:29,master:true,path:"29 \u2192 11 (Master) \u2192 2"},py:{v:7,total:25,master:false,path:"25 \u2192 7"},pm:{v:5,total:14,master:false,path:"14 \u2192 5"}},
       tags:[],
       sp: SANCHEZ,
       hrPct:16.2, xRbi:0.56, rbiPct:43, settersObp:null, runnersPA:0.31, parkHR:1.06, carry:1.42,
       season:{hr:17,pa:412,rbi:54,g:97},
       bvp:{ab:18,h:5,hr:1,bb:1,so:3,avg:".278",slg:".444"},
       zones:null, vsPitch:null, spray:null },
-    { id:9, name:"Pete Alonso", teamAbbr:"NYM", slot:3, gamePk:101, lineup:"confirmed", bats:"R", detail:false, suggested:true, zodiac:{sign:"Dog",element:"Wood",year:1994,tier:1,band:"friendly",reason:"trine ally of the Horse year"},
+    { id:9, name:"Pete Alonso", teamAbbr:"NYM", slot:3, gamePk:101, lineup:"confirmed", bats:"R", detail:false, suggested:true, zodiac:{sign:"Dog",element:"Wood",year:1994,tier:1,band:"friendly",reason:"trine ally of the Horse year"}, chart:{lp:{v:6,total:33,master:true,path:"33 (Master) \u2192 6"},py:{v:1,total:19,master:false,path:"19 \u2192 10 \u2192 1"},pm:{v:8,total:8,master:false,path:"8"}},
       tags:["Power form","Traffic ahead"], numerHits:[{label:"Wears #20 \u2192 2",num:2}],
       sp: SANCHEZ,
       hrPct:21.5, xRbi:0.69, rbiPct:50, settersObp:0.352, runnersPA:0.43, parkHR:1.06, carry:1.42,
       season:{hr:24,pa:405,rbi:68,g:96},
       bvp:{ab:13,h:3,hr:1,bb:2,so:4,avg:".231",slg:".538"},
       zones:null, vsPitch:null, spray:null },
-    { id:2, name:"Shohei Ohtani", teamAbbr:"LAD", slot:1, gamePk:102, lineup:"confirmed", bats:"L", detail:true, suggested:true, zodiac:{sign:"Dog",element:"Wood",year:1994,tier:1,band:"friendly",reason:"trine ally of the Horse year"},
+    { id:2, name:"Shohei Ohtani", teamAbbr:"LAD", slot:1, gamePk:102, lineup:"confirmed", bats:"L", detail:true, suggested:true, zodiac:{sign:"Dog",element:"Wood",year:1994,tier:1,band:"friendly",reason:"trine ally of the Horse year"}, chart:{lp:{v:8,total:35,master:false,path:"35 \u2192 8"},py:{v:4,total:13,master:false,path:"13 \u2192 4"},pm:{v:2,total:11,master:true,path:"11 (Master) \u2192 2"}},
       tags:["Crushes top pitch","Ownage","Hot bat","HR park","Carry night","Power form"], numerHits:[{label:"Bats 1st",num:1},{label:"Birthday life path 11 (Master) \u2192 2",num:2}],
       sp:{ name:"K. Freeland", hand:"L", mix:[{pt:"FF",pct:29,velo:91.2,zone:1,dist:{1:22,2:20,4:16,5:14,3:12,7:8,6:8}},{pt:"SL",pct:28,velo:83.4,zone:7,dist:{7:28,8:22,4:18,5:12,9:11,6:9}},{pt:"CH",pct:22,velo:84.8,zone:8,dist:{8:30,7:22,9:20,5:14,6:14}},{pt:"CU",pct:13,velo:76.5,zone:8,dist:{8:34,7:24,9:22,5:12}},{pt:"FC",pct:8,velo:87.9,zone:4,dist:{4:26,5:22,1:18,7:16,2:12}}] },
       penMix:[{pt:"FF",pct:41,velo:95.8},{pt:"SI",pct:22,velo:94.6},{pt:"SL",pct:21,velo:85.2},{pt:"ST",pct:16,velo:81.7}],
@@ -437,7 +445,7 @@ var DEMO = {
       zones:[0.690,0.755,0.620,0.802,0.744,0.531,0.577,0.488,0.402],
       vsPitch:{FF:0.702,SL:0.531,CH:0.489,CU:0.458,FC:0.560},
       spray: makeSpray(22,[{x:162,y:46,n:5,sx:26,sy:24,pitch:"FF",results:["home_run","home_run","home_run","double","home_run"]},{x:128,y:42,n:4,sx:30,sy:22,pitch:"SL",results:["home_run","double","home_run","field_out"]},{x:100,y:88,n:4,sx:36,sy:34,pitch:"CH",results:["single","double","field_out","single"]},{x:140,y:74,n:3,sx:30,sy:28,pitch:"CU",results:["double","field_out","home_run"]}]) },
-    { id:3, name:"Aaron Judge", teamAbbr:"NYY", slot:2, gamePk:103, lineup:"confirmed", bats:"R", detail:true, suggested:true, zodiac:{sign:"Monkey",element:"Water",year:1992,tier:3,band:"neutral",reason:"neutral to the Horse year"},
+    { id:3, name:"Aaron Judge", teamAbbr:"NYY", slot:2, gamePk:103, lineup:"confirmed", bats:"R", detail:true, suggested:true, zodiac:{sign:"Monkey",element:"Water",year:1992,tier:3,band:"neutral",reason:"neutral to the Horse year"}, chart:{lp:{v:6,total:33,master:true,path:"33 (Master) \u2192 6"},py:{v:4,total:13,master:false,path:"13 \u2192 4"},pm:{v:2,total:11,master:true,path:"11 (Master) \u2192 2"}},
       tags:["Crushes top pitch","Barrels the mix","Zone overlap","Pull-heavy","Ownage","Carry night"], numerHits:[{label:"Bats 2nd",num:2},{label:"Next HR batting 2nd would be #11 (Master) \u2192 2",num:2},{label:"Next career HR would be #326 \u2192 11 (Master) \u2192 2",num:2},{label:"Wears #12 \u2192 3",num:3}],
       sp:{ name:"B. Bello", hand:"R", mix:[{pt:"SI",pct:36,velo:94.7,zone:6,dist:{6:26,9:20,5:16,3:14,8:12,2:12}},{pt:"CH",pct:26,velo:87.1,zone:9,dist:{9:30,8:24,6:20,5:12,7:14}},{pt:"SL",pct:21,velo:85.9,zone:7,dist:{7:28,8:22,4:18,5:14,9:18}},{pt:"FF",pct:17,velo:95.3,zone:2,dist:{2:24,1:18,3:16,5:16,4:14,6:12}}] },
       penMix:[{pt:"FF",pct:44,velo:96.1},{pt:"ST",pct:24,velo:82.3},{pt:"SI",pct:18,velo:95.0},{pt:"CU",pct:14,velo:79.8}],
@@ -447,7 +455,7 @@ var DEMO = {
       zones:[0.512,0.798,0.845,0.560,0.812,0.744,0.402,0.598,0.505],
       vsPitch:{SI:0.645,CH:0.512,SL:0.577,FF:0.688},
       spray: makeSpray(33,[{x:96,y:48,n:5,sx:30,sy:26,pitch:"SI",results:["home_run","home_run","double","home_run","field_out"]},{x:152,y:54,n:5,sx:26,sy:26,pitch:"FF",results:["home_run","double","home_run","home_run","single"]},{x:120,y:92,n:4,sx:40,sy:34,pitch:"CH",results:["field_out","single","double","field_out"]},{x:88,y:78,n:3,sx:30,sy:28,pitch:"SL",results:["home_run","field_out","double"]}]) },
-    { id:4, name:"Yordan Alvarez", teamAbbr:"HOU", slot:3, gamePk:104, lineup:"confirmed", bats:"L", detail:true, suggested:true, zodiac:{sign:"Ox",element:"Fire",year:1997,tier:4,band:"enemy",reason:"the harm \u2014 enemy of the Horse year"},
+    { id:4, name:"Yordan Alvarez", teamAbbr:"HOU", slot:3, gamePk:104, lineup:"confirmed", bats:"L", detail:true, suggested:true, zodiac:{sign:"Ox",element:"Fire",year:1997,tier:4,band:"enemy",reason:"the harm \u2014 enemy of the Horse year"}, chart:{lp:{v:5,total:41,master:false,path:"41 \u2192 5"},py:{v:7,total:16,master:false,path:"16 \u2192 7"},pm:{v:5,total:14,master:false,path:"14 \u2192 5"}},
       tags:["Ownage","Traffic ahead","Power form"], numerHits:[{label:"Next RBI would be #75 \u2192 3",num:3}],
       sp:{ name:"N. Eovaldi", hand:"R", mix:[{pt:"FF",pct:31,velo:95.6,zone:2,dist:{2:24,1:20,3:16,5:14,4:14,6:12}},{pt:"ST",pct:22,velo:81.9,zone:7,dist:{7:30,8:24,4:18,5:14,9:14}},{pt:"FC",pct:20,velo:89.4,zone:4,dist:{4:26,5:20,1:18,7:18,2:10,8:8}},{pt:"CU",pct:16,velo:78.8,zone:8,dist:{8:34,7:24,9:20,5:12}},{pt:"CH",pct:11,velo:88.2,zone:9,dist:{9:30,8:26,6:22,5:12}}] },
       penMix:[{pt:"FF",pct:39,velo:96.8},{pt:"SL",pct:30,velo:86.7},{pt:"SI",pct:19,velo:95.9},{pt:"CH",pct:12,velo:88.0}],
@@ -1224,6 +1232,36 @@ function loadWeak() {
     .catch(function () { state.weak[state.day] = { error: true }; })
     .finally(function () { state.weakLoading = false; if (state.tab === "weak") render(); });
 }
+function fnCell(lab, piece, daySet) {
+  if (!piece) return "";
+  var hit = daySet.indexOf(piece.v) !== -1;
+  return '<span class="fn-cell' + (hit ? " num-flash" : "") + '" title="' + esc(lab + ": " + piece.path) + '">' + lab + ' ' + piece.v + (piece.master ? '<span class="fn-m">M</span>' : "") + '</span>';
+}
+function fnumView() {
+  var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
+  var players = ((state.data && state.data.players) || []).filter(function (p) { return state.game === "all" || String(p.gamePk) === String(state.game); });
+  var withC = players.filter(function (p) { return p.chart; });
+  var banner = '<div class="fn-banner"><div class="fn-title">FULL NUMEROLOGY \u00b7 CHARTS VS THE DAY</div>' +
+    '<div class="fn-sub">Life Path from the full birth date (same math as the board chips) \u00b7 Personal Year flips on each player\u2019s birthday \u00b7 Personal Month = PY + calendar month \u00b7 masters held in every path (marked M, full path on hold) \u00b7 purple flash = matches one of the day\u2019s numbers</div></div>';
+  if (!withC.length) return banner + '<div class="loading">Charts arrive with the next board assembly \u2014 a couple minutes after this version\u2019s first deploy.</div>';
+  withC.forEach(function (p) {
+    p._fnAl = [p.chart.lp, p.chart.py, p.chart.pm].filter(function (x) { return x && daySet.indexOf(x.v) !== -1; }).length;
+  });
+  withC.sort(function (a, b) { return (b._fnAl - a._fnAl) || ((b.hrPct || 0) - (a.hrPct || 0)); });
+  return banner + withC.map(function (p, i) {
+    var out = '<div class="astro-row" data-row="' + p.id + '">' +
+      '<span class="astro-rank">' + (i + 1) + '</span>' +
+      luDot(p.lineup) +
+      (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") +
+      (crossAligned(p) ? '<span class="star-num" title="Numerology convergence">\u2605</span>' : "") +
+      '<span class="player-name">' + esc(p.name) + '</span>' + batTag(p) +
+      fnCell("LP", p.chart.lp, daySet) + fnCell("PY", p.chart.py, daySet) + fnCell("PM", p.chart.pm, daySet) +
+      (p._fnAl ? '<span class="fn-al">' + p._fnAl + '/3 aligned</span>' : "") +
+      '<span class="gen-hr">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "") + '</span></div>';
+    if (String(state.open) === String(p.id)) out += '<div class="gen-scout">' + scoutCard(p) + '</div>';
+    return out;
+  }).join("");
+}
 function astroView() {
   var players = ((state.data && state.data.players) || []).filter(function (p) { return state.game === "all" || String(p.gamePk) === String(state.game); });
   var withZ = players.filter(function (p) { return p.zodiac; });
@@ -1376,6 +1414,7 @@ function render() {
   document.getElementById("tab-lgame").className = "tab tab-live" + (state.tab === "lgame" ? " tab-on" : "");
   document.getElementById("tab-weak").className = "tab tab-weak" + (state.tab === "weak" ? " tab-on" : "");
   document.getElementById("tab-astro").className = "tab tab-astro" + (state.tab === "astro" ? " tab-on" : "");
+  document.getElementById("tab-fnum").className = "tab" + (state.tab === "fnum" ? " tab-on tab-num" : "");
   var intro = document.getElementById("intro");
   var board = document.getElementById("board");
   if (!state.data) { board.innerHTML = '<div class="loading">Syncing tonight\u2019s slate from Statcast…</div>'; return; }
@@ -1383,6 +1422,11 @@ function render() {
   if (state.god) {
     intro.innerHTML = 'GOD mode overrides the tabs while it\u2019s lit \u2014 tap the gold button again to return. Names still open their full scouting cards.';
     board.innerHTML = godView();
+    return;
+  }
+  if (state.tab === "fnum") {
+    intro.innerHTML = 'Every batter\u2019s full chart \u2014 Life Path, Personal Year (flipping on his birthday), and Personal Month \u2014 ranked by how many of the three align with the day\u2019s numbers, then by HR%. Flashing purple cells are live alignments; hold any cell for its full reduction path. Tap a name for his scouting card.';
+    board.innerHTML = fnumView();
     return;
   }
   if (state.tab === "astro") {
