@@ -63,6 +63,8 @@ button { font-family: inherit; }
 .god-on { color: var(--ink); border-color: #f2b134; background: linear-gradient(90deg, #f2b134, #ffe08a, #f2b134); background-size: 200% 100%; animation: godsheen 2.2s linear infinite, godpulse 1.6s ease-in-out infinite; }
 @keyframes godsheen { 0% { background-position: 0 0; } 100% { background-position: 200% 0; } }
 @keyframes godpulse { 0%, 100% { box-shadow: 0 0 8px rgba(242,177,52,0.35); } 50% { box-shadow: 0 0 24px rgba(242,177,52,0.8); } }
+.ops-btn { border-color: rgba(232,227,216,0.55); color: var(--chalk); }
+.ops-on { color: var(--ink); border-color: #e8e3d8; background: linear-gradient(90deg, #cfc9bc, #f2eee4, #cfc9bc); background-size: 200% 100%; animation: godsheen 2.2s linear infinite; box-shadow: 0 0 14px rgba(232,227,216,0.4); }
 .god-head { border: 1px solid rgba(242,177,52,0.6); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; background: linear-gradient(180deg, rgba(242,177,52,0.10), rgba(242,177,52,0.02)); }
 .god-title { font-family: 'Oswald', sans-serif; font-size: 18px; letter-spacing: 0.14em; color: var(--hr); }
 .god-sub { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); margin-top: 4px; }
@@ -397,7 +399,7 @@ var DEMO = {
       sp: PETERSON,
       penMix:[{pt:"FF",pct:46,velo:96.4},{pt:"SL",pct:27,velo:86.0},{pt:"SI",pct:15,velo:95.1},{pt:"CH",pct:12,velo:87.3}],
       hrPct:31.4, xRbi:0.74, rbiPct:46, settersObp:0.344, runnersPA:0.38, parkHR:1.06, carry:1.42,
-      season:{hr:32,pa:390,rbi:71,g:96},
+      season:{hr:32,pa:390,rbi:71,g:96,obp:".385",slg:".595"},
       bvp:{ab:27,h:9,hr:4,bb:5,so:8,avg:".333",slg:".815"},
       bSplits:{ vl:{pa:112,ab:98,h:26,hr:8,rbi:19,bb:12,so:31,avg:".265",obp:".348",slg:".622",ops:".970",fbPct:44,brlPct:16}, vr:{pa:278,ab:240,h:66,hr:24,rbi:52,bb:34,so:71,avg:".275",obp:".365",slg:".637",ops:"1.002",fbPct:41,brlPct:14} },
       recent:{ 7:{g:7,pa:31,hr:4,rbi:9,h:9,xbh:6,bb:5,so:8,avg:".346",obp:".452",slg:".885",ops:"1.337"}, 15:{g:15,pa:66,hr:7,rbi:16,h:17,xbh:10,bb:9,so:18,avg:".298",obp:".394",slg:".702",ops:"1.096"}, 30:{g:30,pa:131,hr:12,rbi:28,h:31,xbh:18,bb:17,so:36,avg:".277",obp:".366",slg:".634",ops:"1.000"},
@@ -418,21 +420,21 @@ var DEMO = {
       tags:[],
       sp: PETERSON,
       hrPct:14.8, xRbi:0.53, rbiPct:41, settersObp:null, runnersPA:0.31, parkHR:1.06, carry:1.42,
-      season:{hr:12,pa:398,rbi:49,g:93},
+      season:{hr:12,pa:398,rbi:49,g:93,obp:".352",slg:".442"},
       bvp:{ab:21,h:6,hr:1,bb:2,so:4,avg:".286",slg:".429"},
       zones:null, vsPitch:null, spray:null },
     { id:8, name:"Francisco Lindor", teamAbbr:"NYM", slot:1, gamePk:101, lineup:"confirmed", bats:"S", detail:false, suggested:false, zodiac:{sign:"Rooster",element:"Water",year:1993,tier:3,band:"neutral",reason:"neutral to the Horse year"}, chart:{lp:{v:2,total:29,master:true,path:"29 \u2192 11 (Master) \u2192 2"},py:{v:7,total:25,master:false,path:"25 \u2192 7"},pm:{v:5,total:14,master:false,path:"14 \u2192 5"}},
       tags:[],
       sp: SANCHEZ,
       hrPct:16.2, xRbi:0.56, rbiPct:43, settersObp:null, runnersPA:0.31, parkHR:1.06, carry:1.42,
-      season:{hr:17,pa:412,rbi:54,g:97},
+      season:{hr:17,pa:412,rbi:54,g:97,obp:".344",slg:".468"},
       bvp:{ab:18,h:5,hr:1,bb:1,so:3,avg:".278",slg:".444"},
       zones:null, vsPitch:null, spray:null },
     { id:9, name:"Pete Alonso", teamAbbr:"NYM", slot:3, gamePk:101, lineup:"confirmed", bats:"R", detail:false, suggested:true, zodiac:{sign:"Dog",element:"Wood",year:1994,tier:1,band:"friendly",reason:"trine ally of the Horse year"}, chart:{lp:{v:6,total:33,master:true,path:"33 (Master) \u2192 6"},py:{v:1,total:19,master:false,path:"19 \u2192 10 \u2192 1"},pm:{v:8,total:8,master:false,path:"8"}},
       tags:["Power form","Traffic ahead"], numerHits:[{label:"Wears #20 \u2192 2",num:2}],
       sp: SANCHEZ,
       hrPct:21.5, xRbi:0.69, rbiPct:50, settersObp:0.352, runnersPA:0.43, parkHR:1.06, carry:1.42,
-      season:{hr:24,pa:405,rbi:68,g:96},
+      season:{hr:24,pa:405,rbi:68,g:96,obp:".361",slg:".512"},
       bvp:{ab:13,h:3,hr:1,bb:2,so:4,avg:".231",slg:".538"},
       zones:null, vsPitch:null, spray:null },
     { id:2, name:"Shohei Ohtani", teamAbbr:"LAD", slot:1, gamePk:102, lineup:"confirmed", bats:"L", detail:true, suggested:true, zodiac:{sign:"Dog",element:"Wood",year:1994,tier:1,band:"friendly",reason:"trine ally of the Horse year"}, chart:{lp:{v:8,total:35,master:false,path:"35 \u2192 8"},py:{v:4,total:13,master:false,path:"13 \u2192 4"},pm:{v:2,total:11,master:true,path:"11 (Master) \u2192 2"}},
@@ -440,7 +442,7 @@ var DEMO = {
       sp:{ name:"K. Freeland", hand:"L", mix:[{pt:"FF",pct:29,velo:91.2,zone:1,dist:{1:22,2:20,4:16,5:14,3:12,7:8,6:8}},{pt:"SL",pct:28,velo:83.4,zone:7,dist:{7:28,8:22,4:18,5:12,9:11,6:9}},{pt:"CH",pct:22,velo:84.8,zone:8,dist:{8:30,7:22,9:20,5:14,6:14}},{pt:"CU",pct:13,velo:76.5,zone:8,dist:{8:34,7:24,9:22,5:12}},{pt:"FC",pct:8,velo:87.9,zone:4,dist:{4:26,5:22,1:18,7:16,2:12}}] },
       penMix:[{pt:"FF",pct:41,velo:95.8},{pt:"SI",pct:22,velo:94.6},{pt:"SL",pct:21,velo:85.2},{pt:"ST",pct:16,velo:81.7}],
       hrPct:29.7, xRbi:0.81, rbiPct:49, settersObp:0.301, runnersPA:0.34, parkHR:1.38, carry:1.61,
-      season:{hr:34,pa:410,rbi:78,g:97},
+      season:{hr:34,pa:410,rbi:78,g:97,obp:".402",slg:".638"},
       bvp:{ab:19,h:8,hr:3,bb:3,so:4,avg:".421",slg:".947"},
       zones:[0.690,0.755,0.620,0.802,0.744,0.531,0.577,0.488,0.402],
       vsPitch:{FF:0.702,SL:0.531,CH:0.489,CU:0.458,FC:0.560},
@@ -450,7 +452,7 @@ var DEMO = {
       sp:{ name:"B. Bello", hand:"R", mix:[{pt:"SI",pct:36,velo:94.7,zone:6,dist:{6:26,9:20,5:16,3:14,8:12,2:12}},{pt:"CH",pct:26,velo:87.1,zone:9,dist:{9:30,8:24,6:20,5:12,7:14}},{pt:"SL",pct:21,velo:85.9,zone:7,dist:{7:28,8:22,4:18,5:14,9:18}},{pt:"FF",pct:17,velo:95.3,zone:2,dist:{2:24,1:18,3:16,5:16,4:14,6:12}}] },
       penMix:[{pt:"FF",pct:44,velo:96.1},{pt:"ST",pct:24,velo:82.3},{pt:"SI",pct:18,velo:95.0},{pt:"CU",pct:14,velo:79.8}],
       hrPct:27.9, xRbi:0.72, rbiPct:45, settersObp:0.339, runnersPA:0.41, parkHR:1.03, carry:1.08,
-      season:{hr:33,pa:398,rbi:69,g:95},
+      season:{hr:33,pa:398,rbi:69,g:95,obp:".396",slg:".621"},
       bvp:{ab:22,h:7,hr:3,bb:6,so:7,avg:".318",slg:".773"},
       zones:[0.512,0.798,0.845,0.560,0.812,0.744,0.402,0.598,0.505],
       vsPitch:{SI:0.645,CH:0.512,SL:0.577,FF:0.688},
@@ -460,7 +462,7 @@ var DEMO = {
       sp:{ name:"N. Eovaldi", hand:"R", mix:[{pt:"FF",pct:31,velo:95.6,zone:2,dist:{2:24,1:20,3:16,5:14,4:14,6:12}},{pt:"ST",pct:22,velo:81.9,zone:7,dist:{7:30,8:24,4:18,5:14,9:14}},{pt:"FC",pct:20,velo:89.4,zone:4,dist:{4:26,5:20,1:18,7:18,2:10,8:8}},{pt:"CU",pct:16,velo:78.8,zone:8,dist:{8:34,7:24,9:20,5:12}},{pt:"CH",pct:11,velo:88.2,zone:9,dist:{9:30,8:26,6:22,5:12}}] },
       penMix:[{pt:"FF",pct:39,velo:96.8},{pt:"SL",pct:30,velo:86.7},{pt:"SI",pct:19,velo:95.9},{pt:"CH",pct:12,velo:88.0}],
       hrPct:22.1, xRbi:0.78, rbiPct:47, settersObp:0.355, runnersPA:0.47, parkHR:0.98, carry:1.00,
-      season:{hr:24,pa:360,rbi:74,g:88},
+      season:{hr:24,pa:360,rbi:74,g:88,obp:".368",slg:".548"},
       bvp:{ab:14,h:6,hr:2,bb:2,so:3,avg:".429",slg:".929"},
       zones:[0.655,0.720,0.588,0.744,0.690,0.512,0.598,0.455,0.377],
       vsPitch:{FF:0.630,ST:0.455,FC:0.598,CU:0.410,CH:0.522},
@@ -470,7 +472,7 @@ var DEMO = {
       sp:{ name:"S. Strider", hand:"R", mix:[{pt:"FF",pct:58,velo:97.4,zone:2,dist:{2:26,1:20,3:18,5:14,4:12,6:10}},{pt:"SL",pct:33,velo:86.8,zone:9,dist:{9:34,8:24,6:18,5:12,3:12}},{pt:"CH",pct:9,velo:88.9,zone:8,dist:{8:32,7:26,9:22,5:12}}] },
       penMix:[{pt:"FF",pct:43,velo:96.6},{pt:"SI",pct:23,velo:95.4},{pt:"SL",pct:22,velo:85.5},{pt:"CU",pct:12,velo:80.1}],
       hrPct:17.4, xRbi:0.55, rbiPct:37, settersObp:0.298, runnersPA:0.31, parkHR:1.04, carry:1.18,
-      season:{hr:18,pa:405,rbi:52,g:96},
+      season:{hr:18,pa:405,rbi:52,g:96,obp:".339",slg:".471"},
       bvp:{ab:11,h:2,hr:1,bb:1,so:6,avg:".182",slg:".455"},
       zones:[0.480,0.610,0.520,0.555,0.588,0.470,0.360,0.310,0.250],
       vsPitch:{FF:0.512,SL:0.388,CH:0.460},
@@ -489,7 +491,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -1365,6 +1367,37 @@ function weakView() {
     return out + '</div>';
   }).join("") || '<div class="loading">No starters in this game filter.</div>';
 }
+function opsView() {
+  var head = '<div class="god-head" style="border-color:rgba(232,227,216,0.5);background:linear-gradient(180deg,rgba(232,227,216,0.07),rgba(232,227,216,0.02))">' +
+    '<div class="god-title" style="color:var(--chalk)">\u25c8 OPS BOARD</div>' +
+    '<div class="god-sub">The slate\u2019s bats ranked purely by season OPS (100+ PA) \u2014 with every system\u2019s alignments riding alongside as reference: board stars, numerology count, chart alignment, sign of the year, ownage. A lens, not a model \u2014 no other tab\u2019s ranking is touched.</div></div>';
+  var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
+  var pool = ((state.data && state.data.players) || []).filter(function (p) {
+    if (state.game !== "all" && String(p.gamePk) !== String(state.game)) return false;
+    return p.season && p.season.pa >= 100 && p.season.obp && p.season.slg;
+  });
+  if (!pool.length) return head + '<div class="loading">No qualified bats on this filter yet \u2014 wait for the board.</div>';
+  pool.forEach(function (p) { p._ops = (parseFloat(p.season.obp) || 0) + (parseFloat(p.season.slg) || 0); });
+  pool.sort(function (a, b) { return b._ops - a._ops; });
+  return head + pool.map(function (p, i) {
+    var chartAl = 0;
+    if (p.chart) chartAl = [p.chart.lp, p.chart.py, p.chart.pm].filter(function (x) { return x && daySet.indexOf(x.v) !== -1; }).length;
+    var opsStr = p._ops >= 1 ? p._ops.toFixed(3) : p._ops.toFixed(3).replace(/^0\./, ".");
+    var out = '<div class="astro-row" data-row="' + p.id + '">' +
+      '<span class="astro-rank">' + (i + 1) + '</span>' +
+      luDot(p.lineup) +
+      (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") +
+      (crossAligned(p) ? '<span class="star-num" title="Numerology convergence">\u2605</span>' : "") +
+      '<span class="player-name">' + esc(p.name) + '</span>' + batTag(p) + ownMini(p) +
+      (p.zodiac ? '<span class="astro-sign astro-' + p.zodiac.band + '" style="font-size:9.5px;padding:1px 7px" title="' + esc(p.zodiac.element + " " + p.zodiac.sign + " \u2014 " + p.zodiac.reason) + '">' + esc(p.zodiac.sign) + '</span>' : "") +
+      (p.numerHits && p.numerHits.length ? '<span class="fn-al" title="Numerology alignments today">' + p.numerHits.length + ' aligned</span>' : "") +
+      (chartAl ? '<span class="fn-al" title="LP/PY/PM matching the day">' + chartAl + '/3 chart</span>' : "") +
+      '<span class="gen-hr" style="color:var(--chalk)" title="Season OPS">' + opsStr + '</span>' +
+      '<span class="mono dim" style="font-size:10px">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "% HR" : "") + '</span></div>';
+    if (String(state.open) === String(p.id)) out += '<div class="gen-scout">' + scoutCard(p) + '</div>';
+    return out;
+  }).join("");
+}
 function loadGod() {
   if (state.demo || state.godLoading) return;
   state.godLoading = true;
@@ -1403,7 +1436,8 @@ function renderDaybar() {
   document.getElementById("daybar").innerHTML =
     '<button class="fchip' + (state.day === "today" ? " fchip-on" : "") + '" data-day="today">Today</button>' +
     '<button class="fchip' + (state.day === "tomorrow" ? " fchip-on" : "") + '" data-day="tomorrow">Tomorrow</button>' +
-    '<button class="god-btn' + (state.god ? " god-on" : "") + '" data-god="1" aria-pressed="' + !!state.god + '">GOD</button>';
+    '<button class="god-btn' + (state.god ? " god-on" : "") + '" data-god="1" aria-pressed="' + !!state.god + '">GOD</button>' +
+    '<button class="god-btn ops-btn' + (state.ops ? " ops-on" : "") + '" data-ops="1" aria-pressed="' + !!state.ops + '">OPS</button>';
 }
 function render() {
   renderDaybar();
@@ -1420,6 +1454,11 @@ function render() {
   var board = document.getElementById("board");
   if (!state.data) { board.innerHTML = '<div class="loading">Syncing tonight\u2019s slate from Statcast…</div>'; return; }
   renderFilter();
+  if (state.ops && !state.god) {
+    intro.innerHTML = 'OPS mode overrides the tabs while it\u2019s lit \u2014 tap the button again to return. Pure production ranking with every alignment system stamped alongside; names open their full scouting cards.';
+    board.innerHTML = opsView();
+    return;
+  }
   if (state.god) {
     intro.innerHTML = 'GOD mode overrides the tabs while it\u2019s lit \u2014 tap the gold button again to return. Names still open their full scouting cards.';
     board.innerHTML = godView();
@@ -1717,7 +1756,7 @@ function loadPen(p) {
 
 /* ---------- events ---------- */
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-gdside],[data-wk],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-gdside],[data-wk],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -1749,8 +1788,12 @@ document.addEventListener("click", function (e) {
     state.open = null;
     render(); return;
   }
+  if (el.dataset.ops) {
+    state.ops = !state.ops; state.god = false; state.open = null;
+    render(); return;
+  }
   if (el.dataset.god) {
-    state.god = !state.god; state.open = null;
+    state.god = !state.god; state.ops = false; state.open = null;
     if (state.god && !state.demo && !state.godData[state.day]) loadGod();
     render(); return;
   }
