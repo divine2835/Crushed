@@ -932,10 +932,10 @@ async function buildTeamSide(game, sideKey, box, carry, dayNums) {
     id, slot: i + 1, name: boxSide.players[`ID${id}`]?.person?.fullName,
   }));
   let lineup = "confirmed";
-  if (!order.length) { order = await recentLineup(team.id); lineup = "projected"; }
+  if (!order.length) { order = await recentLineup(team.id).catch(() => []); lineup = "projected"; }
   if (!order.length || !oppSP) return [];
 
-  const spPerson = await person(oppSP.id);
+  const spPerson = await person(oppSP.id).catch(() => ({}));
   const tInfo = await teamInfo(team.id);
   const parkHR = PARK_HR[game.venue?.name] || 1.0;
   // NOTE: no Savant pulls during board assembly — the board is built
@@ -947,57 +947,64 @@ async function buildTeamSide(game, sideKey, box, carry, dayNums) {
 
   // every batter in the order is selectable; season stats for all
   const roster = [];
-  for (const o of order) {
-    try {
-      const s = await seasonHitting(o.id);
-      if (s && +s.plateAppearances >= 30) roster.push({ ...o, season: s });
-    } catch { /* skip */ }
+  for (let ri = 0; ri < order.length; ri += 4) {
+    const chunk = await Promise.all(order.slice(ri, ri + 4).map(async (o) => {
+      try {
+        const s = await seasonHitting(o.id);
+        return s && +s.plateAppearances >= 30 ? { ...o, season: s } : null;
+      } catch { return null; }
+    }));
+    chunk.forEach((r) => { if (r) roster.push(r); });
   }
   const out = [];
-  for (const f of roster) {
+  const buildOne = async (f) => {
+    const [p, rh, bvpRes, splits, career, slotSp] = await Promise.all([
+      person(f.id),
+      recentHitting(f.id).catch(() => null),
+      bvp(f.id, oppSP.id).catch(() => null),
+      handSplits(f.id).catch(() => ({})),
+      careerNums(f.id).catch(() => null),
+      slotSplits(f.id, f.slot).catch(() => null),
+    ]);
+    const agg = { vsPitch: null, zones: null, spray: null };
+    const ahead = order.filter((o) => o.slot < f.slot).slice(-2);
+    let settersObp = null;
+    if (ahead.length) {
+      const obps = (await Promise.all(ahead.map((a) => seasonHitting(a.id).catch(() => null))))
+        .filter((s) => s && s.obp).map((s) => +s.obp);
+      if (obps.length) settersObp = +(obps.reduce((x, y) => x + y, 0) / obps.length).toFixed(3);
+    }
+    const sc = score(f.season, f.slot, parkHR, settersObp, carry);
+    const player = {
+      id: f.id, name: f.name, slot: f.slot, lineup,
+      teamId: team.id, teamAbbr: tInfo.abbreviation || team.name,
+      gamePk: game.gamePk, oppTeamId: game.teams[oppKey].team.id,
+      bats: p.batSide?.code || "?", sp,
+      homeGame: sideKey === "home",
+      hot: rh && rh.pa >= THRESH.hotPa ? rh.slg : null,
+      hardHitPct: null, pullPct: null, barrelsByPt: null, hrByPt: null, vsHand: null,
+      season: { hr: +f.season.homeRuns, pa: +f.season.plateAppearances, rbi: +f.season.rbi, g: +f.season.gamesPlayed, obp: f.season.obp, slg: f.season.slg },
+      ...sc, parkHR, carry: carry != null ? carry : null,
+      bvp: bvpRes,
+      vsPitch: agg.vsPitch, zones: agg.zones, spray: agg.spray,
+      detail: false,
+    };
+    player.tags = tagsFor(player);
     try {
-      const p = await person(f.id);
-      const agg = { vsPitch: null, zones: null, spray: null };
-      const ahead = order.filter((o) => o.slot < f.slot).slice(-2);
-      let settersObp = null;
-      if (ahead.length) {
-        const obps = [];
-        for (const a of ahead) {
-          const s = await seasonHitting(a.id).catch(() => null);
-          if (s && s.obp) obps.push(+s.obp);
-        }
-        if (obps.length) settersObp = +(obps.reduce((x, y) => x + y, 0) / obps.length).toFixed(3);
-      }
-      const rh = await recentHitting(f.id).catch(() => null);
-      const sc = score(f.season, f.slot, parkHR, settersObp, carry);
-      const player = {
-        id: f.id, name: f.name, slot: f.slot, lineup,
-        teamId: team.id, teamAbbr: tInfo.abbreviation || team.name,
-        gamePk: game.gamePk, oppTeamId: game.teams[oppKey].team.id,
-        bats: p.batSide?.code || "?", sp,
-        homeGame: sideKey === "home",
-        hot: rh && rh.pa >= THRESH.hotPa ? rh.slg : null,
-        hardHitPct: null, pullPct: null, barrelsByPt: null, hrByPt: null, vsHand: null,
-        season: { hr: +f.season.homeRuns, pa: +f.season.plateAppearances, rbi: +f.season.rbi, g: +f.season.gamesPlayed, obp: f.season.obp, slg: f.season.slg },
-        ...sc, parkHR, carry: carry != null ? carry : null,
-        bvp: await bvp(f.id, oppSP.id).catch(() => null),
-        vsPitch: agg.vsPitch, zones: agg.zones, spray: agg.spray,
-        detail: false,
-      };
-      player.tags = tagsFor(player);
-      try {
-        const splits = await handSplits(f.id).catch(() => ({}));
-        const career = await careerNums(f.id).catch(() => null);
-        const slotSp = await slotSplits(f.id, player.slot).catch(() => null);
-        player.numerHits = dayNums ? numerologyHits(player, p, splits, career, slotSp, dayNums) : [];
-        player.zodiac = zodiacFor(p && p.birthDate);
-        player.chart = chartFor(p && p.birthDate, dayNums && dayNums.date);
-      } catch (e) {
-        player.numerHits = player.numerHits || [];
-        console.error(`[chips] ${f.name}: ${e.message}`);
-      }
-      out.push(player);
-    } catch (e) { console.error(`skip ${f.name}: ${e.message}`); }
+      player.numerHits = dayNums ? numerologyHits(player, p, splits, career, slotSp, dayNums) : [];
+      player.zodiac = zodiacFor(p && p.birthDate);
+      player.chart = chartFor(p && p.birthDate, dayNums && dayNums.date);
+    } catch (e) {
+      player.numerHits = player.numerHits || [];
+      console.error(`[chips] ${f.name}: ${e.message}`);
+    }
+    return player;
+  };
+  for (let bi = 0; bi < roster.length; bi += 4) {
+    const built = await Promise.all(roster.slice(bi, bi + 4).map((f) =>
+      buildOne(f).catch((e) => { console.error(`skip ${f.name}: ${e.message}`); return null; })
+    ));
+    built.forEach((pl) => { if (pl) out.push(pl); });
   }
   // provisional stars from MLB-API signals; refined after Savant enrichment
   out.slice().sort((a, b) => starScore(b) - starScore(a))
@@ -1011,11 +1018,15 @@ async function assembleBoard(date) {
   const games = sched.dates?.[0]?.games || [];
   const outGames = [], players = [];
   const dayNums = dayNumerology(date);
+  let gi = 0;
   for (const g of games) {
+    gi++;
     if (g.status?.abstractGameState === "Final") continue;
+    try {
+    console.log(`[assemble:${date}] game ${gi}/${games.length} \u00b7 ${g.gamePk}`);
     const box = await boxscore(g.gamePk).catch(() => ({ teams: { away: { players: {} }, home: { players: {} } } }));
-    const awayInfo = await teamInfo(g.teams.away.team.id);
-    const homeInfo = await teamInfo(g.teams.home.team.id);
+    const awayInfo = await teamInfo(g.teams.away.team.id).catch(() => ({}));
+    const homeInfo = await teamInfo(g.teams.home.team.id).catch(() => ({}));
     const wx = await gameWeather(g.venue?.name, g.gameDate).catch(() => null);
     const carry = carryFactor(g.venue?.name, wx);
     outGames.push({
@@ -1030,6 +1041,7 @@ async function assembleBoard(date) {
     });
     players.push(...(await buildTeamSide(g, "away", box, carry, dayNums)));
     players.push(...(await buildTeamSide(g, "home", box, carry, dayNums)));
+    } catch (e) { console.error(`[assemble:${date}] skip game ${g.gamePk}: ${e.message}`); }
   }
   return { date, generatedAt: new Date().toISOString(),
     numerology: dayNums,
