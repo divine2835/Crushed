@@ -991,8 +991,11 @@ async function buildTeamSide(game, sideKey, box, carry, dayNums) {
         const slotSp = await slotSplits(f.id, player.slot).catch(() => null);
         player.numerHits = dayNums ? numerologyHits(player, p, splits, career, slotSp, dayNums) : [];
         player.zodiac = zodiacFor(p && p.birthDate);
-        player.chart = chartFor(p && p.birthDate, b.date);
-      } catch { player.numerHits = []; }
+        player.chart = chartFor(p && p.birthDate, dayNums && dayNums.date);
+      } catch (e) {
+        player.numerHits = player.numerHits || [];
+        console.error(`[chips] ${f.name}: ${e.message}`);
+      }
       out.push(player);
     } catch (e) { console.error(`skip ${f.name}: ${e.message}`); }
   }
@@ -1043,6 +1046,11 @@ async function assembleBoard(date) {
 async function enrichDay(day) {
   const b = BOARDS[day];
   if (!b || !b.players.length) return;
+  if (b._enriching) return;
+  b._enriching = true;
+  try { await enrichDayInner(day, b); } finally { b._enriching = false; }
+}
+async function enrichDayInner(day, b) {
   const byTeam = {};
   b.players.forEach((p) => {
     const k = p.gamePk + ":" + p.teamId;
@@ -1086,7 +1094,7 @@ function warmDay(day) {
     .then((b) => {
       BOARDS[day] = b;
       console.log(`[warm:${day}] board ready: ${b.players.length} players, ${b.games.length} games`);
-      return enrichDay(day);
+      enrichDay(day).catch((e) => console.error(`[enrich:${day}] failed:`, e.message)); // background
     })
     .catch((e) => console.error(`[warm:${day}] failed:`, e.message))
     .finally(() => { assembling[day] = null; });
