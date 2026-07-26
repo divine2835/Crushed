@@ -510,7 +510,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -1388,17 +1388,46 @@ function weakView() {
     return out + '</div>';
   }).join("") || '<div class="loading">No starters in this game filter.</div>';
 }
+function loadOps25() {
+  if (state.demo || state.ops25Loading) return;
+  if (Object.prototype.hasOwnProperty.call(state.ops25, state.day)) return;
+  state.ops25Loading = true;
+  fetch(apiBase + "/api/ops25?day=" + state.day)
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (j) { state.ops25[state.day] = j.warming ? { warming: true } : { players: j.players || [] }; })
+    .catch(function () { state.ops25[state.day] = { error: true }; })
+    .finally(function () { state.ops25Loading = false; if (state.ops) render(); });
+}
 function opsView() {
+  var isL25 = state.opsWin === "l25";
   var head = '<div class="god-head" style="border-color:rgba(232,227,216,0.5);background:linear-gradient(180deg,rgba(232,227,216,0.07),rgba(232,227,216,0.02))">' +
     '<div class="god-title" style="color:var(--chalk)">\u25c8 OPS BOARD</div>' +
-    '<div class="god-sub">The slate\u2019s bats ranked purely by season OPS (100+ PA) \u2014 with every system\u2019s alignments riding alongside as reference: board stars, numerology count, chart alignment, sign of the year, ownage. A lens, not a model \u2014 no other tab\u2019s ranking is touched.</div></div>';
+    '<div class="god-sub">' + (isL25
+      ? 'The slate\u2019s bats ranked by OPS over their LAST 25 GAMES \u2014 the hot-hand lens \u2014 with every system\u2019s alignments riding alongside. Same badges, same scouting cards; only the window changes.'
+      : 'The slate\u2019s bats ranked purely by season OPS (100+ PA) \u2014 with every system\u2019s alignments riding alongside as reference: board stars, numerology count, chart alignment, sign of the year, ownage. A lens, not a model \u2014 no other tab\u2019s ranking is touched.') + '</div>' +
+    '<div class="arm-toggle" style="margin-top:9px">' +
+    '<button class="arm' + (!isL25 ? " arm-on" : "") + '" data-opswin="season">Season</button>' +
+    '<button class="arm' + (isL25 ? " arm-on" : "") + '" data-opswin="l25">Last 25</button></div></div>';
   var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
   var pool = ((state.data && state.data.players) || []).filter(function (p) {
     if (state.game !== "all" && String(p.gamePk) !== String(state.game)) return false;
     return p.season && p.season.pa >= 100 && p.season.obp && p.season.slg;
   });
   if (!pool.length) return head + '<div class="loading">No qualified bats on this filter yet \u2014 wait for the board.</div>';
-  pool.forEach(function (p) { p._ops = (parseFloat(p.season.obp) || 0) + (parseFloat(p.season.slg) || 0); });
+  if (isL25) {
+    if (state.demo) return head + '<div class="loading">Last-25 rankings compute on the live server \u2014 season view works everywhere.</div>';
+    var d25 = state.ops25[state.day];
+    if (!d25 || state.ops25Loading) return head + '<div class="loading">Averaging every bat\u2019s last 25 games\u2026 first build takes a minute, cached after.</div>';
+    if (d25.warming) return head + '<div class="loading">The board is still assembling \u2014 flip back in a couple minutes.</div>';
+    if (d25.error) return head + '<div class="loading">Couldn\u2019t build the window \u2014 toggle away and back to retry.</div>';
+    var byId25 = {};
+    d25.players.forEach(function (r) { byId25[r.id] = r; });
+    pool = pool.filter(function (p) { return byId25[p.id]; });
+    pool.forEach(function (p) { p._ops = byId25[p.id].ops; });
+    if (!pool.length) return head + '<div class="loading">No last-25 windows built yet for this filter.</div>';
+  } else {
+    pool.forEach(function (p) { p._ops = (parseFloat(p.season.obp) || 0) + (parseFloat(p.season.slg) || 0); });
+  }
   pool.sort(function (a, b) { return b._ops - a._ops; });
   return head + pool.map(function (p, i) {
     var chartAl = 0;
@@ -1413,7 +1442,7 @@ function opsView() {
       (p.zodiac ? '<span class="astro-sign astro-' + p.zodiac.band + '" style="font-size:9.5px;padding:1px 7px" title="' + esc(p.zodiac.element + " " + p.zodiac.sign + " \u2014 " + p.zodiac.reason) + '">' + esc(p.zodiac.sign) + '</span>' : "") +
       (p.numerHits && p.numerHits.length ? '<span class="fn-al" title="Numerology alignments today">' + p.numerHits.length + ' aligned</span>' : "") +
       (chartAl ? '<span class="fn-al" title="LP/PY/PM matching the day">' + chartAl + '/3 chart</span>' : "") +
-      '<span class="gen-hr" style="color:var(--chalk)" title="Season OPS">' + opsStr + '</span>' +
+      '<span class="gen-hr" style="color:var(--chalk)" title="' + (isL25 ? "OPS over his last 25 games" : "Season OPS") + '">' + opsStr + (isL25 ? '<span class="dim mono" style="font-size:9px"> L25</span>' : "") + '</span>' +
       '<span class="mono dim" style="font-size:10px">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "% HR" : "") + '</span></div>';
     if (String(state.open) === String(p.id)) out += '<div class="gen-scout">' + scoutCard(p) + '</div>';
     return out;
@@ -1868,11 +1897,11 @@ function loadPen(p) {
 
 /* ---------- events ---------- */
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
-    state.day = el.dataset.day; state.open = null; state.pitch = null; state.arm = "sp"; state.game = "all"; state.genResult = null; state.liveData = null; delete state.weak[el.dataset.day];
+    state.day = el.dataset.day; state.open = null; state.pitch = null; state.arm = "sp"; state.game = "all"; state.genResult = null; state.liveData = null; delete state.weak[el.dataset.day]; delete state.ops25[el.dataset.day];
     if (state.tab === "live" && !state.demo) loadLive();
     if (state.tab === "weak" && !state.demo) loadWeak();
     if (state.god && !state.demo && !state.godData[state.day]) loadGod();
@@ -1907,6 +1936,12 @@ document.addEventListener("click", function (e) {
   }
   if (el.dataset.ops) {
     state.ops = !state.ops; state.god = false; state.open = null;
+    if (state.ops && state.opsWin === "l25" && !state.demo) loadOps25();
+    render(); return;
+  }
+  if (el.dataset.opswin) {
+    state.opsWin = el.dataset.opswin; state.open = null;
+    if (state.opsWin === "l25" && !state.demo) loadOps25();
     render(); return;
   }
   if (el.dataset.god) {

@@ -1224,7 +1224,7 @@ const recentBox = (id) => cached(`rb:${id}`, 6 * H, async () => {
       hr: +x.homeRuns || 0, rbi: +x.rbi || 0, bb: +x.baseOnBalls || 0, so: +x.strikeOuts || 0,
     });
   }
-  return { 7: agg(7), 15: agg(15), 30: agg(30), games: perGame };
+  return { 7: agg(7), 15: agg(15), 25: agg(25), 30: agg(30), games: perGame };
 });
 /* full season splits: batter vs LHP/RHP, or pitcher vs LHB/RHB */
 const fullSplits = (type, id) => cached(`fs:${type}:${id}`, 6 * H, async () => {
@@ -1559,6 +1559,33 @@ const hrCalendar = (id) => cached(`hrcal:${id}`, 12 * H, async () => {
   }
   return hrCalFromEntries(entries, dayDate("today"));
 });
+/* Last-25-games OPS across the slate for the OPS mode toggle */
+app.get("/api/ops25", async (req, res) => {
+  const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
+  const date = dayDate(day);
+  try {
+    const b = BOARDS[day];
+    if (!b || b.date !== date || !(b.players || []).length) return res.json({ warming: true, players: [] });
+    const out = await cached(`ops25:${date}`, 0.75 * H, async () => {
+      const pool = (b.players || []).filter((p) => p.season && p.season.pa >= 100);
+      const list = [];
+      for (let i = 0; i < pool.length; i += 4) {
+        const chunk = await Promise.all(pool.slice(i, i + 4).map(async (p) => {
+          try {
+            const rb = await recentBox(p.id);
+            const w = rb && rb[25];
+            if (!w || w.ops === "\u2014") return null;
+            return { id: p.id, ops: parseFloat(w.ops), g: w.g, pa: w.pa, hr: w.hr };
+          } catch { return null; }
+        }));
+        chunk.forEach((r) => { if (r) list.push(r); });
+      }
+      return list;
+    });
+    res.json({ date, players: out });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 app.get("/api/hrcal/:id", async (req, res) => {
   try { res.json(await hrCalendar(req.params.id)); }
   catch (e) { res.status(502).json({ error: e.message }); }
