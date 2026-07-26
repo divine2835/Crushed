@@ -204,6 +204,7 @@ tbody td { padding: 11px 12px; border-top: 1px solid var(--line); vertical-align
 .row { cursor: pointer; }
 .row:hover { background: var(--panel); }
 .player { display: flex; flex-direction: column; }
+.face { float: right; width: 38px; height: 38px; border-radius: 50%; margin-left: 8px; background: rgba(255,255,255,0.04); flex: 0 0 auto; }
 .player-name { font-weight: 600; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
 .player-team { color: var(--dim); font-size: 11.5px; white-space: nowrap; }
 .star { color: var(--hr); font-size: 13px; }
@@ -546,6 +547,9 @@ function factorChip(c) {
   var cls = c >= 1.15 ? " chip-hot" : (c < 0.92 ? " chip-cold" : "");
   return '<span class="chip' + cls + '">' + Number(c).toFixed(2) + '×</span>';
 }
+function faceImg(id) {
+  return '<img class="face" loading="lazy" alt="" onerror="this.style.display=\'none\'" src="https://midfield.mlbstatic.com/v1/people/' + id + '/spots/60">';
+}
 function luDot(status) {
   var on = status === "confirmed";
   return '<span class="lu-dot ' + (on ? "lu-on" : "lu-proj") + '" title="' + (on ? "Lineup confirmed" : "Projected lineup") + '"></span>';
@@ -870,7 +874,7 @@ function sortVal(p, key) {
 function playerRow(p, cols) {
   var cells = cols.map(function (c) { return '<td>' + c.render(p) + '</td>'; }).join("");
   var html = '<tr class="row" data-row="' + p.id + '">' +
-    '<td><div class="player"><span class="player-name">' + luDot(p.lineup) + (p.suggested ? '<span class="star" title="Suggested play">★</span>' : "") + (crossAligned(p) ? '<span class="star-num" title="Also numerology-aligned today">★</span>' : "") + esc(p.name) + batTag(p) + ownMini(p) + '</span>' +
+    '<td>' + faceImg(p.id) + '<div class="player"><span class="player-name">' + luDot(p.lineup) + (p.suggested ? '<span class="star" title="Suggested play">★</span>' : "") + (crossAligned(p) ? '<span class="star-num" title="Also numerology-aligned today">★</span>' : "") + esc(p.name) + batTag(p) + ownMini(p) + '</span>' +
     '<span class="player-team">' + esc(p.teamAbbr) + ' · #' + p.slot + (p.sp ? ' · vs ' + esc(p.sp.name) + pitParen(p.sp) : "") + '</span></div></td>' + cells + '</tr>';
   if (String(state.open) === String(p.id)) {
     html += '<tr class="note-row"><td colspan="' + (cols.length + 1) + '">' + scoutCard(p) + '</td></tr>';
