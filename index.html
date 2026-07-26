@@ -1740,20 +1740,32 @@ function profilePanel(p) {
 }
 var MON_AB = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 var DOW_AB = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+function fnReduce(v) {
+  while (v > 9) { var s = 0; while (v > 0) { s += v % 10; v = (v / 10) | 0; } v = s; }
+  return v;
+}
+function hrStar(n, daySet) {
+  if (n == null || daySet.indexOf(fnReduce(n + 1)) === -1) return "";
+  return '<span class="star-num" title="Next HR here would be #' + (n + 1) + ' \u2014 aligns with the day\u2019s numbers">\u2605</span>';
+}
 function hrSnapPanel(p) {
+  var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
   var c = state.hrcal[p.id];
   if (state.demo) return '<div class="loading" style="padding:10px 0">HR milestones read career game logs on the live server.</div>';
   if (!c || state.hrcalLoading[p.id]) return '<div class="loading" style="padding:10px 0">Reading his career game logs\u2026 (cached after the first look)</div>';
   if (c.error) return '<div class="loading" style="padding:10px 0">Couldn\u2019t load the calendar \u2014 close and reopen to retry.</div>';
+  var bd = (state.data && ((state.data.numerology && state.data.numerology.date) || state.data.date)) || null;
+  var vMonth = bd ? +bd.slice(5, 7) : c.monthToday;
+  var vDow = bd ? new Date(bd + "T12:00:00Z").getUTCDay() : c.dowToday;
   var tiles = '<div class="hrs-tiles">' +
-    '<div class="hrs-tile"><div class="prof-lab">This Year</div><div class="hrs-big">' + c.thisYear + '</div></div>' +
-    '<div class="hrs-tile today"><div class="prof-lab">' + DOW_AB[c.dowToday] + 's</div><div class="hrs-big">' + (c.byDow[c.dowToday] || 0) + '</div></div>' +
-    '<div class="hrs-tile today"><div class="prof-lab">' + MON_AB[c.monthToday] + '</div><div class="hrs-big">' + (c.byMonth[c.monthToday] || 0) + '</div></div>' +
-    '<div class="hrs-tile"><div class="prof-lab">Career</div><div class="hrs-big">' + c.career + '</div></div></div>';
+    '<div class="hrs-tile"><div class="prof-lab">This Year</div><div class="hrs-big">' + c.thisYear + hrStar(c.thisYear, daySet) + '</div></div>' +
+    '<div class="hrs-tile today"><div class="prof-lab">' + DOW_AB[vDow] + 's</div><div class="hrs-big">' + (c.byDow[vDow] || 0) + hrStar(c.byDow[vDow] || 0, daySet) + '</div></div>' +
+    '<div class="hrs-tile today"><div class="prof-lab">' + MON_AB[vMonth] + '</div><div class="hrs-big">' + (c.byMonth[vMonth] || 0) + hrStar(c.byMonth[vMonth] || 0, daySet) + '</div></div>' +
+    '<div class="hrs-tile"><div class="prof-lab">Career</div><div class="hrs-big">' + c.career + hrStar(c.career, daySet) + '</div></div></div>';
   var base = Math.max(0, c.next - 10);
   var fillPct = Math.min(100, Math.max(0, ((c.career - base) / (c.next - base)) * 100));
   var mile = '<div class="gd-label">Career HR Milestone</div>' +
-    '<div style="font-family:IBM Plex Mono,monospace;font-size:13px;color:var(--chalk)"><span style="font-family:Oswald,sans-serif;font-size:22px;color:#c96f2e">' + c.career + '</span> <span style="color:var(--hr)">' + c.away + ' away from ' + c.next + '</span></div>' +
+    '<div style="font-family:IBM Plex Mono,monospace;font-size:13px;color:var(--chalk)"><span style="font-family:Oswald,sans-serif;font-size:22px;color:#c96f2e">' + c.career + '</span>' + hrStar(c.career, daySet) + '  <span style="color:var(--hr)">' + c.away + ' away from ' + c.next + '</span></div>' +
     '<div class="mile-bar"><div class="mile-fill" style="width:' + fillPct.toFixed(0) + '%"></div></div>' +
     '<div class="mono dim" style="display:flex;justify-content:space-between;font-size:10px"><span>' + base + '</span><span>' + c.next + '</span></div>';
   var moMax = 1, dwMax = 1;
@@ -1763,16 +1775,16 @@ function hrSnapPanel(p) {
   for (var m2 = 1; m2 <= 12; m2++) {
     var mv = c.byMonth[m2] || 0;
     if (!mv && (m2 < 3 || m2 > 10)) continue;
-    moRows += '<div class="hbar-row"><span class="hbar-lab">' + MON_AB[m2] + '</span><div class="hbar-track"><div class="hbar-fill" style="width:' + Math.round((mv / moMax) * 100) + '%"></div></div><span class="hbar-n">' + mv + '</span></div>';
+    moRows += '<div class="hbar-row"><span class="hbar-lab">' + MON_AB[m2] + '</span><div class="hbar-track"><div class="hbar-fill" style="width:' + Math.round((mv / moMax) * 100) + '%"></div></div><span class="hbar-n">' + mv + '</span>' + (m2 === vMonth ? hrStar(mv, daySet) : "") + '</div>';
   }
   var dwRows = "";
   for (var w2 = 0; w2 < 7; w2++) {
     var wv = c.byDow[w2] || 0;
-    dwRows += '<div class="hbar-row"><span class="hbar-lab">' + DOW_AB[w2] + '</span><div class="hbar-track"><div class="hbar-fill' + (w2 === c.dowToday ? " today" : "") + '" style="width:' + Math.round((wv / dwMax) * 100) + '%"></div></div><span class="hbar-n">' + wv + '</span></div>';
+    dwRows += '<div class="hbar-row"><span class="hbar-lab">' + DOW_AB[w2] + '</span><div class="hbar-track"><div class="hbar-fill' + (w2 === vDow ? " today" : "") + '" style="width:' + Math.round((wv / dwMax) * 100) + '%"></div></div><span class="hbar-n">' + wv + '</span>' + (w2 === vDow ? hrStar(wv, daySet) : "") + '</div>';
   }
   return '<div class="gd-label" style="margin-top:12px">\ud83c\udfc6 HR Snapshot</div>' + tiles + mile +
     '<div class="gd-label" style="margin-top:12px">Career Monthly HR Breakdown</div>' + moRows +
-    '<div class="gd-label" style="margin-top:12px">Career HR by Day of Week \u00b7 today in gold</div>' + dwRows;
+    '<div class="gd-label" style="margin-top:12px">Career HR by Day of Week \u00b7 ' + DOW_AB[vDow] + ' in gold</div>' + dwRows;
 }
 function loadHrcal(id) {
   if (state.demo || state.hrcalLoading[id] || state.hrcal[id]) return;
