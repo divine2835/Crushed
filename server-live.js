@@ -1546,9 +1546,16 @@ function hrCalFromEntries(entries, todayISO) {
   };
 }
 const hrCalendar = (id) => cached(`hrcal:${id}`, 12 * H, async () => {
+  // scan from the player's actual MLB debut year, not a guessed window —
+  // a fixed lookback silently amputates early seasons (the Goldschmidt bug)
+  let floor = SEASON - 25;
+  try {
+    const p = await person(id);
+    if (p && p.mlbDebutDate) floor = +String(p.mlbDebutDate).slice(0, 4);
+  } catch { /* fall back to the wide window */ }
   const entries = [];
   let empty = 0;
-  for (let y = SEASON; y >= SEASON - 14; y--) {
+  for (let y = SEASON; y >= floor; y--) {
     try {
       const j = await getJson(`${STATS}/people/${id}/stats?stats=gameLog&group=hitting&season=${y}`);
       const splits = j.stats?.[0]?.splits || [];
