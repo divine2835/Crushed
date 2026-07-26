@@ -934,7 +934,7 @@ function numerologyView(players) {
       return '<span class="numchip"><b>' + h.num + '</b>' + esc(h.label) + '</span>';
     }).join("");
     var out = '<tr class="row" data-row="' + p.id + '">' +
-      '<td><div class="player"><span class="player-name">' + luDot(p.lineup) + (crossAligned(p) ? '<span class="star-num" title="Also a suggested play on the HR/RBI boards">\u2605</span>' : "") + esc(p.name) + batTag(p) + ownMini(p) + '</span>' +
+      '<td>' + faceImg(p.id) + '<div class="player"><span class="player-name">' + luDot(p.lineup) + (crossAligned(p) ? '<span class="star-num" title="Also a suggested play on the HR/RBI boards">\u2605</span>' : "") + esc(p.name) + batTag(p) + ownMini(p) + '</span>' +
       '<span class="player-team">' + esc(p.teamAbbr) + ' \u00b7 #' + p.slot + (p.sp ? ' \u00b7 vs ' + esc(p.sp.name) + pitParen(p.sp) : "") + '</span></div></td>' +
       '<td><div class="numchips">' + chips + '</div></td></tr>';
     if (String(state.open) === String(p.id)) {
@@ -1285,7 +1285,7 @@ function fnumView() {
       (p.zodiac ? '<span class="astro-sign astro-' + p.zodiac.band + '" style="font-size:9.5px;padding:1px 7px" title="' + esc(p.zodiac.element + " " + p.zodiac.sign + " \u2014 " + p.zodiac.reason) + '">' + esc(p.zodiac.sign) + '</span>' : "") +
       fnCell("LP", p.chart.lp, daySet) + fnCell("PY", p.chart.py, daySet) + fnCell("PM", p.chart.pm, daySet) +
       (p._fnAl ? '<span class="fn-al">' + p._fnAl + '/3 aligned</span>' : "") +
-      '<span class="gen-hr">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "") + '</span></div>';
+      '<span class="gen-hr">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "") + '</span>' + faceImg(p.id) + '</div>';
     if (String(state.open) === String(p.id)) out += '<div class="gen-scout">' + scoutCard(p) + '</div>';
     return out;
   }).join("");
@@ -1310,7 +1310,7 @@ function astroView() {
       '<span class="player-name">' + esc(p.name) + '</span>' + batTag(p) +
       '<span class="astro-sign astro-' + z.band + '">' + esc(z.element + " " + z.sign) + '</span>' +
       '<span class="astro-reason">' + esc(z.reason) + '</span>' +
-      '<span class="gen-hr">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "") + '</span></div>';
+      '<span class="gen-hr">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "") + '</span>' + faceImg(p.id) + '</div>';
     if (String(state.open) === String(p.id)) html2 += '<div class="gen-scout">' + scoutCard(p) + '</div>';
   });
   return html2;
