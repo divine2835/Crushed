@@ -75,6 +75,24 @@ button { font-family: inherit; }
 .god-reason { font-size: 12.5px; color: #e8d5a8; font-style: italic; margin-top: 3px; line-height: 1.45; }
 .tab-astro { color: #57c7a0; border-color: rgba(87,199,160,0.5); }
 .tab-on.tab-astro { color: var(--ink); background: #57c7a0; border-color: #57c7a0; }
+.prof-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin: 10px 0; }
+.prof-tile { border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; text-align: center; }
+.prof-lab { font-family: 'Oswald', sans-serif; font-size: 9.5px; letter-spacing: 0.12em; color: var(--dim); text-transform: uppercase; }
+.prof-val { font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 600; color: var(--chalk); margin-top: 2px; }
+.prof-val.good { color: #4fc38a; }
+.prof-val.bad { color: #e0635a; }
+.hrs-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin: 10px 0; }
+.hrs-tile { border: 1px solid rgba(242,177,52,0.35); border-radius: 8px; padding: 8px 9px; text-align: center; background: rgba(242,177,52,0.04); }
+.hrs-big { font-family: 'Oswald', sans-serif; font-size: 20px; color: var(--hr); }
+.hrs-tile.today { border-color: var(--hr); background: rgba(242,177,52,0.1); }
+.mile-bar { height: 8px; border-radius: 999px; background: rgba(255,255,255,0.07); overflow: hidden; margin: 6px 0 2px; }
+.mile-fill { height: 100%; background: linear-gradient(90deg, #b3671f, var(--hr)); }
+.hbar-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+.hbar-lab { width: 32px; color: var(--dim); flex: 0 0 auto; }
+.hbar-track { flex: 1; height: 9px; border-radius: 999px; background: rgba(255,255,255,0.05); overflow: hidden; }
+.hbar-fill { height: 100%; background: #c96f2e; border-radius: 999px; }
+.hbar-fill.today { background: var(--hr); }
+.hbar-n { width: 24px; text-align: right; color: var(--chalk); flex: 0 0 auto; }
 .fn-banner { border: 1px solid rgba(201,162,232,0.5); border-radius: 10px; padding: 13px 15px; margin-bottom: 14px; background: linear-gradient(180deg, rgba(201,162,232,0.09), rgba(201,162,232,0.02)); }
 .fn-title { font-family: 'Oswald', sans-serif; font-size: 17px; letter-spacing: 0.12em; color: #c9a2e8; }
 .fn-sub { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); margin-top: 4px; line-height: 1.6; }
@@ -399,7 +417,7 @@ var DEMO = {
       sp: PETERSON,
       penMix:[{pt:"FF",pct:46,velo:96.4},{pt:"SL",pct:27,velo:86.0},{pt:"SI",pct:15,velo:95.1},{pt:"CH",pct:12,velo:87.3}],
       hrPct:31.4, xRbi:0.74, rbiPct:46, settersObp:0.344, runnersPA:0.38, parkHR:1.06, carry:1.42,
-      season:{hr:32,pa:390,rbi:71,g:96,obp:".385",slg:".595"},
+      season:{hr:32,pa:390,rbi:71,g:96,obp:".385",slg:".595",avg:".252",so:118,bb:52},
       bvp:{ab:27,h:9,hr:4,bb:5,so:8,avg:".333",slg:".815"},
       bSplits:{ vl:{pa:112,ab:98,h:26,hr:8,rbi:19,bb:12,so:31,avg:".265",obp:".348",slg:".622",ops:".970",fbPct:44,brlPct:16}, vr:{pa:278,ab:240,h:66,hr:24,rbi:52,bb:34,so:71,avg:".275",obp:".365",slg:".637",ops:"1.002",fbPct:41,brlPct:14} },
       recent:{ 7:{g:7,pa:31,hr:4,rbi:9,h:9,xbh:6,bb:5,so:8,avg:".346",obp:".452",slg:".885",ops:"1.337"}, 15:{g:15,pa:66,hr:7,rbi:16,h:17,xbh:10,bb:9,so:18,avg:".298",obp:".394",slg:".702",ops:"1.096"}, 30:{g:30,pa:131,hr:12,rbi:28,h:31,xbh:18,bb:17,so:36,avg:".277",obp:".366",slg:".634",ops:"1.000"},
@@ -415,6 +433,7 @@ var DEMO = {
       zones:[0.740,0.812,0.455,0.688,0.702,0.398,0.510,0.442,0.290],
       vsPitch:{FF:0.671,SI:0.588,SL:0.402,CH:0.510,CU:0.333},
       hrByPt:{FF:14,SI:6,SL:4,CH:5,CU:1},
+      avgEV:93.1, avgLA:16.2, gbPct:38, fbPct:44, brlPct:16.8,
       spray: makeSpray(11,[{x:168,y:52,n:6,sx:28,sy:26,pitch:"FF",results:["home_run","home_run","double","home_run","field_out","home_run"]},{x:158,y:66,n:4,sx:30,sy:30,pitch:"SI",results:["home_run","double","field_out","home_run"]},{x:118,y:96,n:5,sx:44,sy:40,pitch:"SL",results:["field_out","single","field_out","double","field_out"]},{x:150,y:80,n:3,sx:34,sy:30,pitch:"CH",results:["home_run","field_out","single"]}]) },
     { id:7, name:"Trea Turner", teamAbbr:"PHI", slot:1, gamePk:101, lineup:"confirmed", bats:"R", detail:false, suggested:false, zodiac:{sign:"Rooster",element:"Water",year:1993,tier:3,band:"neutral",reason:"neutral to the Horse year"}, chart:{lp:{v:4,total:31,master:false,path:"31 \u2192 4"},py:{v:1,total:10,master:false,path:"10 \u2192 1"},pm:{v:8,total:8,master:false,path:"8"}},
       tags:[],
@@ -491,7 +510,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -819,6 +838,8 @@ function scoutCard(p) {
     '<div class="note">' + noteFor(p) + '</div>' +
     tagsHtml +
     ownageStrip(p) +
+    '<div class="wk-toggle" data-prof="' + p.id + '">' + (String(state.profOpen) === String(p.id) ? "\u25b4 Hide season profile & HR milestones" : "\u25be Season profile & HR milestones") + '</div>' +
+    (String(state.profOpen) === String(p.id) ? '<div class="wk-exp">' + profilePanel(p) + hrSnapPanel(p) + '</div>' : "") +
     recentPanel(p) +
     '<div class="scout-grid">' +
     '<div class="scout-col">' + mixPanel(p, state.arm, state.pitch) + zoneMap(p, state.arm, state.pitch) + '</div>' +
@@ -1649,6 +1670,9 @@ function loadDetail(p) {
       p.pullPct = j.pullPct != null ? j.pullPct : null;
       p.barrelsByPt = j.barrelsByPt || null;
       p.hrByPt = j.hrByPt || null;
+      p.avgEV = j.avgEV != null ? j.avgEV : null; p.avgLA = j.avgLA != null ? j.avgLA : null;
+      p.gbPct = j.gbPct != null ? j.gbPct : null; p.fbPct = j.fbPct != null ? j.fbPct : null;
+      p.brlPct = j.brlPct != null ? j.brlPct : null;
       p.vsHand = j.vsHand || null;
       p.detail = true;
       p.detailFail = false;
@@ -1682,6 +1706,82 @@ function loadArsenal(p) {
     })
     .catch(function () { p.sp.mixFail = true; })
     .finally(function () { state.arsLoading[spId] = false; render(); });
+}
+function profTile(lab, val, cls) {
+  return '<div class="prof-tile"><div class="prof-lab">' + lab + '</div><div class="prof-val' + (cls ? " " + cls : "") + '">' + val + '</div></div>';
+}
+function profilePanel(p) {
+  var s = p.season || {};
+  var avg = s.avg != null ? parseFloat(s.avg) : null, slg = s.slg != null ? parseFloat(s.slg) : null, obp = s.obp != null ? parseFloat(s.obp) : null;
+  var iso = avg != null && slg != null ? slg - avg : null;
+  var kp = s.pa && s.so != null ? Math.round((s.so / s.pa) * 100) : null;
+  var bbp = s.pa && s.bb != null ? Math.round((s.bb / s.pa) * 100) : null;
+  var envPct = p.carry != null ? Math.round((p.carry - 1) * 100) : null;
+  var f3 = function (v) { return v == null ? "\u2014" : v.toFixed(3).replace(/^0\./, "."); };
+  var pc = function (v) { return v == null ? "\u2014" : v + "%"; };
+  return '<div class="prof-grid">' +
+    profTile("ISO", f3(iso), iso != null && iso >= 0.2 ? "good" : "") +
+    profTile("SLG", f3(slg), slg != null && slg >= 0.5 ? "good" : "") +
+    profTile("HR", s.hr != null ? s.hr : "\u2014", s.hr >= 20 ? "good" : "") +
+    profTile("OBP", f3(obp), obp != null && obp >= 0.36 ? "good" : "") +
+    profTile("K%", pc(kp), kp == null ? "" : kp >= 27 ? "bad" : kp <= 20 ? "good" : "") +
+    profTile("BB%", pc(bbp), bbp != null && bbp >= 10 ? "good" : "") +
+    profTile("Hard Hit%", pc(p.hardHitPct), p.hardHitPct >= 45 ? "good" : "") +
+    profTile("Barrel%", p.brlPct != null ? p.brlPct + "%" : "\u2014", p.brlPct >= 10 ? "good" : "") +
+    profTile("Exit Velo", p.avgEV != null ? p.avgEV + " mph" : "\u2014", p.avgEV >= 90 ? "good" : "") +
+    profTile("Launch Ang", p.avgLA != null ? p.avgLA + "\u00b0" : "\u2014", p.avgLA != null && p.avgLA >= 12 && p.avgLA <= 25 ? "good" : "") +
+    profTile("Pull%", pc(p.pullPct), p.pullPct >= 45 ? "good" : "") +
+    profTile("GB%", pc(p.gbPct), p.gbPct == null ? "" : p.gbPct >= 50 ? "bad" : p.gbPct <= 42 ? "good" : "") +
+    profTile("FB%", pc(p.fbPct), p.fbPct >= 38 ? "good" : "") +
+    profTile("Weather", envPct == null ? "\u2014" : (envPct >= 0 ? "+" : "") + envPct + "% HR Env", envPct == null ? "" : envPct > 0 ? "good" : envPct < 0 ? "bad" : "") +
+    profTile("HR%", p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "\u2014", p.hrPct >= 20 ? "good" : "") +
+    profTile("AVG", f3(avg), "") +
+    '</div>';
+}
+var MON_AB = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+var DOW_AB = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+function hrSnapPanel(p) {
+  var c = state.hrcal[p.id];
+  if (state.demo) return '<div class="loading" style="padding:10px 0">HR milestones read career game logs on the live server.</div>';
+  if (!c || state.hrcalLoading[p.id]) return '<div class="loading" style="padding:10px 0">Reading his career game logs\u2026 (cached after the first look)</div>';
+  if (c.error) return '<div class="loading" style="padding:10px 0">Couldn\u2019t load the calendar \u2014 close and reopen to retry.</div>';
+  var tiles = '<div class="hrs-tiles">' +
+    '<div class="hrs-tile"><div class="prof-lab">This Year</div><div class="hrs-big">' + c.thisYear + '</div></div>' +
+    '<div class="hrs-tile today"><div class="prof-lab">' + DOW_AB[c.dowToday] + 's</div><div class="hrs-big">' + (c.byDow[c.dowToday] || 0) + '</div></div>' +
+    '<div class="hrs-tile today"><div class="prof-lab">' + MON_AB[c.monthToday] + '</div><div class="hrs-big">' + (c.byMonth[c.monthToday] || 0) + '</div></div>' +
+    '<div class="hrs-tile"><div class="prof-lab">Career</div><div class="hrs-big">' + c.career + '</div></div></div>';
+  var base = Math.max(0, c.next - 10);
+  var fillPct = Math.min(100, Math.max(0, ((c.career - base) / (c.next - base)) * 100));
+  var mile = '<div class="gd-label">Career HR Milestone</div>' +
+    '<div style="font-family:IBM Plex Mono,monospace;font-size:13px;color:var(--chalk)"><span style="font-family:Oswald,sans-serif;font-size:22px;color:#c96f2e">' + c.career + '</span> <span style="color:var(--hr)">' + c.away + ' away from ' + c.next + '</span></div>' +
+    '<div class="mile-bar"><div class="mile-fill" style="width:' + fillPct.toFixed(0) + '%"></div></div>' +
+    '<div class="mono dim" style="display:flex;justify-content:space-between;font-size:10px"><span>' + base + '</span><span>' + c.next + '</span></div>';
+  var moMax = 1, dwMax = 1;
+  for (var m = 1; m <= 12; m++) if ((c.byMonth[m] || 0) > moMax) moMax = c.byMonth[m];
+  for (var w = 0; w < 7; w++) if ((c.byDow[w] || 0) > dwMax) dwMax = c.byDow[w];
+  var moRows = "";
+  for (var m2 = 1; m2 <= 12; m2++) {
+    var mv = c.byMonth[m2] || 0;
+    if (!mv && (m2 < 3 || m2 > 10)) continue;
+    moRows += '<div class="hbar-row"><span class="hbar-lab">' + MON_AB[m2] + '</span><div class="hbar-track"><div class="hbar-fill" style="width:' + Math.round((mv / moMax) * 100) + '%"></div></div><span class="hbar-n">' + mv + '</span></div>';
+  }
+  var dwRows = "";
+  for (var w2 = 0; w2 < 7; w2++) {
+    var wv = c.byDow[w2] || 0;
+    dwRows += '<div class="hbar-row"><span class="hbar-lab">' + DOW_AB[w2] + '</span><div class="hbar-track"><div class="hbar-fill' + (w2 === c.dowToday ? " today" : "") + '" style="width:' + Math.round((wv / dwMax) * 100) + '%"></div></div><span class="hbar-n">' + wv + '</span></div>';
+  }
+  return '<div class="gd-label" style="margin-top:12px">\ud83c\udfc6 HR Snapshot</div>' + tiles + mile +
+    '<div class="gd-label" style="margin-top:12px">Career Monthly HR Breakdown</div>' + moRows +
+    '<div class="gd-label" style="margin-top:12px">Career HR by Day of Week \u00b7 today in gold</div>' + dwRows;
+}
+function loadHrcal(id) {
+  if (state.demo || state.hrcalLoading[id] || state.hrcal[id]) return;
+  state.hrcalLoading[id] = true;
+  fetch(apiBase + "/api/hrcal/" + id)
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (j) { state.hrcal[id] = j; })
+    .catch(function () { state.hrcal[id] = { error: true }; })
+    .finally(function () { state.hrcalLoading[id] = false; render(); });
 }
 function recentPanel(p) {
   var data = state.demo ? p.recent : state.recent[p.id];
@@ -1756,7 +1856,7 @@ function loadPen(p) {
 
 /* ---------- events ---------- */
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-gdside],[data-wk],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -1783,6 +1883,11 @@ document.addEventListener("click", function (e) {
   }
   if (el.dataset.generate) { genCombo(state.genSize); state.open = null; render(); return; }
   if (el.dataset.gdside) { state.gdSide = el.dataset.gdside; state.open = null; render(); return; }
+  if (el.dataset.prof) {
+    state.profOpen = String(state.profOpen) === String(el.dataset.prof) ? null : el.dataset.prof;
+    if (state.profOpen && !state.demo) loadHrcal(state.profOpen);
+    render(); return;
+  }
   if (el.dataset.wk) {
     state.weakOpen = String(state.weakOpen) === String(el.dataset.wk) ? null : el.dataset.wk;
     state.open = null;

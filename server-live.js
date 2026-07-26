@@ -250,6 +250,7 @@ function batterAggregates(rows) {
   const vs = {}, z = {};
   const spray = [];
   let bbe = 0, hard = 0, pulled = 0;
+  let evSum = 0, evN = 0, laSum = 0, laN = 0, gb = 0, fb = 0, brlAll = 0;
   const bp = {}; // barrels / batted balls by pitch type
   const hrp = {}; // season HR count by pitch type
   const hand = { L: { ab: 0, tb: 0 }, R: { ab: 0, tb: 0 } };
@@ -279,6 +280,13 @@ function batterAggregates(rows) {
         const ang = Math.atan2(dx, dz) * 180 / Math.PI; // negative = LF side, positive = RF side
         if ((r.stand === "R" && ang <= -15) || (r.stand === "L" && ang >= 15)) pulled++;
       }
+      if (Number.isFinite(lsp)) { evSum += lsp; evN++; }
+      if (Number.isFinite(la)) {
+        laSum += la; laN++;
+        if (la < 10) gb++;
+        else if (la >= 25 && la <= 50) fb++;
+      }
+      if (isBarrel(lsp, la)) brlAll++;
       if (r.pitch_type) {
         bp[r.pitch_type] = bp[r.pitch_type] || { bbe: 0, barrels: 0 };
         bp[r.pitch_type].bbe++;
@@ -302,6 +310,11 @@ function batterAggregates(rows) {
     spray: spray.slice(0, 120).map(({ x, y, pt, ev }) => ({ x, y, pt, ev })),
     hardHitPct: bbe >= 20 ? Math.round((hard / bbe) * 100) : null,
     pullPct: bbe >= 20 ? Math.round((pulled / bbe) * 100) : null,
+    avgEV: evN >= 20 ? +(evSum / evN).toFixed(1) : null,
+    avgLA: laN >= 20 ? +(laSum / laN).toFixed(1) : null,
+    gbPct: laN >= 20 ? Math.round((gb / laN) * 100) : null,
+    fbPct: laN >= 20 ? Math.round((fb / laN) * 100) : null,
+    brlPct: bbe >= 20 ? +((brlAll / bbe) * 100).toFixed(1) : null,
     barrelsByPt: bp,
     hrByPt: hrp,
     bbByHand: battedByHand(rows, "p_throws"),
@@ -983,7 +996,7 @@ async function buildTeamSide(game, sideKey, box, carry, dayNums) {
       homeGame: sideKey === "home",
       hot: rh && rh.pa >= THRESH.hotPa ? rh.slg : null,
       hardHitPct: null, pullPct: null, barrelsByPt: null, hrByPt: null, vsHand: null,
-      season: { hr: +f.season.homeRuns, pa: +f.season.plateAppearances, rbi: +f.season.rbi, g: +f.season.gamesPlayed, obp: f.season.obp, slg: f.season.slg },
+      season: { hr: +f.season.homeRuns, pa: +f.season.plateAppearances, rbi: +f.season.rbi, g: +f.season.gamesPlayed, obp: f.season.obp, slg: f.season.slg, avg: f.season.avg || null, so: +(f.season.strikeOuts || 0), bb: +(f.season.baseOnBalls || 0) },
       ...sc, parkHR, carry: carry != null ? carry : null,
       bvp: bvpRes,
       vsPitch: agg.vsPitch, zones: agg.zones, spray: agg.spray,
@@ -1077,6 +1090,7 @@ async function enrichDayInner(day, b) {
         p.vsPitch = agg.vsPitch; p.zones = agg.zones; p.spray = agg.spray;
         p.hardHitPct = agg.hardHitPct; p.pullPct = agg.pullPct;
         p.barrelsByPt = agg.barrelsByPt; p.hrByPt = agg.hrByPt; p.vsHand = agg.vsHand;
+        p.avgEV = agg.avgEV; p.avgLA = agg.avgLA; p.gbPct = agg.gbPct; p.fbPct = agg.fbPct; p.brlPct = agg.brlPct;
         p.detail = true;
         if (p.sp && p.sp.id && (!p.sp.mix || p.sp.swstr == null)) {
           const pk = await pitcherPack(p.sp.id).catch(() => null);
@@ -1506,6 +1520,49 @@ function pickTargets(facing, bleed, weakSide) {
     why: s.why.slice(0, 2).join(" \u00b7 "),
   }));
 }
+
+/* Career HR calendar for the milestone panel: every career game log
+   folded into monthly / day-of-week counts, next-milestone progress. */
+function hrCalFromEntries(entries, todayISO) {
+  const byMonth = {}, byDow = {};
+  let career = 0, thisYear = 0;
+  const ty = +String(todayISO).slice(0, 4);
+  entries.forEach((e) => {
+    const hr = +e.hr || 0;
+    if (!hr || !e.date) return;
+    const d = new Date(e.date + "T12:00:00Z");
+    const mo = d.getUTCMonth() + 1, dow = d.getUTCDay();
+    byMonth[mo] = (byMonth[mo] || 0) + hr;
+    byDow[dow] = (byDow[dow] || 0) + hr;
+    career += hr;
+    if (+e.date.slice(0, 4) === ty) thisYear += hr;
+  });
+  const next = (Math.floor(career / 5) + 1) * 5;
+  const td = new Date(todayISO + "T12:00:00Z");
+  return {
+    career, thisYear, byMonth, byDow,
+    next, away: next - career,
+    monthToday: td.getUTCMonth() + 1, dowToday: td.getUTCDay(),
+  };
+}
+const hrCalendar = (id) => cached(`hrcal:${id}`, 12 * H, async () => {
+  const entries = [];
+  let empty = 0;
+  for (let y = SEASON; y >= SEASON - 14; y--) {
+    try {
+      const j = await getJson(`${STATS}/people/${id}/stats?stats=gameLog&group=hitting&season=${y}`);
+      const splits = j.stats?.[0]?.splits || [];
+      if (!splits.length) { if (y < SEASON) empty++; if (empty >= 2) break; continue; }
+      empty = 0;
+      splits.forEach((s) => entries.push({ date: s.date, hr: +(s.stat?.homeRuns || 0) }));
+    } catch { /* season unavailable — keep going */ }
+  }
+  return hrCalFromEntries(entries, dayDate("today"));
+});
+app.get("/api/hrcal/:id", async (req, res) => {
+  try { res.json(await hrCalendar(req.params.id)); }
+  catch (e) { res.status(502).json({ error: e.message }); }
+});
 
 app.get("/api/weak", async (req, res) => {
   const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
