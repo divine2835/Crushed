@@ -258,7 +258,8 @@ function battedByHand(rows, keyField) {
 }
 
 function batterAggregates(rows) {
-  const vs = {}, z = {};
+  const vs = {}, z = {}, zL = {}, zR = {};
+  const ZSHAPE = () => ({ ab: 0, tb: 0, bbe: 0, brl: 0, hh: 0, hr: 0 });
   const spray = [];
   let bbe = 0, hard = 0, pulled = 0;
   let evSum = 0, evN = 0, laSum = 0, laN = 0, gb = 0, fb = 0, brlAll = 0;
@@ -273,9 +274,15 @@ function batterAggregates(rows) {
       vs[r.pitch_type].tb += TB[ev] || 0;
       const zone = +r.zone;
       if (zone >= 1 && zone <= 9) {
-        z[zone] = z[zone] || { ab: 0, tb: 0, bbe: 0, brl: 0, hh: 0, hr: 0 };
+        z[zone] = z[zone] || ZSHAPE();
         z[zone].ab++;
         z[zone].tb += TB[ev] || 0;
+        const zh = r.p_throws === "L" ? zL : r.p_throws === "R" ? zR : null;
+        if (zh) {
+          zh[zone] = zh[zone] || ZSHAPE();
+          zh[zone].ab++;
+          zh[zone].tb += TB[ev] || 0;
+        }
       }
     }
     if (AB_END.has(ev) && (r.p_throws === "L" || r.p_throws === "R")) {
@@ -306,11 +313,20 @@ function batterAggregates(rows) {
       }
       const bz = +r.zone;
       if (bz >= 1 && bz <= 9) {
-        z[bz] = z[bz] || { ab: 0, tb: 0, bbe: 0, brl: 0, hh: 0, hr: 0 };
+        const isB = isBarrel(lsp, la), isH = lsp >= 95, isHr = r.events === "home_run";
+        z[bz] = z[bz] || ZSHAPE();
         z[bz].bbe++;
-        if (isBarrel(lsp, la)) z[bz].brl++;
-        if (lsp >= 95) z[bz].hh++;
-        if (r.events === "home_run") z[bz].hr++;
+        if (isB) z[bz].brl++;
+        if (isH) z[bz].hh++;
+        if (isHr) z[bz].hr++;
+        const bzh = r.p_throws === "L" ? zL : r.p_throws === "R" ? zR : null;
+        if (bzh) {
+          bzh[bz] = bzh[bz] || ZSHAPE();
+          bzh[bz].bbe++;
+          if (isB) bzh[bz].brl++;
+          if (isH) bzh[bz].hh++;
+          if (isHr) bzh[bz].hr++;
+        }
       }
       spray.push({ x: +(+r.hc_x).toFixed(1), y: +(+r.hc_y).toFixed(1), pt: r.pitch_type, ev, d: r.game_date });
     }
@@ -326,7 +342,7 @@ function batterAggregates(rows) {
     R: hand.R.ab >= THRESH.platoonAb ? +(hand.R.tb / hand.R.ab).toFixed(3) : null,
   };
   return {
-    vsPitch, zones, zonesX,
+    vsPitch, zones, zonesX, zonesXBy: { L: zL, R: zR },
     spray: spray.slice(0, 120).map(({ x, y, pt, ev }) => ({ x, y, pt, ev })),
     hardHitPct: bbe >= 20 ? Math.round((hard / bbe) * 100) : null,
     pullPct: bbe >= 20 ? Math.round((pulled / bbe) * 100) : null,
@@ -1549,7 +1565,7 @@ function pickTargets(facing, bleed, weakSide) {
    blended HR-first: 35% HR rate, 30% Barrel, 20% Hard-Hit, 15% Damage.
    Honest substitution: "Damage (SLG)" replaces the reference site's
    Contact column — our feed doesn't retain per-zone whiff detail. */
-function zoneMatch(zones, pzones) {
+function zoneMatch(zones, pzones, abFloor, bbeFloor) {
   if (!zones || !pzones || !Object.keys(pzones).length) return null;
   let totAb = 0, totTb = 0, totBbe = 0, totBrl = 0, totHh = 0, totHr = 0;
   Object.values(zones).forEach((v) => {
@@ -1557,7 +1573,7 @@ function zoneMatch(zones, pzones) {
     totAb += v.ab || 0; totTb += v.tb || 0;
     totBbe += v.bbe || 0; totBrl += v.brl || 0; totHh += v.hh || 0; totHr += v.hr || 0;
   });
-  if (totAb < 60 || totBbe < 40) return null; // real baselines only
+  if (totAb < (abFloor || 60) || totBbe < (bbeFloor || 40)) return null; // real baselines only
   const base = {
     dmg: totTb / totAb,
     brl: totBrl / totBbe,
@@ -1589,6 +1605,19 @@ function zoneMatch(zones, pzones) {
 }
 const ZONEB = {}; // date -> { building, list, ts } — built in background, served instantly
 let ZONE_ACTIVE = false; // one build at a time: the free tier cannot afford two
+/* Hand-split selection: prefer the batter's zone profile vs TONIGHT'S
+   pitcher's hand (his actual platoon slice — decisive for switch-hitters);
+   fall back to the pooled profile when the split is too thin to trust. */
+function zoneMatchFor(bpk, spHand, pzones) {
+  if (!bpk || !pzones) return null;
+  const split = (spHand === "L" || spHand === "R") && bpk.zonesXBy && bpk.zonesXBy[spHand];
+  if (split) {
+    const m = zoneMatch(split, pzones, 40, 25);
+    if (m) return { ...m, basis: "vs" + spHand };
+  }
+  const m = zoneMatch(bpk.zonesX, pzones);
+  return m ? { ...m, basis: "all" } : null;
+}
 app.get("/api/zone", async (req, res) => {
   const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
   const date = dayDate(day);
@@ -1612,7 +1641,7 @@ app.get("/api/zone", async (req, res) => {
             const chunk = await Promise.all(pool.slice(i, i + 2).map(async (p) => {
               try {
                 const [bpk, ppk] = await Promise.all([batterPack(p.id), pitcherPack(p.sp.id)]);
-                const m = zoneMatch(bpk && bpk.zonesX, ppk && ppk.pzones);
+                const m = zoneMatchFor(bpk, p.sp && p.sp.hand, ppk && ppk.pzones);
                 return m ? { id: p.id, ...m } : null;
               } catch { return null; }
             }));

@@ -567,12 +567,14 @@ function zsCls(v) { return v >= 45 ? "zs-good" : v >= 33 ? "zs-mid" : "zs-bad"; 
 function zsCell(id) {
   var z = zsOf(id);
   if (!z) return '<td class="zs-td dim">\u2014</td>';
-  return '<td class="zs-td"><span class="' + zsCls(z.zs) + '" title="Zone Score vs tonight\u2019s SP \u00b7 Dmg ' + z.dmg + ' / Brl ' + z.brl + ' / HR ' + z.hr + ' / HH ' + z.hh + '">' + z.zs + '</span></td>';
+  var basis1 = z.basis === "all" ? "pooled profile" : "split " + z.basis;
+  return '<td class="zs-td"><span class="' + zsCls(z.zs) + '" title="Zone Score vs tonight\u2019s SP (' + basis1 + ') \u00b7 Dmg ' + z.dmg + ' / Brl ' + z.brl + ' / HR ' + z.hr + ' / HH ' + z.hh + '">' + z.zs + '</span></td>';
 }
 function zsTag(id) {
   var z = zsOf(id);
   if (!z) return "";
-  return '<span class="zs-tag"><span class="zs-lab">ZS</span><span class="' + zsCls(z.zs) + '" title="Zone Score vs tonight\u2019s SP \u00b7 Dmg ' + z.dmg + ' / Brl ' + z.brl + ' / HR ' + z.hr + ' / HH ' + z.hh + '">' + z.zs + '</span></span>';
+  var basis2 = z.basis === "all" ? "pooled profile" : "split " + z.basis;
+  return '<span class="zs-tag"><span class="zs-lab">ZS</span><span class="' + zsCls(z.zs) + '" title="Zone Score vs tonight\u2019s SP (' + basis2 + ') \u00b7 Dmg ' + z.dmg + ' / Brl ' + z.brl + ' / HR ' + z.hr + ' / HH ' + z.hh + '">' + z.zs + '</span></span>';
 }
 function loadZone() {
   if (state.demo || state.zoneLoading) return;
@@ -602,7 +604,7 @@ function loadZone() {
 function zoneView() {
   var head = '<div class="god-head" style="border-color:rgba(79,195,138,0.5);background:linear-gradient(180deg,rgba(79,195,138,0.07),rgba(79,195,138,0.02))">' +
     '<div class="god-title" style="color:var(--rbi)">\u25a6 ZONE BOARD</div>' +
-    '<div class="god-sub">Each batter\u2019s per-zone quality weighted by TONIGHT\u2019S pitcher\u2019s zone usage \u2014 scored 0\u2013100 vs the batter\u2019s own baseline (50 = his normal self). Zone Score blends HR-first: 35% HR rate, 30% Barrel, 20% Hard-Hit, 15% Damage (SLG \u2014 our honest stand-in for the contact column; our feed keeps batted-ball detail, not per-zone whiffs).</div></div>';
+    '<div class="god-sub">Each batter\u2019s per-zone quality weighted by TONIGHT\u2019S pitcher\u2019s zone usage \u2014 scored 0\u2013100 vs the batter\u2019s own baseline (50 = his normal self) \u2014 using his zone profile AGAINST TONIGHT\u2019S PITCHER\u2019S HAND (his true platoon slice; decisive for switch-hitters), falling back to his pooled profile when the split is thin. Zone Score blends HR-first: 35% HR rate, 30% Barrel, 20% Hard-Hit, 15% Damage (SLG \u2014 our honest stand-in for the contact column; our feed keeps batted-ball detail, not per-zone whiffs).</div></div>';
   if (state.demo) return head + '<div class="loading">Zone matching runs on the live server \u2014 it reads every batter\u2019s Statcast zones.</div>';
   var d = state.zoneData[state.day];
   if (!d || (!d.n && (state.zoneLoading || d.building))) return head + '<div class="loading">Matching every bat\u2019s zones against tonight\u2019s arms\u2026 scores stream in as they finish \u2014 this page re-checks itself every 20 seconds.</div>';
