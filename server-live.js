@@ -1580,6 +1580,7 @@ function zoneMatch(zones, pzones) {
   return { dmg, brl, hh, hr, zs };
 }
 const ZONEB = {}; // date -> { building, list, ts } — built in background, served instantly
+let ZONE_ACTIVE = false; // one build at a time: the free tier cannot afford two
 app.get("/api/zone", async (req, res) => {
   const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
   const date = dayDate(day);
@@ -1589,13 +1590,18 @@ app.get("/api/zone", async (req, res) => {
     let st = ZONEB[date];
     if (st && !st.building && Date.now() - st.ts > 2 * H) st = null; // stale — rebuild
     if (!st) {
+      if (ZONE_ACTIVE) {
+        // another date is building — answer instantly, the client's retry will land here again
+        return res.json({ date, building: true, players: [], queued: true });
+      }
+      ZONE_ACTIVE = true;
       st = ZONEB[date] = { building: true, list: [], ts: Date.now() };
       (async () => {
         try {
           const pool = (b.players || []).filter((p) => p.sp && p.sp.id && p.season && p.season.pa >= 60);
-          console.log(`[zone:${date}] building ${pool.length} matchups`);
-          for (let i = 0; i < pool.length; i += 4) {
-            const chunk = await Promise.all(pool.slice(i, i + 4).map(async (p) => {
+          console.log(`[zone:${date}] building ${pool.length} matchups (2-wide, serialized)`);
+          for (let i = 0; i < pool.length; i += 2) {
+            const chunk = await Promise.all(pool.slice(i, i + 2).map(async (p) => {
               try {
                 const [bpk, ppk] = await Promise.all([batterPack(p.id), pitcherPack(p.sp.id)]);
                 const m = zoneMatch(bpk && bpk.zones, ppk && ppk.pzones);
@@ -1603,10 +1609,10 @@ app.get("/api/zone", async (req, res) => {
               } catch { return null; }
             }));
             chunk.forEach((r) => { if (r) st.list.push(r); });
-            if (i % 40 === 0 && i) console.log(`[zone:${date}] ${i}/${pool.length}`);
+            if (i && i % 40 === 0) console.log(`[zone:${date}] ${i}/${pool.length} \u00b7 ${st.list.length} scored`);
           }
         } catch (e) { console.error(`[zone:${date}] failed:`, e.message); }
-        finally { st.building = false; st.ts = Date.now(); console.log(`[zone:${date}] ready: ${st.list.length} scored`); }
+        finally { st.building = false; st.ts = Date.now(); ZONE_ACTIVE = false; console.log(`[zone:${date}] ready: ${st.list.length} scored`); }
       })();
     }
     res.json({ date, building: st.building, players: st.list });
