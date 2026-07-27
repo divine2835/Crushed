@@ -63,6 +63,14 @@ button { font-family: inherit; }
 .god-on { color: var(--ink); border-color: #f2b134; background: linear-gradient(90deg, #f2b134, #ffe08a, #f2b134); background-size: 200% 100%; animation: godsheen 2.2s linear infinite, godpulse 1.6s ease-in-out infinite; }
 @keyframes godsheen { 0% { background-position: 0 0; } 100% { background-position: 200% 0; } }
 @keyframes godpulse { 0%, 100% { box-shadow: 0 0 8px rgba(242,177,52,0.35); } 50% { box-shadow: 0 0 24px rgba(242,177,52,0.8); } }
+.zone-btn { border-color: rgba(79,195,138,0.55); color: var(--rbi); }
+.zone-on { color: var(--ink); border-color: #4fc38a; background: linear-gradient(90deg, #3da678, #6fd7a8, #3da678); background-size: 200% 100%; animation: godsheen 2.2s linear infinite; box-shadow: 0 0 14px rgba(79,195,138,0.4); }
+.zs-lab { font-family: 'Oswald', sans-serif; font-size: 9px; letter-spacing: 0.1em; color: var(--hr); margin-right: 3px; }
+.zs-good { color: #4fc38a; font-weight: 700; }
+.zs-mid { color: #e8c547; font-weight: 700; }
+.zs-bad { color: #e0635a; font-weight: 700; }
+.zs-td { font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
+.zs-tag { font-family: 'IBM Plex Mono', monospace; font-size: 11px; flex: 0 0 auto; }
 .ops-btn { border-color: rgba(232,227,216,0.55); color: var(--chalk); }
 .ops-on { color: var(--ink); border-color: #e8e3d8; background: linear-gradient(90deg, #cfc9bc, #f2eee4, #cfc9bc); background-size: 200% 100%; animation: godsheen 2.2s linear infinite; box-shadow: 0 0 14px rgba(232,227,216,0.4); }
 .god-head { border: 1px solid rgba(242,177,52,0.6); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; background: linear-gradient(180deg, rgba(242,177,52,0.10), rgba(242,177,52,0.02)); }
@@ -515,7 +523,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -550,6 +558,67 @@ function factorChip(c) {
   if (c == null) return '<span class="chip">—</span>';
   var cls = c >= 1.15 ? " chip-hot" : (c < 0.92 ? " chip-cold" : "");
   return '<span class="chip' + cls + '">' + Number(c).toFixed(2) + '×</span>';
+}
+function zsOf(id) {
+  var d = state.zoneData[state.day];
+  return d && d.map ? d.map[id] : null;
+}
+function zsCls(v) { return v >= 45 ? "zs-good" : v >= 33 ? "zs-mid" : "zs-bad"; }
+function zsCell(id) {
+  var z = zsOf(id);
+  if (!z) return '<td class="zs-td dim">\u2014</td>';
+  return '<td class="zs-td"><span class="' + zsCls(z.zs) + '" title="Zone Score vs tonight\u2019s SP \u00b7 Dmg ' + z.dmg + ' / Brl ' + z.brl + ' / HR ' + z.hr + ' / HH ' + z.hh + '">' + z.zs + '</span></td>';
+}
+function zsTag(id) {
+  var z = zsOf(id);
+  if (!z) return "";
+  return '<span class="zs-tag"><span class="zs-lab">ZS</span><span class="' + zsCls(z.zs) + '" title="Zone Score vs tonight\u2019s SP \u00b7 Dmg ' + z.dmg + ' / Brl ' + z.brl + ' / HR ' + z.hr + ' / HH ' + z.hh + '">' + z.zs + '</span></span>';
+}
+function loadZone() {
+  if (state.demo || state.zoneLoading) return;
+  if (Object.prototype.hasOwnProperty.call(state.zoneData, state.day)) return;
+  state.zoneLoading = true;
+  var day = state.day;
+  fetch(apiBase + "/api/zone?day=" + day)
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (j) {
+      if (j.warming) { delete state.zoneData[day]; return; }
+      var map = {};
+      (j.players || []).forEach(function (x) { map[x.id] = x; });
+      state.zoneData[day] = { map: map, n: (j.players || []).length };
+    })
+    .catch(function () { /* retried by the next trigger */ })
+    .finally(function () { state.zoneLoading = false; render(); });
+}
+function zoneView() {
+  var head = '<div class="god-head" style="border-color:rgba(79,195,138,0.5);background:linear-gradient(180deg,rgba(79,195,138,0.07),rgba(79,195,138,0.02))">' +
+    '<div class="god-title" style="color:var(--rbi)">\u25a6 ZONE BOARD</div>' +
+    '<div class="god-sub">Each batter\u2019s per-zone quality weighted by TONIGHT\u2019S pitcher\u2019s zone usage \u2014 scored 0\u2013100 vs the batter\u2019s own baseline (50 = his normal self). Zone Score blends HR-first: 35% HR rate, 30% Barrel, 20% Hard-Hit, 15% Damage (SLG \u2014 our honest stand-in for the contact column; our feed keeps batted-ball detail, not per-zone whiffs).</div></div>';
+  if (state.demo) return head + '<div class="loading">Zone matching runs on the live server \u2014 it reads every batter\u2019s Statcast zones.</div>';
+  var d = state.zoneData[state.day];
+  if (!d || state.zoneLoading) return head + '<div class="loading">Matching every bat\u2019s zones against tonight\u2019s arms\u2026 first build of the day can take a few minutes, instant after.</div>';
+  var pool = ((state.data && state.data.players) || []).filter(function (p) {
+    if (state.game !== "all" && String(p.gamePk) !== String(state.game)) return false;
+    return !!d.map[p.id];
+  });
+  if (!pool.length) return head + '<div class="loading">No zone matches built for this filter yet.</div>';
+  pool.sort(function (a, b) { return d.map[b.id].zs - d.map[a.id].zs; });
+  var heat = function (v) { return 'style="background:rgba(79,195,138,' + Math.min(0.5, v / 150).toFixed(2) + ')"'; };
+  var rows = pool.map(function (p) {
+    var z = d.map[p.id];
+    var out = '<tr class="row" data-row="' + p.id + '">' +
+      '<td><div class="pface"><div class="player"><span class="player-name">' + luDot(p.lineup) +
+      (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") +
+      (crossAligned(p) ? '<span class="star-num" title="Numerology convergence">\u2605</span>' : "") +
+      esc(p.name) + batTag(p) + '</span>' +
+      '<span class="player-team">' + esc(p.teamAbbr) + ' \u00b7 vs ' + (p.sp ? esc(p.sp.name) : "") + '</span></div>' + faceImg(p.id) + '</div></td>' +
+      '<td ' + heat(z.dmg) + '>' + z.dmg + '</td><td ' + heat(z.brl) + '>' + z.brl + '</td>' +
+      '<td ' + heat(z.hr) + '>' + z.hr + '</td><td ' + heat(z.hh) + '>' + z.hh + '</td>' +
+      '<td class="zs-td"><span class="' + zsCls(z.zs) + '">' + z.zs + '</span></td></tr>';
+    if (String(state.open) === String(p.id)) out += '<tr class="note-row"><td colspan="6">' + scoutCard(p) + '</td></tr>';
+    return out;
+  }).join("");
+  return head + '<div class="table-wrap"><table><thead><tr><th class="th-static">Batter</th><th class="th-static">Damage</th><th class="th-static">Brl %</th><th class="th-static">HR Rate</th><th class="th-static">Hard Hit</th><th class="th-static">Zone Score</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
 }
 function faceImg(id) {
   return '<img class="face" loading="lazy" alt="" onerror="this.style.display=\'none\'" src="https://midfield.mlbstatic.com/v1/people/' + id + '/spots/60">';
@@ -879,14 +948,14 @@ function playerRow(p, cols) {
   var cells = cols.map(function (c) { return '<td>' + c.render(p) + '</td>'; }).join("");
   var html = '<tr class="row" data-row="' + p.id + '">' +
     '<td><div class="pface"><div class="player"><span class="player-name">' + luDot(p.lineup) + (p.suggested ? '<span class="star" title="Suggested play">★</span>' : "") + (crossAligned(p) ? '<span class="star-num" title="Also numerology-aligned today">★</span>' : "") + esc(p.name) + batTag(p) + ownMini(p) + '</span>' +
-    '<span class="player-team">' + esc(p.teamAbbr) + ' · #' + p.slot + (p.sp ? ' · vs ' + esc(p.sp.name) + pitParen(p.sp) : "") + '</span></div>' + faceImg(p.id) + '</div></td>' + cells + '</tr>';
+    '<span class="player-team">' + esc(p.teamAbbr) + ' · #' + p.slot + (p.sp ? ' · vs ' + esc(p.sp.name) + pitParen(p.sp) : "") + '</span></div>' + faceImg(p.id) + '</div></td>' + zsCell(p.id) + cells + '</tr>';
   if (String(state.open) === String(p.id)) {
-    html += '<tr class="note-row"><td colspan="' + (cols.length + 1) + '">' + scoutCard(p) + '</td></tr>';
+    html += '<tr class="note-row"><td colspan="' + (cols.length + 2) + '">' + scoutCard(p) + '</td></tr>';
   }
   return html;
 }
 function boardTable(players, cols, sortKey) {
-  var head = '<th>Batter</th>' + cols.map(function (c) {
+  var head = '<th>Batter</th><th class="th-static" title="Zone Score vs tonight\u2019s SP">ZS</th>' + cols.map(function (c) {
     var cls = sortKey === c.key ? ' class="th-active"' : (c.key ? "" : ' class="th-static"');
     var attr = c.key ? ' data-sort="' + c.key + '"' : "";
     return '<th' + cls + attr + '>' + c.label + (sortKey === c.key ? " ▾" : "") + '</th>';
@@ -1289,7 +1358,7 @@ function fnumView() {
       (p.zodiac ? '<span class="astro-sign astro-' + p.zodiac.band + '" style="font-size:9.5px;padding:1px 7px" title="' + esc(p.zodiac.element + " " + p.zodiac.sign + " \u2014 " + p.zodiac.reason) + '">' + esc(p.zodiac.sign) + '</span>' : "") +
       fnCell("LP", p.chart.lp, daySet) + fnCell("PY", p.chart.py, daySet) + fnCell("PM", p.chart.pm, daySet) +
       (p._fnAl ? '<span class="fn-al">' + p._fnAl + '/3 aligned</span>' : "") +
-      '<span class="gen-hr">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "") + '</span>' + faceImg(p.id) + '</div>';
+      '<span class="gen-hr">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "") + '</span>' + faceImg(p.id) + zsTag(p.id) + '</div>';
     if (String(state.open) === String(p.id)) out += '<div class="gen-scout">' + scoutCard(p) + '</div>';
     return out;
   }).join("");
@@ -1314,7 +1383,7 @@ function astroView() {
       '<span class="player-name">' + esc(p.name) + '</span>' + batTag(p) +
       '<span class="astro-sign astro-' + z.band + '">' + esc(z.element + " " + z.sign) + '</span>' +
       '<span class="astro-reason">' + esc(z.reason) + '</span>' +
-      '<span class="gen-hr">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "") + '</span>' + faceImg(p.id) + '</div>';
+      '<span class="gen-hr">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "") + '</span>' + faceImg(p.id) + zsTag(p.id) + '</div>';
     if (String(state.open) === String(p.id)) html2 += '<div class="gen-scout">' + scoutCard(p) + '</div>';
   });
   return html2;
@@ -1495,7 +1564,8 @@ function renderDaybar() {
     '<button class="fchip' + (state.day === "today" ? " fchip-on" : "") + '" data-day="today">Today</button>' +
     '<button class="fchip' + (state.day === "tomorrow" ? " fchip-on" : "") + '" data-day="tomorrow">Tomorrow</button>' +
     '<button class="god-btn' + (state.god ? " god-on" : "") + '" data-god="1" aria-pressed="' + !!state.god + '">GOD</button>' +
-    '<button class="god-btn ops-btn' + (state.ops ? " ops-on" : "") + '" data-ops="1" aria-pressed="' + !!state.ops + '">OPS</button>';
+    '<button class="god-btn ops-btn' + (state.ops ? " ops-on" : "") + '" data-ops="1" aria-pressed="' + !!state.ops + '">OPS</button>' +
+    '<button class="god-btn zone-btn' + (state.zoneMode ? " zone-on" : "") + '" data-zone="1" aria-pressed="' + !!state.zoneMode + '">ZONE</button>';
 }
 function render() {
   renderDaybar();
@@ -1512,6 +1582,11 @@ function render() {
   var board = document.getElementById("board");
   if (!state.data) { board.innerHTML = '<div class="loading">Syncing tonight\u2019s slate from Statcast…</div>'; return; }
   renderFilter();
+  if (state.zoneMode && !state.god && !state.ops) {
+    intro.innerHTML = 'ZONE mode overrides the tabs while it\u2019s lit \u2014 every bat\u2019s zone profile matched against tonight\u2019s starter, ranked by Zone Score. Tap a name for his scouting card.';
+    board.innerHTML = zoneView();
+    return;
+  }
   if (state.ops && !state.god) {
     intro.innerHTML = 'OPS mode overrides the tabs while it\u2019s lit \u2014 tap the button again to return. Pure production ranking with every alignment system stamped alongside; names open their full scouting cards.';
     board.innerHTML = opsView();
@@ -1639,6 +1714,7 @@ function loadBoard() {
         state.boards[day] = j;
         if (state.day === day) {
           state.data = j;
+          if (!state.demo) loadZone();
           var t = j.generatedAt ? new Date(j.generatedAt) : new Date();
           setBanner("live", "Live \u00b7 " + day + " slate assembled " + t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + " \u00b7 lineups re-check every 30 min \u00b7 weather-adjusted scores");
           renderSlate(); render();
@@ -1905,7 +1981,7 @@ function loadPen(p) {
 
 /* ---------- events ---------- */
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -1942,8 +2018,13 @@ document.addEventListener("click", function (e) {
     state.open = null;
     render(); return;
   }
+  if (el.dataset.zone) {
+    state.zoneMode = !state.zoneMode; state.god = false; state.ops = false; state.open = null;
+    if (state.zoneMode) loadZone();
+    render(); return;
+  }
   if (el.dataset.ops) {
-    state.ops = !state.ops; state.god = false; state.open = null;
+    state.ops = !state.ops; state.god = false; state.zoneMode = false; state.open = null;
     if (state.ops && state.opsWin === "l25" && !state.demo) loadOps25();
     render(); return;
   }
@@ -1953,7 +2034,7 @@ document.addEventListener("click", function (e) {
     render(); return;
   }
   if (el.dataset.god) {
-    state.god = !state.god; state.ops = false; state.open = null;
+    state.god = !state.god; state.ops = false; state.zoneMode = false; state.open = null;
     if (state.god && !state.demo && !state.godData[state.day]) loadGod();
     render(); return;
   }

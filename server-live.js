@@ -135,9 +135,20 @@ function pitcherDamage(rows) {
 
 const batterPack = (id) => cached(`bpk:${id}`, 12 * H, async () =>
   batterAggregates(await savantRowsRaw(id, "batter")));
+function pitcherZoneUsage(rows) {
+  const zc = {};
+  let tot = 0;
+  rows.forEach((r) => {
+    const zn = +r.zone;
+    if (zn >= 1 && zn <= 9) { zc[zn] = (zc[zn] || 0) + 1; tot++; }
+  });
+  const out = {};
+  if (tot >= 100) Object.keys(zc).forEach((zn) => { out[zn] = zc[zn] / tot; });
+  return out;
+}
 const pitcherPack = (id) => cached(`ppk:${id}`, 12 * H, async () => {
   const rows = await savantRowsRaw(id, "pitcher");
-  return { mix: arsenalFromRows(rows), swstr: swstrFromRows(rows), n: rows.length, bbByHand: battedByHand(rows, "stand"), dmg: pitcherDamage(rows) };
+  return { mix: arsenalFromRows(rows), swstr: swstrFromRows(rows), n: rows.length, bbByHand: battedByHand(rows, "stand"), dmg: pitcherDamage(rows), pzones: pitcherZoneUsage(rows) };
 });
 
 const person = (id) => cached(`person:${id}`, 240 * H, () =>
@@ -300,13 +311,14 @@ function batterAggregates(rows) {
   Object.entries(vs).forEach(([pt, v]) => { if (v.ab >= 10) vsPitch[pt] = +(v.tb / v.ab).toFixed(3); });
   const zones = [];
   for (let i = 1; i <= 9; i++) zones.push(z[i] && z[i].ab >= 5 ? +(z[i].tb / z[i].ab).toFixed(3) : null);
+  const zonesX = z; // rich per-zone counts for the zone-match engine
   spray.sort((a, b) => (a.d < b.d ? 1 : -1));
   const vsHand = {
     L: hand.L.ab >= THRESH.platoonAb ? +(hand.L.tb / hand.L.ab).toFixed(3) : null,
     R: hand.R.ab >= THRESH.platoonAb ? +(hand.R.tb / hand.R.ab).toFixed(3) : null,
   };
   return {
-    vsPitch, zones,
+    vsPitch, zones, zonesX,
     spray: spray.slice(0, 120).map(({ x, y, pt, ev }) => ({ x, y, pt, ev })),
     hardHitPct: bbe >= 20 ? Math.round((hard / bbe) * 100) : null,
     pullPct: bbe >= 20 ? Math.round((pulled / bbe) * 100) : null,
@@ -1520,6 +1532,77 @@ function pickTargets(facing, bleed, weakSide) {
     why: s.why.slice(0, 2).join(" \u00b7 "),
   }));
 }
+
+/* ============================================================
+   ZONE MATCH — our adaptation of a zone-comparison metric: the
+   batter's per-zone quality (SLG damage, Barrel%, HR rate, Hard-Hit%)
+   weighted by THIS pitcher's zone usage, scored 0-100 as favorability
+   vs the batter's own overall baseline (50 = his normal self), then
+   blended HR-first: 35% HR rate, 30% Barrel, 20% Hard-Hit, 15% Damage.
+   Honest substitution: "Damage (SLG)" replaces the reference site's
+   Contact column — our feed doesn't retain per-zone whiff detail. */
+function zoneMatch(zones, pzones) {
+  if (!zones || !pzones || !Object.keys(pzones).length) return null;
+  let totAb = 0, totTb = 0, totBbe = 0, totBrl = 0, totHh = 0, totHr = 0;
+  Object.values(zones).forEach((v) => {
+    if (!v || typeof v !== "object") return;
+    totAb += v.ab || 0; totTb += v.tb || 0;
+    totBbe += v.bbe || 0; totBrl += v.brl || 0; totHh += v.hh || 0; totHr += v.hr || 0;
+  });
+  if (totAb < 60 || totBbe < 40) return null; // real baselines only
+  const base = {
+    dmg: totTb / totAb,
+    brl: totBrl / totBbe,
+    hh: totHh / totBbe,
+    hr: totHr / totBbe,
+  };
+  const acc = { dmg: 0, brl: 0, hh: 0, hr: 0 };
+  let wSum = 0;
+  Object.entries(pzones).forEach(([zn, w]) => {
+    const v = zones[zn];
+    wSum += w;
+    // thin per-zone samples fall back to the batter's baseline (ratio 1)
+    const zdmg = v && v.ab >= 5 ? v.tb / v.ab : base.dmg;
+    const zbbe = v && v.bbe >= 4 ? v.bbe : 0;
+    acc.dmg += w * zdmg;
+    acc.brl += w * (zbbe ? v.brl / zbbe : base.brl);
+    acc.hh += w * (zbbe ? v.hh / zbbe : base.hh);
+    acc.hr += w * (zbbe ? v.hr / zbbe : base.hr);
+  });
+  if (!wSum) return null;
+  const score = (wc, b) => {
+    if (!b) return 50;
+    return Math.max(0, Math.min(100, Math.round(50 * (wc / wSum) / b)));
+  };
+  const dmg = score(acc.dmg, base.dmg), brl = score(acc.brl, base.brl);
+  const hh = score(acc.hh, base.hh), hr = score(acc.hr, base.hr);
+  const zs = Math.round(0.35 * hr + 0.30 * brl + 0.20 * hh + 0.15 * dmg);
+  return { dmg, brl, hh, hr, zs };
+}
+app.get("/api/zone", async (req, res) => {
+  const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
+  const date = dayDate(day);
+  try {
+    const b = BOARDS[day];
+    if (!b || b.date !== date || !(b.players || []).length) return res.json({ warming: true, players: [] });
+    const out = await cached(`zone:${date}`, 2 * H, async () => {
+      const pool = (b.players || []).filter((p) => p.sp && p.sp.id && p.season && p.season.pa >= 60);
+      const list = [];
+      for (let i = 0; i < pool.length; i += 4) {
+        const chunk = await Promise.all(pool.slice(i, i + 4).map(async (p) => {
+          try {
+            const [bpk, ppk] = await Promise.all([batterPack(p.id), pitcherPack(p.sp.id)]);
+            const m = zoneMatch(bpk && bpk.zonesX, ppk && ppk.pzones);
+            return m ? { id: p.id, ...m } : null;
+          } catch { return null; }
+        }));
+        chunk.forEach((r) => { if (r) list.push(r); });
+      }
+      return list;
+    });
+    res.json({ date, players: out });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
 
 /* Career HR calendar for the milestone panel: every career game log
    folded into monthly / day-of-week counts, next-milestone progress. */
