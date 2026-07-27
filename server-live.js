@@ -273,7 +273,7 @@ function batterAggregates(rows) {
       vs[r.pitch_type].tb += TB[ev] || 0;
       const zone = +r.zone;
       if (zone >= 1 && zone <= 9) {
-        z[zone] = z[zone] || { ab: 0, tb: 0 };
+        z[zone] = z[zone] || { ab: 0, tb: 0, bbe: 0, brl: 0, hh: 0, hr: 0 };
         z[zone].ab++;
         z[zone].tb += TB[ev] || 0;
       }
@@ -303,6 +303,14 @@ function batterAggregates(rows) {
         bp[r.pitch_type].bbe++;
         if (isBarrel(lsp, la)) bp[r.pitch_type].barrels++;
         if (r.events === "home_run") hrp[r.pitch_type] = (hrp[r.pitch_type] || 0) + 1;
+      }
+      const bz = +r.zone;
+      if (bz >= 1 && bz <= 9) {
+        z[bz] = z[bz] || { ab: 0, tb: 0, bbe: 0, brl: 0, hh: 0, hr: 0 };
+        z[bz].bbe++;
+        if (isBarrel(lsp, la)) z[bz].brl++;
+        if (lsp >= 95) z[bz].hh++;
+        if (r.events === "home_run") z[bz].hr++;
       }
       spray.push({ x: +(+r.hc_x).toFixed(1), y: +(+r.hc_y).toFixed(1), pt: r.pitch_type, ev, d: r.game_date });
     }
@@ -1604,7 +1612,7 @@ app.get("/api/zone", async (req, res) => {
             const chunk = await Promise.all(pool.slice(i, i + 2).map(async (p) => {
               try {
                 const [bpk, ppk] = await Promise.all([batterPack(p.id), pitcherPack(p.sp.id)]);
-                const m = zoneMatch(bpk && bpk.zones, ppk && ppk.pzones);
+                const m = zoneMatch(bpk && bpk.zonesX, ppk && ppk.pzones);
                 return m ? { id: p.id, ...m } : null;
               } catch { return null; }
             }));
