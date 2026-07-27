@@ -1579,28 +1579,37 @@ function zoneMatch(zones, pzones) {
   const zs = Math.round(0.35 * hr + 0.30 * brl + 0.20 * hh + 0.15 * dmg);
   return { dmg, brl, hh, hr, zs };
 }
+const ZONEB = {}; // date -> { building, list, ts } — built in background, served instantly
 app.get("/api/zone", async (req, res) => {
   const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
   const date = dayDate(day);
   try {
     const b = BOARDS[day];
     if (!b || b.date !== date || !(b.players || []).length) return res.json({ warming: true, players: [] });
-    const out = await cached(`zone:${date}`, 2 * H, async () => {
-      const pool = (b.players || []).filter((p) => p.sp && p.sp.id && p.season && p.season.pa >= 60);
-      const list = [];
-      for (let i = 0; i < pool.length; i += 4) {
-        const chunk = await Promise.all(pool.slice(i, i + 4).map(async (p) => {
-          try {
-            const [bpk, ppk] = await Promise.all([batterPack(p.id), pitcherPack(p.sp.id)]);
-            const m = zoneMatch(bpk && bpk.zonesX, ppk && ppk.pzones);
-            return m ? { id: p.id, ...m } : null;
-          } catch { return null; }
-        }));
-        chunk.forEach((r) => { if (r) list.push(r); });
-      }
-      return list;
-    });
-    res.json({ date, players: out });
+    let st = ZONEB[date];
+    if (st && !st.building && Date.now() - st.ts > 2 * H) st = null; // stale — rebuild
+    if (!st) {
+      st = ZONEB[date] = { building: true, list: [], ts: Date.now() };
+      (async () => {
+        try {
+          const pool = (b.players || []).filter((p) => p.sp && p.sp.id && p.season && p.season.pa >= 60);
+          console.log(`[zone:${date}] building ${pool.length} matchups`);
+          for (let i = 0; i < pool.length; i += 4) {
+            const chunk = await Promise.all(pool.slice(i, i + 4).map(async (p) => {
+              try {
+                const [bpk, ppk] = await Promise.all([batterPack(p.id), pitcherPack(p.sp.id)]);
+                const m = zoneMatch(bpk && bpk.zones, ppk && ppk.pzones);
+                return m ? { id: p.id, ...m } : null;
+              } catch { return null; }
+            }));
+            chunk.forEach((r) => { if (r) st.list.push(r); });
+            if (i % 40 === 0 && i) console.log(`[zone:${date}] ${i}/${pool.length}`);
+          }
+        } catch (e) { console.error(`[zone:${date}] failed:`, e.message); }
+        finally { st.building = false; st.ts = Date.now(); console.log(`[zone:${date}] ready: ${st.list.length} scored`); }
+      })();
+    }
+    res.json({ date, building: st.building, players: st.list });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
@@ -1650,29 +1659,36 @@ const hrCalendar = (id) => cached(`hrcal:${id}`, 12 * H, async () => {
   return hrCalFromEntries(entries, dayDate("today"));
 });
 /* Last-25-games OPS across the slate for the OPS mode toggle */
+const OPS25B = {}; // date -> { building, list, ts }
 app.get("/api/ops25", async (req, res) => {
   const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
   const date = dayDate(day);
   try {
     const b = BOARDS[day];
     if (!b || b.date !== date || !(b.players || []).length) return res.json({ warming: true, players: [] });
-    const out = await cached(`ops25:${date}`, 0.75 * H, async () => {
-      const pool = (b.players || []).filter((p) => p.season && p.season.pa >= 100);
-      const list = [];
-      for (let i = 0; i < pool.length; i += 4) {
-        const chunk = await Promise.all(pool.slice(i, i + 4).map(async (p) => {
-          try {
-            const rb = await recentBox(p.id);
-            const w = rb && rb[25];
-            if (!w || w.ops === "\u2014") return null;
-            return { id: p.id, ops: parseFloat(w.ops), g: w.g, pa: w.pa, hr: w.hr };
-          } catch { return null; }
-        }));
-        chunk.forEach((r) => { if (r) list.push(r); });
-      }
-      return list;
-    });
-    res.json({ date, players: out });
+    let st = OPS25B[date];
+    if (st && !st.building && Date.now() - st.ts > 0.75 * H) st = null;
+    if (!st) {
+      st = OPS25B[date] = { building: true, list: [], ts: Date.now() };
+      (async () => {
+        try {
+          const pool = (b.players || []).filter((p) => p.season && p.season.pa >= 100);
+          for (let i = 0; i < pool.length; i += 4) {
+            const chunk = await Promise.all(pool.slice(i, i + 4).map(async (p) => {
+              try {
+                const rb = await recentBox(p.id);
+                const w = rb && rb[25];
+                if (!w || w.ops === "\u2014") return null;
+                return { id: p.id, ops: parseFloat(w.ops), g: w.g, pa: w.pa, hr: w.hr };
+              } catch { return null; }
+            }));
+            chunk.forEach((r) => { if (r) st.list.push(r); });
+          }
+        } catch (e) { console.error(`[ops25:${date}] failed:`, e.message); }
+        finally { st.building = false; st.ts = Date.now(); console.log(`[ops25:${date}] ready: ${st.list.length}`); }
+      })();
+    }
+    res.json({ date, building: st.building, players: st.list });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 

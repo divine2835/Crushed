@@ -576,19 +576,28 @@ function zsTag(id) {
 }
 function loadZone() {
   if (state.demo || state.zoneLoading) return;
-  if (Object.prototype.hasOwnProperty.call(state.zoneData, state.day)) return;
+  var existing = state.zoneData[state.day];
+  if (existing && !existing.building) return; // complete — nothing to do
   state.zoneLoading = true;
   var day = state.day;
   fetch(apiBase + "/api/zone?day=" + day)
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(function (j) {
-      if (j.warming) { delete state.zoneData[day]; return; }
+      if (j.warming) { delete state.zoneData[day]; state.zoneRetry = true; return; }
       var map = {};
       (j.players || []).forEach(function (x) { map[x.id] = x; });
-      state.zoneData[day] = { map: map, n: (j.players || []).length };
+      state.zoneData[day] = { map: map, n: (j.players || []).length, building: !!j.building };
+      state.zoneRetry = !!j.building;
     })
-    .catch(function () { /* retried by the next trigger */ })
-    .finally(function () { state.zoneLoading = false; render(); });
+    .catch(function () { state.zoneRetry = true; })
+    .finally(function () {
+      state.zoneLoading = false;
+      render();
+      if (state.zoneRetry && day === state.day) {
+        state.zoneRetry = false;
+        setTimeout(function () { loadZone(); }, 20000); // dashes fill in as the build progresses
+      }
+    });
 }
 function zoneView() {
   var head = '<div class="god-head" style="border-color:rgba(79,195,138,0.5);background:linear-gradient(180deg,rgba(79,195,138,0.07),rgba(79,195,138,0.02))">' +
@@ -596,7 +605,9 @@ function zoneView() {
     '<div class="god-sub">Each batter\u2019s per-zone quality weighted by TONIGHT\u2019S pitcher\u2019s zone usage \u2014 scored 0\u2013100 vs the batter\u2019s own baseline (50 = his normal self). Zone Score blends HR-first: 35% HR rate, 30% Barrel, 20% Hard-Hit, 15% Damage (SLG \u2014 our honest stand-in for the contact column; our feed keeps batted-ball detail, not per-zone whiffs).</div></div>';
   if (state.demo) return head + '<div class="loading">Zone matching runs on the live server \u2014 it reads every batter\u2019s Statcast zones.</div>';
   var d = state.zoneData[state.day];
-  if (!d || state.zoneLoading) return head + '<div class="loading">Matching every bat\u2019s zones against tonight\u2019s arms\u2026 first build of the day can take a few minutes, instant after.</div>';
+  if (!d || (!d.n && (state.zoneLoading || d.building))) return head + '<div class="loading">Matching every bat\u2019s zones against tonight\u2019s arms\u2026 scores stream in as they finish \u2014 this page re-checks itself every 20 seconds.</div>';
+  if (!d.n) return head + '<div class="loading">No zone matches built yet \u2014 re-checking automatically.</div>';
+  if (d.building) head += '<div class="live-meta" style="margin-bottom:10px"><span>Still matching \u00b7 ' + d.n + ' bats scored so far \u00b7 refreshing itself every 20s</span></div>';
   var pool = ((state.data && state.data.players) || []).filter(function (p) {
     if (state.game !== "all" && String(p.gamePk) !== String(state.game)) return false;
     return !!d.map[p.id];
@@ -1471,9 +1482,21 @@ function loadOps25() {
   state.ops25Loading = true;
   fetch(apiBase + "/api/ops25?day=" + state.day)
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(function (j) { state.ops25[state.day] = j.warming ? { warming: true } : { players: j.players || [] }; })
-    .catch(function () { state.ops25[state.day] = { error: true }; })
-    .finally(function () { state.ops25Loading = false; if (state.ops) render(); });
+    .then(function (j) {
+      if (j.warming) { state.ops25[state.day] = { warming: true }; state.opsRetry = true; return; }
+      state.ops25[state.day] = { players: j.players || [], building: !!j.building };
+      state.opsRetry = !!j.building;
+    })
+    .catch(function () { state.ops25[state.day] = { error: true }; state.opsRetry = true; })
+    .finally(function () {
+      state.ops25Loading = false;
+      if (state.ops) render();
+      if (state.opsRetry) {
+        state.opsRetry = false;
+        var day = state.day;
+        setTimeout(function () { if (day === state.day) { delete state.ops25[day]; loadOps25(); } }, 15000);
+      }
+    });
 }
 function opsView() {
   var isL25 = state.opsWin === "l25";
@@ -1494,7 +1517,8 @@ function opsView() {
   if (isL25) {
     if (state.demo) return head + '<div class="loading">Last-25 rankings compute on the live server \u2014 season view works everywhere.</div>';
     var d25 = state.ops25[state.day];
-    if (!d25 || state.ops25Loading) return head + '<div class="loading">Averaging every bat\u2019s last 25 games\u2026 first build takes a minute, cached after.</div>';
+    if (!d25 || (state.ops25Loading && !(d25.players || []).length)) return head + '<div class="loading">Averaging every bat\u2019s last 25 games\u2026 results stream in \u2014 this page re-checks itself.</div>';
+    if (d25.building && !(d25.players || []).length) return head + '<div class="loading">Averaging every bat\u2019s last 25 games\u2026 results stream in \u2014 this page re-checks itself.</div>';
     if (d25.warming) return head + '<div class="loading">The board is still assembling \u2014 flip back in a couple minutes.</div>';
     if (d25.error) return head + '<div class="loading">Couldn\u2019t build the window \u2014 toggle away and back to retry.</div>';
     var byId25 = {};
@@ -1559,10 +1583,17 @@ function godView() {
     return out;
   }).join("");
 }
+function dayLabel(day) {
+  var d = new Date(Date.now() - 5 * 3600 * 1000); // same ET approximation the server uses
+  if (day === "tomorrow") d.setUTCDate(d.getUTCDate() + 1);
+  var mm = String(d.getUTCMonth() + 1); if (mm.length < 2) mm = "0" + mm;
+  var dd = String(d.getUTCDate()); if (dd.length < 2) dd = "0" + dd;
+  return mm + "/" + dd;
+}
 function renderDaybar() {
   document.getElementById("daybar").innerHTML =
-    '<button class="fchip' + (state.day === "today" ? " fchip-on" : "") + '" data-day="today">Today</button>' +
-    '<button class="fchip' + (state.day === "tomorrow" ? " fchip-on" : "") + '" data-day="tomorrow">Tomorrow</button>' +
+    '<button class="fchip' + (state.day === "today" ? " fchip-on" : "") + '" data-day="today">' + dayLabel("today") + '</button>' +
+    '<button class="fchip' + (state.day === "tomorrow" ? " fchip-on" : "") + '" data-day="tomorrow">' + dayLabel("tomorrow") + '</button>' +
     '<button class="god-btn' + (state.god ? " god-on" : "") + '" data-god="1" aria-pressed="' + !!state.god + '">GOD</button>' +
     '<button class="god-btn ops-btn' + (state.ops ? " ops-on" : "") + '" data-ops="1" aria-pressed="' + !!state.ops + '">OPS</button>' +
     '<button class="god-btn zone-btn' + (state.zoneMode ? " zone-on" : "") + '" data-zone="1" aria-pressed="' + !!state.zoneMode + '">ZONE</button>';
