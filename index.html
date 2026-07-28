@@ -63,6 +63,10 @@ button { font-family: inherit; }
 .god-on { color: var(--ink); border-color: #f2b134; background: linear-gradient(90deg, #f2b134, #ffe08a, #f2b134); background-size: 200% 100%; animation: godsheen 2.2s linear infinite, godpulse 1.6s ease-in-out infinite; }
 @keyframes godsheen { 0% { background-position: 0 0; } 100% { background-position: 200% 0; } }
 @keyframes godpulse { 0%, 100% { box-shadow: 0 0 8px rgba(242,177,52,0.35); } 50% { box-shadow: 0 0 24px rgba(242,177,52,0.8); } }
+.letter-btn { border-color: rgba(232,162,201,0.55); color: #e8a2c9; }
+.letter-on { color: var(--ink); border-color: #e8a2c9; background: #e8a2c9; box-shadow: 0 0 12px rgba(232,162,201,0.4); }
+.lt-fin { font-family: 'Oswald', sans-serif; font-size: 16px; color: #e8a2c9; border: 1px solid rgba(232,162,201,0.55); border-radius: 8px; padding: 1px 10px; }
+.lt-fin.num-flash { border-color: #c9a2e8; }
 .zone-btn { border-color: rgba(79,195,138,0.55); color: var(--rbi); }
 .zone-on { color: var(--ink); border-color: #4fc38a; background: linear-gradient(90deg, #3da678, #6fd7a8, #3da678); background-size: 200% 100%; animation: godsheen 2.2s linear infinite; box-shadow: 0 0 14px rgba(79,195,138,0.4); }
 .zs-lab { font-family: 'Oswald', sans-serif; font-size: 9px; letter-spacing: 0.1em; color: var(--hr); margin-right: 3px; }
@@ -1345,6 +1349,83 @@ function loadWeak() {
     .catch(function () { state.weak[state.day] = { error: true }; })
     .finally(function () { state.weakLoading = false; if (state.tab === "weak") render(); });
 }
+/* LETTEROLOGY — the user's name-number system, decoded and locked:
+   raw = alphabet positions summed; reduced = per-letter digits with
+   MASTER letters (K=11, V=22) held whole; vowel track = raw vowel
+   positions; first letter & first vowel shown as value/position.
+   Verified against the reference: Miguel Vargas = 135 raw / 72
+   reduced / 37 vowels / M 4-13 / i 9-9 / Final 9. */
+function ltSteps(n) {
+  var out = [n];
+  while (n > 9 && n !== 11 && n !== 22 && n !== 33) {
+    var s = 0, x = n;
+    while (x > 0) { s += x % 10; x = (x / 10) | 0; }
+    n = s; out.push(n);
+  }
+  if (n === 11 || n === 22 || n === 33) out.push(fnReduce(n));
+  return out;
+}
+function ltPath(n) {
+  return ltSteps(n).map(function (v, i, a) {
+    return (v === 11 || v === 22 || v === 33) && i < a.length - 1 ? v + " (Master)" : v;
+  }).join(" \u2192 ");
+}
+function ltFinal(n) { var s = ltSteps(n); return s[s.length - 1]; }
+function letterFor(name) {
+  var s = String(name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z]/g, "");
+  if (!s) return null;
+  var raw = 0, red = 0, vsum = 0, fl = null, fv = null;
+  for (var i = 0; i < s.length; i++) {
+    var pos = s.charCodeAt(i) - 96;
+    var rv = pos === 11 || pos === 22 ? pos : fnReduce(pos);
+    raw += pos; red += rv;
+    var isV = "aeiou".indexOf(s[i]) !== -1;
+    if (isV) vsum += pos;
+    if (!fl) fl = { ch: s[i].toUpperCase(), pos: pos, v: fnReduce(pos) };
+    if (!fv && isV) fv = { ch: s[i], pos: pos, v: fnReduce(pos) };
+  }
+  return { fl: fl, fv: fv, vs: { sum: vsum, v: ltFinal(vsum) }, red: { sum: red, v: ltFinal(red) },
+    raw: { sum: raw, v: ltFinal(raw) }, fin: ltFinal(raw) };
+}
+function ltCell(lab, val, detail, daySet) {
+  var hit = daySet.indexOf(val) !== -1;
+  return '<span class="fn-cell' + (hit ? " num-flash" : "") + '" title="' + esc(detail) + '">' + lab + ' ' + val + '</span>';
+}
+function letterView() {
+  var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
+  var players = ((state.data && state.data.players) || []).filter(function (p) { return state.game === "all" || String(p.gamePk) === String(state.game); });
+  var banner = '<div class="fn-banner" style="border-color:rgba(232,162,201,0.5)"><div class="fn-title" style="color:#e8a2c9">LETTEROLOGY \u00b7 NAMES VS THE DAY</div>' +
+    '<div class="fn-sub">Every name run through the letter system: raw alphabet positions, reduced letters with MASTER letters (K = 11, V = 22) held whole, the vowel track, first letter and first vowel \u2014 each shown value/total with the full path on hold \u00b7 purple flash = matches one of the day\u2019s numbers \u00b7 ranked by alignments, then HR%</div></div>';
+  if (!players.length) return banner + '<div class="loading">Waiting on the board\u2026</div>';
+  players.forEach(function (p) {
+    if (p._lt === undefined) p._lt = letterFor(p.name);
+    var L = p._lt;
+    p._ltAl = !L ? 0 : [L.fin, L.fl.v, L.fv && L.fv.v, L.vs.v, L.red.v, L.raw.v]
+      .filter(function (v) { return v != null && daySet.indexOf(v) !== -1; }).length;
+  });
+  var pool = players.filter(function (p) { return p._lt; });
+  pool.sort(function (a, b) { return (b._ltAl - a._ltAl) || ((b.hrPct || 0) - (a.hrPct || 0)); });
+  return banner + pool.map(function (p, i) {
+    var L = p._lt;
+    var finHit = daySet.indexOf(L.fin) !== -1;
+    var out = '<div class="astro-row" data-row="' + p.id + '">' +
+      '<span class="astro-rank">' + (i + 1) + '</span>' +
+      luDot(p.lineup) +
+      (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") +
+      (crossAligned(p) ? '<span class="star-num" title="Numerology convergence">\u2605</span>' : "") +
+      '<span class="player-name">' + esc(p.name) + '</span>' + batTag(p) +
+      '<span class="lt-fin' + (finHit ? " num-flash" : "") + '" title="Final \u00b7 ' + ltPath(L.raw.sum) + '">' + L.fin + '</span>' +
+      ltCell("FL", L.fl.v, "First letter " + L.fl.ch + " \u00b7 " + L.fl.pos + "th letter \u2192 " + L.fl.v, daySet) +
+      (L.fv ? ltCell("FV", L.fv.v, "First vowel " + L.fv.ch + " \u00b7 " + L.fv.pos + "th letter \u2192 " + L.fv.v, daySet) : "") +
+      ltCell("VS", L.vs.v, "Vowel sum " + L.vs.sum + " \u00b7 " + ltPath(L.vs.sum), daySet) +
+      ltCell("RED", L.red.v, "Reduced sum " + L.red.sum + " (masters K/V held) \u00b7 " + ltPath(L.red.sum), daySet) +
+      ltCell("RAW", L.raw.v, "Non-reduced sum " + L.raw.sum + " \u00b7 " + ltPath(L.raw.sum), daySet) +
+      (p._ltAl ? '<span class="fn-al">' + p._ltAl + '/6 aligned</span>' : "") +
+      '<span class="gen-hr">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "") + '</span>' + faceImg(p.id) + zsTag(p.id) + '</div>';
+    if (String(state.open) === String(p.id)) out += '<div class="gen-scout">' + scoutCard(p) + '</div>';
+    return out;
+  }).join("");
+}
 function fnCell(lab, piece, daySet) {
   if (!piece) return "";
   var hit = daySet.indexOf(piece.v) !== -1;
@@ -1598,7 +1679,8 @@ function renderDaybar() {
     '<button class="fchip' + (state.day === "tomorrow" ? " fchip-on" : "") + '" data-day="tomorrow">' + dayLabel("tomorrow") + '</button>' +
     '<button class="god-btn' + (state.god ? " god-on" : "") + '" data-god="1" aria-pressed="' + !!state.god + '">GOD</button>' +
     '<button class="god-btn ops-btn' + (state.ops ? " ops-on" : "") + '" data-ops="1" aria-pressed="' + !!state.ops + '">OPS</button>' +
-    '<button class="god-btn zone-btn' + (state.zoneMode ? " zone-on" : "") + '" data-zone="1" aria-pressed="' + !!state.zoneMode + '">ZONE</button>';
+    '<button class="god-btn zone-btn' + (state.zoneMode ? " zone-on" : "") + '" data-zone="1" aria-pressed="' + !!state.zoneMode + '">ZONE</button>' +
+    '<button class="god-btn letter-btn' + (state.tab === "letter" ? " letter-on" : "") + '" data-lettab="1" aria-pressed="' + (state.tab === "letter") + '">LETTEROLOGY</button>';
 }
 function render() {
   renderDaybar();
@@ -1628,6 +1710,11 @@ function render() {
   if (state.god) {
     intro.innerHTML = 'GOD mode overrides the tabs while it\u2019s lit \u2014 tap the gold button again to return. Names still open their full scouting cards.';
     board.innerHTML = godView();
+    return;
+  }
+  if (state.tab === "letter") {
+    intro.innerHTML = 'Every batter\u2019s NAME run through the letter system and matched against the day\u2019s numbers \u2014 ranked by how many of the six values align, then HR%. Hold any cell for its full path; tap a name for his scouting card.';
+    board.innerHTML = letterView();
     return;
   }
   if (state.tab === "fnum") {
@@ -2014,7 +2101,7 @@ function loadPen(p) {
 
 /* ---------- events ---------- */
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-lettab],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -2049,6 +2136,11 @@ document.addEventListener("click", function (e) {
   if (el.dataset.wk) {
     state.weakOpen = String(state.weakOpen) === String(el.dataset.wk) ? null : el.dataset.wk;
     state.open = null;
+    render(); return;
+  }
+  if (el.dataset.lettab) {
+    state.tab = state.tab === "letter" ? "hr" : "letter";
+    state.god = false; state.ops = false; state.zoneMode = false; state.open = null;
     render(); return;
   }
   if (el.dataset.zone) {

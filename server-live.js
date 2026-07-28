@@ -1605,6 +1605,56 @@ function zoneMatch(zones, pzones, abFloor, bbeFloor) {
 }
 const ZONEB = {}; // date -> { building, list, ts } — built in background, served instantly
 let ZONE_ACTIVE = false; // one build at a time: the free tier cannot afford two
+/* ============================================================
+   HR PROP ODDS — live sportsbook lines via The Odds API (free key
+   from the-odds-api.com set as ODDS_API_KEY in Render env; optional
+   ODDS_REGION, default "us"). We take each player's BEST available
+   Over 0.5 HR price across books, match names to board ids
+   (accent/suffix-proof), and cache 2h to respect the free quota. */
+const ODDS_KEY = process.env.ODDS_API_KEY || "";
+const ODDS_REGION = process.env.ODDS_REGION || "us";
+function normName(s) {
+  return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/\./g, "").replace(/\b(jr|sr|ii|iii|iv)\b/g, "").replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim();
+}
+async function fetchDayOdds(b) {
+  const events = await getJson(`https://api.the-odds-api.com/v4/sports/baseball_mlb/events?apiKey=${ODDS_KEY}`);
+  const byName = {};
+  for (const ev of events || []) {
+    try {
+      const o = await getJson(`https://api.the-odds-api.com/v4/sports/baseball_mlb/events/${ev.id}/odds?apiKey=${ODDS_KEY}&regions=${ODDS_REGION}&markets=batter_home_runs&oddsFormat=american`);
+      (o.bookmakers || []).forEach((bk) => {
+        (bk.markets || []).forEach((mk) => {
+          if (mk.key !== "batter_home_runs") return;
+          (mk.outcomes || []).forEach((out) => {
+            if (out.name !== "Over" || +out.point !== 0.5) return;
+            const key = normName(out.description);
+            if (!byName[key] || +out.price > +byName[key].odds) byName[key] = { odds: +out.price, book: bk.title };
+          });
+        });
+      });
+    } catch { /* one event's odds missing — keep going */ }
+  }
+  const map = {};
+  (b.players || []).forEach((p) => {
+    const hit = byName[normName(p.name)];
+    if (hit) map[p.id] = hit;
+  });
+  console.log(`[odds] matched ${Object.keys(map).length} players`);
+  return map;
+}
+app.get("/api/odds", async (req, res) => {
+  const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
+  const date = dayDate(day);
+  try {
+    if (!ODDS_KEY) return res.json({ enabled: false });
+    const b = BOARDS[day];
+    if (!b || b.date !== date || !(b.players || []).length) return res.json({ enabled: true, warming: true, players: {} });
+    const map = await cached(`odds:${date}`, 2 * H, () => fetchDayOdds(b));
+    res.json({ enabled: true, players: map, fetchedAt: new Date().toISOString() });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 /* Hand-split selection: prefer the batter's zone profile vs TONIGHT'S
    pitcher's hand (his actual platoon slice — decisive for switch-hitters);
    fall back to the pooled profile when the split is too thin to trust. */
