@@ -304,6 +304,97 @@ tbody td { padding: 11px 12px; border-top: 1px solid var(--line); vertical-align
 footer { margin-top: 28px; text-align: center; }
 footer p { font-size: 11px; }
 @media (max-width: 480px) { .masthead { flex-direction: column; align-items: flex-start; gap: 8px; } .wm-bottom { font-size: 30px; } }
+
+/* ============================================================
+   LUXURY DEPTH LAYER — pure re-skin appended after all styles.
+   No markup, no JS, no selector changes: the same elements,
+   lit and layered. Remove this block to restore the flat look.
+   ============================================================ */
+body {
+  background:
+    radial-gradient(1100px 500px at 50% -10%, rgba(242,177,52,0.07), transparent 60%),
+    radial-gradient(900px 600px at 85% 110%, rgba(79,195,138,0.05), transparent 55%),
+    radial-gradient(700px 500px at 8% 55%, rgba(201,162,232,0.04), transparent 55%),
+    linear-gradient(180deg, #0d1119, #0a0d14 55%, #090c12);
+  background-attachment: fixed;
+}
+.game-card, .gen-card, .weak-card, .astro-row, .gd-panel, .zone-panel, .prof-tile, .hrs-tile, .banner {
+  background-image: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.008) 55%, rgba(0,0,0,0.12));
+  box-shadow: 0 1px 2px rgba(0,0,0,0.55), 0 10px 26px rgba(0,0,0,0.34), inset 0 1px 0 rgba(255,255,255,0.07);
+  border-color: rgba(255,255,255,0.09);
+  border-radius: 13px;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+.game-card:hover, .weak-card:hover, .astro-row:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 3px rgba(0,0,0,0.55), 0 16px 34px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.1);
+}
+.god-head, .fn-banner, .astro-banner, .banner {
+  backdrop-filter: blur(6px);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 14px 34px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.09);
+  border-radius: 14px;
+}
+.table-wrap {
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  background-image: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(0,0,0,0.1));
+  box-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 12px 30px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+  overflow: hidden;
+}
+thead th {
+  background-image: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.01));
+  box-shadow: inset 0 -1px 0 rgba(255,255,255,0.08);
+}
+tr.row { transition: background 0.14s ease, box-shadow 0.14s ease; }
+tr.row:hover td { background: rgba(255,255,255,0.028); box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), inset 0 -1px 0 rgba(0,0,0,0.2); }
+.note-row td, .gen-scout {
+  background-image: linear-gradient(180deg, rgba(0,0,0,0.22), rgba(0,0,0,0.05));
+  box-shadow: inset 0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(0,0,0,0.4);
+  border-radius: 0 0 12px 12px;
+}
+.tab, .god-btn, .arm, .fchip, .gchip, .gen-btn, .wk-toggle {
+  background-image: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.0) 50%, rgba(0,0,0,0.18));
+  box-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 5px 14px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.09);
+  transition: transform 0.14s ease, box-shadow 0.14s ease, background-color 0.14s ease;
+}
+.tab:hover, .god-btn:hover, .arm:hover, .fchip:hover, .gchip:hover, .gen-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 3px rgba(0,0,0,0.5), 0 9px 20px rgba(0,0,0,0.36), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.tab:active, .god-btn:active, .arm:active, .fchip:active, .gchip:active, .gen-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.5), inset 0 2px 6px rgba(0,0,0,0.35);
+}
+.tab-on, .arm-on, .fchip-on, .gchip-on {
+  box-shadow: 0 1px 2px rgba(0,0,0,0.55), 0 8px 20px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -2px 6px rgba(0,0,0,0.18);
+}
+.hbar-track, .mile-bar {
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.55), inset 0 -1px 0 rgba(255,255,255,0.04);
+}
+.hbar-fill, .mile-fill {
+  background-image: linear-gradient(180deg, rgba(255,255,255,0.32), rgba(255,255,255,0.02) 45%, rgba(0,0,0,0.28));
+  box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+}
+.face {
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.45), 0 0 0 2px rgba(0,0,0,0.25);
+}
+.fn-cell, .zs-tag, .astro-sign, .wk-chip, .tagchip, .chip, .fn-al, .lt-fin, .wk-tchip {
+  background-image: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(0,0,0,0.12));
+  box-shadow: 0 1px 3px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.zone-cell {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -1px 2px rgba(0,0,0,0.3);
+  border-radius: 5px;
+}
+.wordmark { text-shadow: 0 2px 10px rgba(0,0,0,0.6), 0 0 26px rgba(242,177,52,0.14); }
+::-webkit-scrollbar { height: 9px; width: 9px; }
+::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #3a4356, #262e3e); border-radius: 999px; border: 2px solid #0c1017; }
+::-webkit-scrollbar-track { background: transparent; }
+@media (prefers-reduced-motion: reduce) {
+  .tab, .god-btn, .arm, .fchip, .gchip, .gen-btn, .game-card, .weak-card, .astro-row, tr.row { transition: none; }
+  .tab:hover, .god-btn:hover, .game-card:hover, .weak-card:hover, .astro-row:hover { transform: none; }
+}
 </style>
 </head>
 <body>
