@@ -549,7 +549,7 @@ var DEMO = {
       zones:[0.740,0.812,0.455,0.688,0.702,0.398,0.510,0.442,0.290],
       vsPitch:{FF:0.671,SI:0.588,SL:0.402,CH:0.510,CU:0.333},
       hrByPt:{FF:14,SI:6,SL:4,CH:5,CU:1},
-      avgEV:93.1, avgLA:16.2, gbPct:38, fbPct:44, brlPct:16.8,
+      avgEV:93.1, avgLA:16.2, gbPct:38, fbPct:44, brlPct:16.8, whiffPct:27.4,
       spray: makeSpray(11,[{x:168,y:52,n:6,sx:28,sy:26,pitch:"FF",results:["home_run","home_run","double","home_run","field_out","home_run"]},{x:158,y:66,n:4,sx:30,sy:30,pitch:"SI",results:["home_run","double","field_out","home_run"]},{x:118,y:96,n:5,sx:44,sy:40,pitch:"SL",results:["field_out","single","field_out","double","field_out"]},{x:150,y:80,n:3,sx:34,sy:30,pitch:"CH",results:["home_run","field_out","single"]}]) },
     { id:7, name:"Trea Turner", teamAbbr:"PHI", slot:1, gamePk:101, lineup:"confirmed", bats:"R", detail:false, suggested:false, zodiac:{sign:"Rooster",element:"Water",year:1993,tier:3,band:"neutral",reason:"neutral to the Horse year"}, chart:{lp:{v:4,total:31,master:false,path:"31 \u2192 4"},py:{v:1,total:10,master:false,path:"10 \u2192 1"},pm:{v:8,total:8,master:false,path:"8"}},
       tags:[],
@@ -671,13 +671,13 @@ function zsCell(id) {
   var z = zsOf(id);
   if (!z) return '<td class="zs-td dim">\u2014</td>';
   var basis1 = z.basis === "all" ? "pooled profile" : "split " + z.basis;
-  return '<td class="zs-td"><span class="' + zsCls(z.zs) + '" title="Zone Score vs tonight\u2019s SP (' + basis1 + ') \u00b7 Dmg ' + z.dmg + ' / Brl ' + z.brl + ' / HR ' + z.hr + ' / HH ' + z.hh + '">' + z.zs + '</span></td>';
+  return '<td class="zs-td"><span class="' + zsCls(z.zs) + '" title="Zone Score vs tonight\u2019s SP (' + basis1 + ') \u00b7 Con ' + (z.con != null ? z.con : "\u2014") + ' / Dmg ' + z.dmg + ' / Brl ' + z.brl + ' / HR ' + z.hr + ' / HH ' + z.hh + '">' + z.zs + '</span></td>';
 }
 function zsTag(id) {
   var z = zsOf(id);
   if (!z) return "";
   var basis2 = z.basis === "all" ? "pooled profile" : "split " + z.basis;
-  return '<span class="zs-tag"><span class="zs-lab">ZS</span><span class="' + zsCls(z.zs) + '" title="Zone Score vs tonight\u2019s SP (' + basis2 + ') \u00b7 Dmg ' + z.dmg + ' / Brl ' + z.brl + ' / HR ' + z.hr + ' / HH ' + z.hh + '">' + z.zs + '</span></span>';
+  return '<span class="zs-tag"><span class="zs-lab">ZS</span><span class="' + zsCls(z.zs) + '" title="Zone Score vs tonight\u2019s SP (' + basis2 + ') \u00b7 Con ' + (z.con != null ? z.con : "\u2014") + ' / Dmg ' + z.dmg + ' / Brl ' + z.brl + ' / HR ' + z.hr + ' / HH ' + z.hh + '">' + z.zs + '</span></span>';
 }
 function loadZone() {
   if (state.demo || state.zoneLoading) return;
@@ -707,7 +707,7 @@ function loadZone() {
 function zoneView() {
   var head = '<div class="god-head" style="border-color:rgba(79,195,138,0.5);background:linear-gradient(180deg,rgba(79,195,138,0.07),rgba(79,195,138,0.02))">' +
     '<div class="god-title" style="color:var(--rbi)">\u25a6 ZONE BOARD</div>' +
-    '<div class="god-sub">Each batter\u2019s per-zone quality weighted by TONIGHT\u2019S pitcher\u2019s zone usage \u2014 scored 0\u2013100 vs the batter\u2019s own baseline (50 = his normal self) \u2014 using his zone profile AGAINST TONIGHT\u2019S PITCHER\u2019S HAND (his true platoon slice; decisive for switch-hitters), falling back to his pooled profile when the split is thin. Zone Score blends HR-first: 35% HR rate, 30% Barrel, 20% Hard-Hit, 15% Damage (SLG \u2014 our honest stand-in for the contact column; our feed keeps batted-ball detail, not per-zone whiffs).</div></div>';
+    '<div class="god-sub">Each batter\u2019s per-zone quality weighted by TONIGHT\u2019S pitcher\u2019s zone usage \u2014 scored 0\u2013100 vs the batter\u2019s own baseline (50 = his normal self) \u2014 using his zone profile AGAINST TONIGHT\u2019S PITCHER\u2019S HAND (his true platoon slice; decisive for switch-hitters), falling back to his pooled profile when the split is thin. Zone Score blends HR-first: 30% HR rate, 25% Barrel, 20% Hard-Hit, 15% Contact (REAL per-zone whiff data from the pitch feed), 10% Damage (SLG).</div></div>';
   if (state.demo) return head + '<div class="loading">Zone matching runs on the live server \u2014 it reads every batter\u2019s Statcast zones.</div>';
   var d = state.zoneData[state.day];
   if (!d || (!d.n && (state.zoneLoading || d.building))) return head + '<div class="loading">Matching every bat\u2019s zones against tonight\u2019s arms\u2026 scores stream in as they finish \u2014 this page re-checks itself every 20 seconds.</div>';
@@ -728,13 +728,14 @@ function zoneView() {
       (crossAligned(p) ? '<span class="star-num" title="Numerology convergence">\u2605</span>' : "") +
       esc(p.name) + batTag(p) + '</span>' +
       '<span class="player-team">' + esc(p.teamAbbr) + ' \u00b7 vs ' + (p.sp ? esc(p.sp.name) : "") + '</span></div>' + faceImg(p.id) + '</div></td>' +
+      '<td ' + heat(z.con != null ? z.con : 50) + '>' + (z.con != null ? z.con : "\u2014") + '</td>' +
       '<td ' + heat(z.dmg) + '>' + z.dmg + '</td><td ' + heat(z.brl) + '>' + z.brl + '</td>' +
       '<td ' + heat(z.hr) + '>' + z.hr + '</td><td ' + heat(z.hh) + '>' + z.hh + '</td>' +
       '<td class="zs-td"><span class="' + zsCls(z.zs) + '">' + z.zs + '</span></td></tr>';
-    if (String(state.open) === String(p.id)) out += '<tr class="note-row"><td colspan="6">' + scoutCard(p) + '</td></tr>';
+    if (String(state.open) === String(p.id)) out += '<tr class="note-row"><td colspan="7">' + scoutCard(p) + '</td></tr>';
     return out;
   }).join("");
-  return head + '<div class="table-wrap"><table><thead><tr><th class="th-static">Batter</th><th class="th-static">Damage</th><th class="th-static">Brl %</th><th class="th-static">HR Rate</th><th class="th-static">Hard Hit</th><th class="th-static">Zone Score</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  return head + '<div class="table-wrap"><table><thead><tr><th class="th-static">Batter</th><th class="th-static">Contact</th><th class="th-static">Damage</th><th class="th-static">Brl %</th><th class="th-static">HR Rate</th><th class="th-static">Hard Hit</th><th class="th-static">Zone Score</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
 }
 var TEAM_IDS = { AZ: 109, ARI: 109, ATL: 144, BAL: 110, BOS: 111, CHC: 112, CIN: 113, CLE: 114, COL: 115, CWS: 145, CHW: 145, DET: 116, HOU: 117, KC: 118, LAA: 108, LAD: 119, MIA: 146, MIL: 158, MIN: 142, NYM: 121, NYY: 147, ATH: 133, OAK: 133, PHI: 143, PIT: 134, SD: 135, SEA: 136, SF: 137, STL: 138, TB: 139, TEX: 140, TOR: 141, WSH: 120, WSN: 120 };
 function teamLogo(abbr) {
@@ -2019,6 +2020,7 @@ function loadDetail(p) {
       p.avgEV = j.avgEV != null ? j.avgEV : null; p.avgLA = j.avgLA != null ? j.avgLA : null;
       p.gbPct = j.gbPct != null ? j.gbPct : null; p.fbPct = j.fbPct != null ? j.fbPct : null;
       p.brlPct = j.brlPct != null ? j.brlPct : null;
+      p.whiffPct = j.whiffPct != null ? j.whiffPct : null;
       p.vsHand = j.vsHand || null;
       p.detail = true;
       p.detailFail = false;
@@ -2071,6 +2073,7 @@ function profilePanel(p) {
     profTile("HR", s.hr != null ? s.hr : "\u2014", s.hr >= 20 ? "good" : "") +
     profTile("OBP", f3(obp), obp != null && obp >= 0.36 ? "good" : "") +
     profTile("K%", pc(kp), kp == null ? "" : kp >= 27 ? "bad" : kp <= 20 ? "good" : "") +
+    profTile("Whiff%", p.whiffPct != null ? p.whiffPct + "%" : "\u2014", p.whiffPct == null ? "" : p.whiffPct >= 30 ? "bad" : p.whiffPct <= 22 ? "good" : "") +
     profTile("BB%", pc(bbp), bbp != null && bbp >= 10 ? "good" : "") +
     profTile("Hard Hit%", pc(p.hardHitPct), p.hardHitPct >= 45 ? "good" : "") +
     profTile("Barrel%", p.brlPct != null ? p.brlPct + "%" : "\u2014", p.brlPct >= 10 ? "good" : "") +
