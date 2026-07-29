@@ -1080,6 +1080,7 @@ async function assembleBoard(date) {
     const carry = carryFactor(g.venue?.name, wx);
     outGames.push({
       gamePk: g.gamePk,
+      gameDate: g.gameDate || null,
       away: awayInfo.abbreviation || g.teams.away.team.name,
       home: homeInfo.abbreviation || g.teams.home.team.name,
       park: g.venue?.name, parkHR: PARK_HR[g.venue?.name] || 1.0,

@@ -178,6 +178,14 @@ button { font-family: inherit; }
 .gen-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
 .gchip { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 999px; padding: 5px 13px; cursor: pointer; }
 .gchip-on { color: var(--ink); background: var(--hr); border-color: var(--hr); font-weight: 600; }
+.gcard { border-radius: 11px; padding: 6px 10px; display: inline-flex; align-items: center; gap: 9px; text-align: left; }
+.gc-teams { display: flex; flex-direction: column; gap: 3px; }
+.gc-line { display: flex; align-items: center; gap: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--chalk); line-height: 1; }
+.tlogo { width: 16px; height: 16px; flex: 0 0 auto; }
+.gc-time { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--dim); align-self: center; }
+.gcard.fchip-on { background: rgba(242,177,52,0.14); color: var(--chalk); border-color: var(--hr); box-shadow: 0 0 0 1px var(--hr) inset, 0 6px 16px rgba(0,0,0,0.35); }
+.gcard.fchip-on .gc-line { color: var(--chalk); }
+.gcard.fchip-on .gc-time { color: var(--hr); }
 .gen-btn { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 0.06em; font-size: 14px; font-weight: 600; color: var(--ink); background: var(--hr); border: 1px solid var(--hr); border-radius: 6px; padding: 8px 18px; cursor: pointer; margin-left: auto; }
 .gen-btn:focus-visible, .gchip:focus-visible { outline: 2px solid var(--chalk); outline-offset: 2px; }
 .gen-card { border: 1px solid rgba(242,177,52,0.5); border-radius: 10px; background: var(--ink); overflow: hidden; }
@@ -728,6 +736,12 @@ function zoneView() {
   }).join("");
   return head + '<div class="table-wrap"><table><thead><tr><th class="th-static">Batter</th><th class="th-static">Damage</th><th class="th-static">Brl %</th><th class="th-static">HR Rate</th><th class="th-static">Hard Hit</th><th class="th-static">Zone Score</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
 }
+var TEAM_IDS = { AZ: 109, ARI: 109, ATL: 144, BAL: 110, BOS: 111, CHC: 112, CIN: 113, CLE: 114, COL: 115, CWS: 145, CHW: 145, DET: 116, HOU: 117, KC: 118, LAA: 108, LAD: 119, MIA: 146, MIL: 158, MIN: 142, NYM: 121, NYY: 147, ATH: 133, OAK: 133, PHI: 143, PIT: 134, SD: 135, SEA: 136, SF: 137, STL: 138, TB: 139, TEX: 140, TOR: 141, WSH: 120, WSN: 120 };
+function teamLogo(abbr) {
+  var id = TEAM_IDS[String(abbr || "").toUpperCase()];
+  if (!id) return "";
+  return '<img class="tlogo" loading="lazy" alt="" onerror="this.style.display=\'none\'" src="https://www.mlbstatic.com/team-logos/' + id + '.svg">';
+}
 function faceImg(id) {
   return '<img class="face" loading="lazy" alt="" onerror="this.style.display=\'none\'" src="https://midfield.mlbstatic.com/v1/people/' + id + '/spots/60">';
 }
@@ -1092,7 +1106,15 @@ function renderFilter() {
   var chips = '<button class="fchip' + (state.game === "all" ? " fchip-on" : "") + '" data-game="all">All games</button>';
   chips += games.map(function (g) {
     var on = String(state.game) === String(g.gamePk);
-    return '<button class="fchip' + (on ? " fchip-on" : "") + '" data-game="' + g.gamePk + '">' + esc(g.away) + '@' + esc(g.home) + '</button>';
+    var t = "";
+    if (g.gameDate) {
+      try { t = new Date(g.gameDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }); } catch (e) { t = ""; }
+    }
+    return '<button class="fchip gcard' + (on ? " fchip-on" : "") + '" data-game="' + g.gamePk + '">' +
+      '<span class="gc-teams">' +
+      '<span class="gc-line">' + teamLogo(g.away) + esc(g.away) + '</span>' +
+      '<span class="gc-line">' + teamLogo(g.home) + esc(g.home) + '</span></span>' +
+      (t ? '<span class="gc-time">' + esc(t) + '</span>' : "") + '</button>';
   }).join("");
   document.getElementById("gamefilter").innerHTML = chips;
 }
