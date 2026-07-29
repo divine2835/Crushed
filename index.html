@@ -360,10 +360,13 @@ tr.row:hover td { background: rgba(255,255,255,0.028); box-shadow: inset 0 1px 0
   box-shadow: inset 0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(0,0,0,0.4);
   border-radius: 0 0 12px 12px;
 }
-.tab, .god-btn, .arm, .fchip, .gchip, .gen-btn, .wk-toggle {
+.tab, .god-btn:not(.god-on):not(.ops-on):not(.zone-on):not(.letter-on), .arm, .fchip, .gchip, .gen-btn, .wk-toggle {
   background-image: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.0) 50%, rgba(0,0,0,0.18));
   box-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 5px 14px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.09);
   transition: transform 0.14s ease, box-shadow 0.14s ease, background-color 0.14s ease;
+}
+.god-btn.god-on, .god-btn.ops-on, .god-btn.zone-on, .god-btn.letter-on {
+  transition: transform 0.14s ease, box-shadow 0.14s ease;
 }
 .tab:hover, .god-btn:hover, .arm:hover, .fchip:hover, .gchip:hover, .gen-btn:hover {
   transform: translateY(-1px);
