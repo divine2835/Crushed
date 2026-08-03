@@ -178,7 +178,10 @@ button { font-family: inherit; }
 .gen-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
 .gchip { font-family: 'Nunito', sans-serif; font-size: 12px; background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 999px; padding: 5px 13px; cursor: pointer; }
 .gchip-on { color: var(--ink); background: var(--hr); border-color: var(--hr); font-weight: 600; }
-.gcard { border-radius: 11px; padding: 6px 10px; display: inline-flex; align-items: center; gap: 9px; text-align: left; }
+.gcard { border-radius: 11px; padding: 6px 10px; display: inline-flex; align-items: center; gap: 9px; text-align: left; position: relative; overflow: hidden; }
+.gc-wm { position: absolute; right: -12px; bottom: -12px; width: 46px; height: 46px; opacity: 0.09; pointer-events: none; filter: saturate(0.9); }
+.gcard > * { position: relative; z-index: 1; }
+.gc-wm { z-index: 0; }
 .gc-teams { display: flex; flex-direction: column; gap: 3px; }
 .gc-line { display: flex; align-items: center; gap: 6px; font-family: 'Nunito', sans-serif; font-size: 11.5px; color: var(--chalk); line-height: 1; }
 .tlogo { width: 16px; height: 16px; flex: 0 0 auto; }
@@ -397,6 +400,21 @@ tr.row:hover td { background: rgba(255,255,255,0.028); box-shadow: inset 0 1px 0
 .zone-cell {
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -1px 2px rgba(0,0,0,0.3);
   border-radius: 5px;
+}
+body {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1100' height='700' viewBox='0 0 1100 700'%3E%3Cpath d='M -80 560 Q 550 140 1180 560' fill='none' stroke='%23f2b134' stroke-opacity='0.055' stroke-width='3' stroke-dasharray='3 15' stroke-linecap='round'/%3E%3Cpath d='M -80 620 Q 550 200 1180 620' fill='none' stroke='%23f2b134' stroke-opacity='0.045' stroke-width='3' stroke-dasharray='3 15' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat top -40px center / 1100px auto,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='460' height='460' viewBox='0 0 460 460'%3E%3Cg fill='none' stroke='%234fc38a' stroke-opacity='0.05' stroke-width='2'%3E%3Crect x='115' y='115' width='230' height='230' rx='10' transform='rotate(45 230 230)'/%3E%3Ccircle cx='230' cy='230' r='30'/%3E%3C/g%3E%3Cg fill='%234fc38a' fill-opacity='0.055'%3E%3Ccircle cx='230' cy='67' r='7'/%3E%3Ccircle cx='393' cy='230' r='7'/%3E%3Ccircle cx='230' cy='393' r='7'/%3E%3Ccircle cx='67' cy='230' r='7'/%3E%3C/g%3E%3C/svg%3E") no-repeat right -120px bottom -120px / 460px auto,
+    radial-gradient(1100px 500px at 50% -10%, rgba(242,177,52,0.07), transparent 60%),
+    radial-gradient(900px 600px at 85% 110%, rgba(79,195,138,0.05), transparent 55%),
+    radial-gradient(700px 500px at 8% 55%, rgba(201,162,232,0.04), transparent 55%),
+    linear-gradient(180deg, #0d1119, #0a0d14 55%, #090c12);
+  background-attachment: fixed;
+}
+.god-head, .fn-banner, .astro-banner { position: relative; overflow: hidden; }
+.god-head::after, .fn-banner::after, .astro-banner::after {
+  content: ""; position: absolute; right: -30px; top: -30px; width: 150px; height: 150px; pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150' viewBox='0 0 150 150'%3E%3Cpath d='M 10 130 Q 75 30 140 130' fill='none' stroke='%23ffffff' stroke-opacity='0.06' stroke-width='2.5' stroke-dasharray='2 10' stroke-linecap='round'/%3E%3Cpath d='M 10 105 Q 75 5 140 105' fill='none' stroke='%23ffffff' stroke-opacity='0.05' stroke-width='2.5' stroke-dasharray='2 10' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat center / contain;
 }
 * { font-variant-numeric: tabular-nums; }
 .app { font-weight: 500; letter-spacing: 0.005em; }
@@ -746,10 +764,14 @@ function zoneView() {
   return head + '<div class="table-wrap"><table><thead><tr><th class="th-static">Batter</th><th class="th-static">Contact</th><th class="th-static">Damage</th><th class="th-static">Brl %</th><th class="th-static">HR Rate</th><th class="th-static">Hard Hit</th><th class="th-static">Zone Score</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
 }
 var TEAM_IDS = { AZ: 109, ARI: 109, ATL: 144, BAL: 110, BOS: 111, CHC: 112, CIN: 113, CLE: 114, COL: 115, CWS: 145, CHW: 145, DET: 116, HOU: 117, KC: 118, LAA: 108, LAD: 119, MIA: 146, MIL: 158, MIN: 142, NYM: 121, NYY: 147, ATH: 133, OAK: 133, PHI: 143, PIT: 134, SD: 135, SEA: 136, SF: 137, STL: 138, TB: 139, TEX: 140, TOR: 141, WSH: 120, WSN: 120 };
-function teamLogo(abbr) {
+function teamLogoUrl(abbr) {
   var id = TEAM_IDS[String(abbr || "").toUpperCase()];
-  if (!id) return "";
-  return '<img class="tlogo" loading="lazy" alt="" onerror="this.style.display=\'none\'" src="https://www.mlbstatic.com/team-logos/' + id + '.svg">';
+  return id ? "https://www.mlbstatic.com/team-logos/" + id + ".svg" : "";
+}
+function teamLogo(abbr) {
+  var u = teamLogoUrl(abbr);
+  if (!u) return "";
+  return '<img class="tlogo" loading="lazy" alt="" onerror="this.style.display=\'none\'" src="' + u + '">';
 }
 function faceImg(id) {
   return '<img class="face" loading="lazy" alt="" onerror="this.style.display=\'none\'" src="https://midfield.mlbstatic.com/v1/people/' + id + '/spots/60">';
@@ -1123,7 +1145,8 @@ function renderFilter() {
       '<span class="gc-teams">' +
       '<span class="gc-line">' + teamLogo(g.away) + esc(g.away) + '</span>' +
       '<span class="gc-line">' + teamLogo(g.home) + esc(g.home) + '</span></span>' +
-      (t ? '<span class="gc-time">' + esc(t) + '</span>' : "") + '</button>';
+      (t ? '<span class="gc-time">' + esc(t) + '</span>' : "") +
+      (teamLogoUrl(g.home) ? '<img class="gc-wm" loading="lazy" alt="" onerror="this.style.display=\'none\'" src="' + teamLogoUrl(g.home) + '">' : "") + '</button>';
   }).join("");
   document.getElementById("gamefilter").innerHTML = chips;
 }
