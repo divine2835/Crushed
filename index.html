@@ -1549,7 +1549,7 @@ function seasonLeadersView() {
       (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") +
       (crossAligned(p) ? '<span class="star-num" title="Numerology convergence">\u2605</span>' : "") +
       esc(p.name) + batTag(p) + '</span>' +
-      '<span class="player-team">' + esc(p.teamAbbr) + ' \u00b7 #' + p.slot + (p.sp ? ' \u00b7 vs ' + esc(p.sp.name) : "") + '</span></div>' + faceImg(p.id) + '</div></td>' +
+      '<span class="player-team">' + esc(p.teamAbbr) + ' \u00b7 #' + p.slot + (p.sp ? ' \u00b7 vs ' + esc(p.sp.name) + pitParen(p.sp) : "") + '</span></div>' + faceImg(p.id) + '</div></td>' +
       SL_COLS.map(function (c) { return slStat(p, c.k, daySet); }).join("") + '</tr>';
     if (String(state.open) === String(p.id)) out += '<tr class="note-row"><td colspan="6">' + scoutCard(p) + '</td></tr>';
     return out;
