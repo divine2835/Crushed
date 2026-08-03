@@ -63,6 +63,10 @@ button { font-family: inherit; }
 .god-on { color: var(--ink); border-color: #f2b134; background: linear-gradient(90deg, #f2b134, #ffe08a, #f2b134); background-size: 200% 100%; animation: godsheen 2.2s linear infinite, godpulse 1.6s ease-in-out infinite; }
 @keyframes godsheen { 0% { background-position: 0 0; } 100% { background-position: 200% 0; } }
 @keyframes godpulse { 0%, 100% { box-shadow: 0 0 8px rgba(242,177,52,0.35); } 50% { box-shadow: 0 0 24px rgba(242,177,52,0.8); } }
+.sl-btn { border-color: rgba(232,201,162,0.55); color: #e8c9a2; }
+.sl-on { color: var(--ink); border-color: #e8c9a2; background: #e8c9a2; box-shadow: 0 0 12px rgba(232,201,162,0.4); }
+.sl-th { cursor: pointer; user-select: none; }
+.sl-th .dir { color: var(--hr); margin-left: 3px; }
 .letter-btn { border-color: rgba(232,162,201,0.55); color: #e8a2c9; }
 .letter-on { color: var(--ink); border-color: #e8a2c9; background: #e8a2c9; box-shadow: 0 0 12px rgba(232,162,201,0.4); }
 .lt-fin { font-family: 'Oswald', sans-serif; font-size: 16px; color: #e8a2c9; border: 1px solid rgba(232,162,201,0.55); border-radius: 8px; padding: 1px 10px; }
@@ -652,7 +656,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -1494,6 +1498,58 @@ function loadWeak() {
     .catch(function () { state.weak[state.day] = { error: true }; })
     .finally(function () { state.weakLoading = false; if (state.tab === "weak") render(); });
 }
+/* SEASON LEADERS — the slate's bats ranked by season counting stats,
+   any stat whose reduced value lands in the day's numbers earns the
+   purple alignment star. Column headers toggle desc <-> asc. */
+var SL_COLS = [
+  { k: "hr", lab: "HR" }, { k: "rbi", lab: "RBI" }, { k: "hits", lab: "H" },
+  { k: "doubles", lab: "2B" }, { k: "triples", lab: "3B" }
+];
+function slVal(p, k) {
+  var se = p.season || {};
+  var v = se[k];
+  if (v == null && state.demo) {
+    // demo boards predate these fields — stable stand-ins, demo only
+    if (k === "hits") v = Math.round((se.pa || 0) * 0.27);
+    if (k === "doubles") v = Math.round(((se.pa || 0) * 0.27) * 0.2);
+    if (k === "triples") v = (p.slot || 0) % 4 === 0 ? 3 : (p.slot || 0) % 3;
+  }
+  return v == null ? null : +v;
+}
+function slStat(p, k, daySet) {
+  var v = slVal(p, k);
+  if (v == null) return '<td class="dim">\u2014</td>';
+  var hit = v > 0 && daySet.indexOf(fnReduce(v)) !== -1;
+  return '<td>' + v + (hit ? '<span class="star-num" title="' + v + ' \u2192 ' + fnReduce(v) + ' \u00b7 aligns with the day">\u2605</span>' : "") + '</td>';
+}
+function seasonLeadersView() {
+  var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
+  var players = ((state.data && state.data.players) || []).filter(function (p) { return state.game === "all" || String(p.gamePk) === String(state.game); });
+  var banner = '<div class="fn-banner" style="border-color:rgba(232,201,162,0.5)"><div class="fn-title" style="color:#e8c9a2">SEASON LEADERS \u00b7 THE SLATE\u2019S BATS</div>' +
+    '<div class="fn-sub">Every batter on the board ranked by season counting stats \u2014 tap any column header to flip greatest-to-least and back \u00b7 purple \u2605 marks a stat whose reduced value lands in the day\u2019s numbers \u00b7 tap a name for his scouting card</div></div>';
+  if (!players.length) return banner + '<div class="loading">Waiting on the board\u2026</div>';
+  var col = state.slSort.col, dir = state.slSort.dir === "asc" ? 1 : -1;
+  players.sort(function (a, b) {
+    var av = slVal(a, col), bv = slVal(b, col);
+    return ((av == null ? -1 : av) - (bv == null ? -1 : bv)) * dir || (b.hrPct || 0) - (a.hrPct || 0);
+  });
+  var head = '<th>Batter</th>' + SL_COLS.map(function (c) {
+    var on = c.k === col;
+    return '<th class="th-static sl-th" data-slsort="' + c.k + '" title="Tap to sort">' + c.lab + (on ? '<span class="dir">' + (dir === 1 ? "\u25b2" : "\u25bc") + '</span>' : "") + '</th>';
+  }).join("");
+  var rows = players.map(function (p) {
+    var out = '<tr class="row" data-row="' + p.id + '">' +
+      '<td><div class="pface"><div class="player"><span class="player-name">' + luDot(p.lineup) +
+      (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") +
+      (crossAligned(p) ? '<span class="star-num" title="Numerology convergence">\u2605</span>' : "") +
+      esc(p.name) + batTag(p) + '</span>' +
+      '<span class="player-team">' + esc(p.teamAbbr) + ' \u00b7 #' + p.slot + (p.sp ? ' \u00b7 vs ' + esc(p.sp.name) : "") + '</span></div>' + faceImg(p.id) + '</div></td>' +
+      SL_COLS.map(function (c) { return slStat(p, c.k, daySet); }).join("") + '</tr>';
+    if (String(state.open) === String(p.id)) out += '<tr class="note-row"><td colspan="6">' + scoutCard(p) + '</td></tr>';
+    return out;
+  }).join("");
+  return banner + '<div class="table-wrap"><table><thead><tr>' + head + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+}
 /* LETTEROLOGY — the user's name-number system, decoded and locked:
    raw = alphabet positions summed; reduced = per-letter digits with
    MASTER letters (K=11, V=22) held whole; vowel track = raw vowel
@@ -1825,7 +1881,8 @@ function renderDaybar() {
     '<button class="god-btn' + (state.god ? " god-on" : "") + '" data-god="1" aria-pressed="' + !!state.god + '">GOD</button>' +
     '<button class="god-btn ops-btn' + (state.ops ? " ops-on" : "") + '" data-ops="1" aria-pressed="' + !!state.ops + '">OPS</button>' +
     '<button class="god-btn zone-btn' + (state.zoneMode ? " zone-on" : "") + '" data-zone="1" aria-pressed="' + !!state.zoneMode + '">ZONE</button>' +
-    '<button class="god-btn letter-btn' + (state.tab === "letter" ? " letter-on" : "") + '" data-lettab="1" aria-pressed="' + (state.tab === "letter") + '">LETTEROLOGY</button>';
+    '<button class="god-btn letter-btn' + (state.tab === "letter" ? " letter-on" : "") + '" data-lettab="1" aria-pressed="' + (state.tab === "letter") + '">LETTEROLOGY</button>' +
+    '<button class="god-btn sl-btn' + (state.tab === "sleaders" ? " sl-on" : "") + '" data-sltab="1" aria-pressed="' + (state.tab === "sleaders") + '">SEASON LEADERS</button>';
 }
 function render() {
   renderDaybar();
@@ -1855,6 +1912,11 @@ function render() {
   if (state.god) {
     intro.innerHTML = 'GOD mode overrides the tabs while it\u2019s lit \u2014 tap the gold button again to return. Names still open their full scouting cards.';
     board.innerHTML = godView();
+    return;
+  }
+  if (state.tab === "sleaders") {
+    intro.innerHTML = 'The whole slate\u2019s bats ranked by season counting stats. Tap a column header to flip the sort; purple \u2605 = that number reduces into the day\u2019s set.';
+    board.innerHTML = seasonLeadersView();
     return;
   }
   if (state.tab === "letter") {
@@ -2248,7 +2310,7 @@ function loadPen(p) {
 
 /* ---------- events ---------- */
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-lettab],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-lettab],[data-sltab],[data-slsort],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -2283,6 +2345,17 @@ document.addEventListener("click", function (e) {
   if (el.dataset.wk) {
     state.weakOpen = String(state.weakOpen) === String(el.dataset.wk) ? null : el.dataset.wk;
     state.open = null;
+    render(); return;
+  }
+  if (el.dataset.sltab) {
+    state.tab = state.tab === "sleaders" ? "hr" : "sleaders";
+    state.god = false; state.ops = false; state.zoneMode = false; state.open = null;
+    render(); return;
+  }
+  if (el.dataset.slsort) {
+    var k = el.dataset.slsort;
+    if (state.slSort.col === k) state.slSort.dir = state.slSort.dir === "desc" ? "asc" : "desc";
+    else state.slSort = { col: k, dir: "desc" };
     render(); return;
   }
   if (el.dataset.lettab) {

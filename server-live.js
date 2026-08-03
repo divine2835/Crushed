@@ -1049,7 +1049,7 @@ async function buildTeamSide(game, sideKey, box, carry, dayNums) {
       homeGame: sideKey === "home",
       hot: rh && rh.pa >= THRESH.hotPa ? rh.slg : null,
       hardHitPct: null, pullPct: null, barrelsByPt: null, hrByPt: null, vsHand: null,
-      season: { hr: +f.season.homeRuns, pa: +f.season.plateAppearances, rbi: +f.season.rbi, g: +f.season.gamesPlayed, obp: f.season.obp, slg: f.season.slg, avg: f.season.avg || null, so: +(f.season.strikeOuts || 0), bb: +(f.season.baseOnBalls || 0) },
+      season: { hr: +f.season.homeRuns, pa: +f.season.plateAppearances, rbi: +f.season.rbi, g: +f.season.gamesPlayed, obp: f.season.obp, slg: f.season.slg, avg: f.season.avg || null, so: +(f.season.strikeOuts || 0), bb: +(f.season.baseOnBalls || 0), hits: +(f.season.hits || 0), doubles: +(f.season.doubles || 0), triples: +(f.season.triples || 0) },
       ...sc, parkHR, carry: carry != null ? carry : null,
       bvp: bvpRes,
       vsPitch: agg.vsPitch, zones: agg.zones, spray: agg.spray,
