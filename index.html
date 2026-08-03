@@ -67,6 +67,7 @@ button { font-family: inherit; }
 .sl-on { color: var(--ink); border-color: #e8c9a2; background: #e8c9a2; box-shadow: 0 0 12px rgba(232,201,162,0.4); }
 .sl-th { cursor: pointer; user-select: none; }
 .sl-th .dir { color: var(--hr); margin-left: 3px; }
+.star-first { color: #e8c9a2; margin-left: 3px; text-shadow: 0 0 8px rgba(232,201,162,0.5); }
 .letter-btn { border-color: rgba(232,162,201,0.55); color: #e8a2c9; }
 .letter-on { color: var(--ink); border-color: #e8a2c9; background: #e8a2c9; box-shadow: 0 0 12px rgba(232,162,201,0.4); }
 .lt-fin { font-family: 'Oswald', sans-serif; font-size: 16px; color: #e8a2c9; border: 1px solid rgba(232,162,201,0.55); border-radius: 8px; padding: 1px 10px; }
@@ -1519,14 +1520,19 @@ function slVal(p, k) {
 function slStat(p, k, daySet) {
   var v = slVal(p, k);
   if (v == null) return '<td class="dim">\u2014</td>';
-  var hit = v > 0 && daySet.indexOf(fnReduce(v)) !== -1;
-  return '<td>' + v + (hit ? '<span class="star-num" title="' + v + ' \u2192 ' + fnReduce(v) + ' \u00b7 aligns with the day">\u2605</span>' : "") + '</td>';
+  // purple star: his NEXT one lands aligned. champagne star on a zero:
+  // his FIRST would be #1 and 1 sits in the day's set — debut alignment.
+  var nxt = fnReduce(v + 1);
+  var aligned = daySet.indexOf(nxt) !== -1;
+  if (aligned && v > 0) return '<td>' + v + '<span class="star-num" title="next one is #' + (v + 1) + ' \u2192 ' + nxt + ' \u00b7 set up to align today">\u2605</span></td>';
+  if (aligned && v === 0) return '<td>' + v + '<span class="star-first" title="his FIRST would be #1 \u2014 and 1 is in the day\u2019s set \u00b7 debut alignment">\u2605</span></td>';
+  return '<td>' + v + '</td>';
 }
 function seasonLeadersView() {
   var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
   var players = ((state.data && state.data.players) || []).filter(function (p) { return state.game === "all" || String(p.gamePk) === String(state.game); });
   var banner = '<div class="fn-banner" style="border-color:rgba(232,201,162,0.5)"><div class="fn-title" style="color:#e8c9a2">SEASON LEADERS \u00b7 THE SLATE\u2019S BATS</div>' +
-    '<div class="fn-sub">Every batter on the board ranked by season counting stats \u2014 tap any column header to flip greatest-to-least and back \u00b7 purple \u2605 marks a stat whose reduced value lands in the day\u2019s numbers \u00b7 tap a name for his scouting card</div></div>';
+    '<div class="fn-sub">Every batter on the board ranked by season counting stats \u2014 tap any column header to flip greatest-to-least and back \u00b7 purple \u2605 marks a category SET UP today: his NEXT homer/RBI/hit/double/triple lands on a number in the day\u2019s set \u00b7 champagne \u2605 on a zero = his FIRST would align (1 is in the day\u2019s set) \u00b7 tap a name for his scouting card</div></div>';
   if (!players.length) return banner + '<div class="loading">Waiting on the board\u2026</div>';
   var col = state.slSort.col, dir = state.slSort.dir === "asc" ? 1 : -1;
   players.sort(function (a, b) {
@@ -1915,7 +1921,7 @@ function render() {
     return;
   }
   if (state.tab === "sleaders") {
-    intro.innerHTML = 'The whole slate\u2019s bats ranked by season counting stats. Tap a column header to flip the sort; purple \u2605 = that number reduces into the day\u2019s set.';
+    intro.innerHTML = 'The whole slate\u2019s bats ranked by season counting stats. Tap a column header to flip the sort; purple \u2605 = that category is set up today \u2014 his next one lands on a number in the day\u2019s set.';
     board.innerHTML = seasonLeadersView();
     return;
   }
