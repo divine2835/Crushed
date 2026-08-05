@@ -63,6 +63,18 @@ button { font-family: inherit; }
 .god-on { color: var(--ink); border-color: #f2b134; background: linear-gradient(90deg, #f2b134, #ffe08a, #f2b134); background-size: 200% 100%; animation: godsheen 2.2s linear infinite, godpulse 1.6s ease-in-out infinite; }
 @keyframes godsheen { 0% { background-position: 0 0; } 100% { background-position: 200% 0; } }
 @keyframes godpulse { 0%, 100% { box-shadow: 0 0 8px rgba(242,177,52,0.35); } 50% { box-shadow: 0 0 24px rgba(242,177,52,0.8); } }
+.stad-btn { border-color: rgba(125,211,224,0.55); color: #7dd3e0; }
+.stad-on { color: var(--ink); border-color: #7dd3e0; background: #7dd3e0; box-shadow: 0 0 12px rgba(125,211,224,0.4); }
+.stad-card { border: 1px solid var(--line); border-radius: 13px; padding: 12px 14px; margin-bottom: 12px; cursor: pointer; }
+.stad-name { font-family: 'Oswald', sans-serif; font-size: 17px; letter-spacing: 0.05em; text-transform: uppercase; color: #7dd3e0; }
+.stad-match { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--dim); margin: 4px 0 8px; flex-wrap: wrap; }
+.stad-al { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; color: #7dd3e0; border: 1px solid rgba(125,211,224,0.5); border-radius: 999px; padding: 1px 10px; }
+.stad-lineups { display: flex; gap: 14px; margin-top: 11px; border-top: 1px solid var(--line); padding-top: 11px; }
+.stad-col { flex: 1; min-width: 0; }
+.stad-colhead { display: flex; align-items: center; gap: 6px; font-family: 'Oswald', sans-serif; font-size: 12px; letter-spacing: 0.06em; color: var(--chalk); margin-bottom: 7px; }
+.stad-p { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.stad-p .gen-hr { margin-left: auto; }
+.star-lt { color: #e8a2c9; margin-left: 2px; text-shadow: 0 0 7px rgba(232,162,201,0.5); }
 .sl-btn { border-color: rgba(232,201,162,0.55); color: #e8c9a2; }
 .sl-on { color: var(--ink); border-color: #e8c9a2; background: #e8c9a2; box-shadow: 0 0 12px rgba(232,201,162,0.4); }
 .sl-th { cursor: pointer; user-select: none; }
@@ -657,7 +669,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -1499,6 +1511,70 @@ function loadWeak() {
     .catch(function () { state.weak[state.day] = { error: true }; })
     .finally(function () { state.weakLoading = false; if (state.tab === "weak") render(); });
 }
+/* STADIUM ENERGY — every park on the slate read through the letter
+   system, ranked by how many of its six values land in the day's
+   numbers. Press a card to open both lineups with alignment stars. */
+function stadPlayerLine(p) {
+  if (p._lt === undefined) p._lt = letterFor(p.name);
+  var ltAl = 0;
+  var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
+  if (p._lt) ltAl = [p._lt.fin, p._lt.fl.v, p._lt.fv && p._lt.fv.v, p._lt.vs.v, p._lt.red.v, p._lt.raw.v]
+    .filter(function (v) { return v != null && daySet.indexOf(v) !== -1; }).length;
+  return '<div class="stad-p" data-row="' + p.id + '">' + luDot(p.lineup) +
+    '<span>#' + p.slot + '</span>' +
+    (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") +
+    (crossAligned(p) ? '<span class="star-num" title="Numerology-aligned today">\u2605</span>' : "") +
+    (ltAl >= 2 ? '<span class="star-lt" title="Name energy: ' + ltAl + '/6 letter values align today">\u2605</span>' : "") +
+    '<span class="player-name">' + esc(p.name) + '</span>' + batTag(p) +
+    '<span class="gen-hr">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "") + '</span>' + faceImg(p.id) + '</div>';
+}
+function stadiumEnergyView() {
+  var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
+  var games = (state.data && state.data.games) || [];
+  var players = (state.data && state.data.players) || [];
+  var banner = '<div class="fn-banner" style="border-color:rgba(125,211,224,0.5)"><div class="fn-title" style="color:#7dd3e0">STADIUM ENERGY \u00b7 THE PARKS THEMSELVES</div>' +
+    '<div class="fn-sub">Each stadium\u2019s NAME run through the letter system \u2014 raw, reduced (masters held), vowels, first letter, first vowel \u2014 chips flash purple where a value lands in the day\u2019s numbers, ranked by alignment count \u00b7 press a card to open both lineups: gold \u2605 suggested \u00b7 purple \u2605 numerology-aligned \u00b7 rose \u2605 name energy (2+/6)</div>' +
+    '<button class="wk-toggle" data-staddir="1">' + (state.stadDir === "desc" ? "Most aligned first \u25bc" : "Least aligned first \u25b2") + '</button></div>';
+  if (!games.length) return banner + '<div class="loading">Waiting on the board\u2026</div>';
+  var cards = games.map(function (g) {
+    var L = letterFor(g.park || "");
+    var al = !L ? 0 : [L.fin, L.fl.v, L.fv && L.fv.v, L.vs.v, L.red.v, L.raw.v]
+      .filter(function (v) { return v != null && daySet.indexOf(v) !== -1; }).length;
+    return { g: g, L: L, al: al };
+  });
+  cards.sort(function (a, b) {
+    var d = (b.al - a.al) || ((b.g.parkHR || 1) - (a.g.parkHR || 1));
+    return state.stadDir === "asc" ? -d : d;
+  });
+  return banner + cards.map(function (c) {
+    var g = c.g, L = c.L;
+    var t = "";
+    if (g.gameDate) { try { t = new Date(g.gameDate).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }); } catch (e) {} }
+    var out = '<div class="stad-card" data-stad="' + g.gamePk + '">' +
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="stad-name">' + esc(g.park || "?") + '</span>' +
+      '<span class="stad-al">' + c.al + '/6 aligned</span></div>' +
+      '<div class="stad-match">' + teamLogo(g.away) + esc(g.away) + ' @ ' + teamLogo(g.home) + esc(g.home) +
+      (t ? ' \u00b7 ' + esc(t) : "") + ' \u00b7 park ' + (g.parkHR != null ? g.parkHR.toFixed(2) + "\u00d7" : "\u2014") +
+      (g.carry != null ? ' \u00b7 carry ' + g.carry.toFixed(2) + "\u00d7" : "") + '</div>';
+    if (L) {
+      out += '<div><span class="lt-fin' + (daySet.indexOf(L.fin) !== -1 ? " num-flash" : "") + '" title="Final \u00b7 ' + ltPath(L.raw.sum) + '">' + L.fin + '</span>' +
+        ltCell("FL", L.fl.v, "First letter " + L.fl.ch + " \u00b7 " + L.fl.pos + "th \u2192 " + L.fl.v, daySet) +
+        (L.fv ? ltCell("FV", L.fv.v, "First vowel " + L.fv.ch + " \u00b7 " + L.fv.pos + "th \u2192 " + L.fv.v, daySet) : "") +
+        ltCell("VS", L.vs.v, "Vowel sum " + L.vs.sum + " \u00b7 " + ltPath(L.vs.sum), daySet) +
+        ltCell("RED", L.red.v, "Reduced sum " + L.red.sum + " (masters held) \u00b7 " + ltPath(L.red.sum), daySet) +
+        ltCell("RAW", L.raw.v, "Non-reduced sum " + L.raw.sum + " \u00b7 " + ltPath(L.raw.sum), daySet) + '</div>';
+    }
+    if (String(state.stadOpen) === String(g.gamePk)) {
+      var away = players.filter(function (p) { return String(p.gamePk) === String(g.gamePk) && p.teamAbbr === g.away; }).sort(function (a, b) { return a.slot - b.slot; });
+      var home = players.filter(function (p) { return String(p.gamePk) === String(g.gamePk) && p.teamAbbr === g.home; }).sort(function (a, b) { return a.slot - b.slot; });
+      out += '<div class="stad-lineups">' +
+        '<div class="stad-col"><div class="stad-colhead">' + teamLogo(g.away) + esc(g.away) + ' LINEUP</div>' + (away.map(stadPlayerLine).join("") || '<div class="dim">No bats posted yet</div>') + '</div>' +
+        '<div class="stad-col"><div class="stad-colhead">' + teamLogo(g.home) + esc(g.home) + ' LINEUP</div>' + (home.map(stadPlayerLine).join("") || '<div class="dim">No bats posted yet</div>') + '</div></div>';
+    }
+    out += '</div>';
+    return out;
+  }).join("");
+}
 /* SEASON LEADERS — the slate's bats ranked by season counting stats,
    any stat whose reduced value lands in the day's numbers earns the
    purple alignment star. Column headers toggle desc <-> asc. */
@@ -1888,7 +1964,8 @@ function renderDaybar() {
     '<button class="god-btn ops-btn' + (state.ops ? " ops-on" : "") + '" data-ops="1" aria-pressed="' + !!state.ops + '">OPS</button>' +
     '<button class="god-btn zone-btn' + (state.zoneMode ? " zone-on" : "") + '" data-zone="1" aria-pressed="' + !!state.zoneMode + '">ZONE</button>' +
     '<button class="god-btn letter-btn' + (state.tab === "letter" ? " letter-on" : "") + '" data-lettab="1" aria-pressed="' + (state.tab === "letter") + '">LETTEROLOGY</button>' +
-    '<button class="god-btn sl-btn' + (state.tab === "sleaders" ? " sl-on" : "") + '" data-sltab="1" aria-pressed="' + (state.tab === "sleaders") + '">SEASON LEADERS</button>';
+    '<button class="god-btn sl-btn' + (state.tab === "sleaders" ? " sl-on" : "") + '" data-sltab="1" aria-pressed="' + (state.tab === "sleaders") + '">SEASON LEADERS</button>' +
+    '<button class="god-btn stad-btn' + (state.tab === "stadium" ? " stad-on" : "") + '" data-stadtab="1" aria-pressed="' + (state.tab === "stadium") + '">STADIUM ENERGY</button>';
 }
 function render() {
   renderDaybar();
@@ -1918,6 +1995,11 @@ function render() {
   if (state.god) {
     intro.innerHTML = 'GOD mode overrides the tabs while it\u2019s lit \u2014 tap the gold button again to return. Names still open their full scouting cards.';
     board.innerHTML = godView();
+    return;
+  }
+  if (state.tab === "stadium") {
+    intro.innerHTML = 'The parks themselves, read by the letter system and ranked by alignment with the day. Press any stadium card to open both lineups with every star.';
+    board.innerHTML = stadiumEnergyView();
     return;
   }
   if (state.tab === "sleaders") {
@@ -2316,7 +2398,7 @@ function loadPen(p) {
 
 /* ---------- events ---------- */
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-lettab],[data-sltab],[data-slsort],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -2350,6 +2432,20 @@ document.addEventListener("click", function (e) {
   }
   if (el.dataset.wk) {
     state.weakOpen = String(state.weakOpen) === String(el.dataset.wk) ? null : el.dataset.wk;
+    state.open = null;
+    render(); return;
+  }
+  if (el.dataset.stadtab) {
+    state.tab = state.tab === "stadium" ? "hr" : "stadium";
+    state.god = false; state.ops = false; state.zoneMode = false; state.open = null; state.stadOpen = null;
+    render(); return;
+  }
+  if (el.dataset.staddir) {
+    state.stadDir = state.stadDir === "desc" ? "asc" : "desc";
+    render(); return;
+  }
+  if (el.dataset.stad) {
+    state.stadOpen = String(state.stadOpen) === String(el.dataset.stad) ? null : el.dataset.stad;
     state.open = null;
     render(); return;
   }
