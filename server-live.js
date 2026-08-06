@@ -1296,7 +1296,7 @@ const recentBox = (id) => cached(`rb:${id}`, 6 * H, async () => {
       hr: +x.homeRuns || 0, rbi: +x.rbi || 0, bb: +x.baseOnBalls || 0, so: +x.strikeOuts || 0,
     });
   }
-  return { 7: agg(7), 15: agg(15), 25: agg(25), 30: agg(30), games: perGame };
+  return { 3: agg(3), 5: agg(5), 10: agg(10), 7: agg(7), 15: agg(15), 25: agg(25), 30: agg(30), games: perGame };
 });
 /* full season splits: batter vs LHP/RHP, or pitcher vs LHB/RHB */
 const fullSplits = (type, id) => cached(`fs:${type}:${id}`, 6 * H, async () => {
@@ -1800,6 +1800,37 @@ const hrCalendar = (id) => cached(`hrcal:${id}`, 12 * H, async () => {
   return hrCalFromEntries(entries, dayDate("today"));
 });
 /* Last-25-games OPS across the slate for the OPS mode toggle */
+const ADVW = {}; // date -> { building, list, ts } — L-window aggregates for the whole slate
+app.get("/api/windows", async (req, res) => {
+  const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
+  const date = dayDate(day);
+  try {
+    const b = BOARDS[day];
+    if (!b || b.date !== date || !(b.players || []).length) return res.json({ warming: true, players: [] });
+    let st = ADVW[date];
+    if (st && !st.building && Date.now() - st.ts > 0.75 * H) st = null;
+    if (!st) {
+      st = ADVW[date] = { building: true, list: [], ts: Date.now() };
+      (async () => {
+        try {
+          const pool = (b.players || []).filter((p) => p.season && p.season.pa >= 30);
+          for (let i = 0; i < pool.length; i += 4) {
+            const chunk = await Promise.all(pool.slice(i, i + 4).map(async (p) => {
+              try {
+                const rb = await recentBox(p.id);
+                if (!rb) return null;
+                return { id: p.id, w: { 3: rb[3] || null, 5: rb[5] || null, 10: rb[10] || null, 15: rb[15] || null } };
+              } catch { return null; }
+            }));
+            chunk.forEach((r) => { if (r) st.list.push(r); });
+          }
+        } catch (e) { console.error(`[windows:${date}] failed:`, e.message); }
+        finally { st.building = false; st.ts = Date.now(); console.log(`[windows:${date}] ready: ${st.list.length}`); }
+      })();
+    }
+    res.json({ date, building: st.building, players: st.list });
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
 const OPS25B = {}; // date -> { building, list, ts }
 app.get("/api/ops25", async (req, res) => {
   const day = req.query.day === "tomorrow" ? "tomorrow" : "today";

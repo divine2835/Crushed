@@ -683,7 +683,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -1528,14 +1528,42 @@ function loadWeak() {
 /* ADVANCED — a metrics console for the slate: a dropdown of toggle
    pills chooses which advanced metrics render on every player card.
    Statcast-fed fields fill in as each bat's pack loads. */
+function advW(p) {
+  if (state.advWin === "szn") return null;
+  var d = state.advWinData[state.day];
+  var e = d && d.map ? d.map[p.id] : null;
+  return e && e.w ? e.w[state.advWin] || null : null;
+}
+function loadAdvWin() {
+  if (state.demo || state.advWinLoading) return;
+  var d = state.advWinData[state.day];
+  if (d && !d.building) return;
+  state.advWinLoading = true;
+  var day = state.day;
+  fetch(apiBase + "/api/windows?day=" + day)
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (j) {
+      if (j.warming) { delete state.advWinData[day]; return; }
+      var map = {};
+      (j.players || []).forEach(function (x) { map[x.id] = x; });
+      state.advWinData[day] = { map: map, building: !!j.building };
+    })
+    .catch(function () {})
+    .finally(function () {
+      state.advWinLoading = false;
+      render();
+      var d2 = state.advWinData[day];
+      if (state.tab === "advanced" && (!d2 || d2.building)) setTimeout(loadAdvWin, 15000);
+    });
+}
 var ADV_METRICS = [
-  { k: "hrPct", lab: "HR%", num: function (p) { return p.hrPct != null ? p.hrPct : null; }, get: function (p) { return p.hrPct != null ? p.hrPct.toFixed(1) + "%" : null; } },
+  { k: "hrPct", lab: "HR%", num: function (p) { var w = advW(p); if (state.advWin !== "szn") return w && w.pa ? +((w.hr / w.pa) * 100).toFixed(1) : null; return p.hrPct != null ? p.hrPct : null; }, get: function (p) { var v = this.num(p); return v != null ? v.toFixed(1) + "%" : null; } },
   { k: "zs", lab: "ZS", num: function (p) { var z = zsOf(p.id); return z ? z.zs : null; }, get: function (p) { var z = zsOf(p.id); return z ? String(z.zs) : null; }, cls: function (p) { var z = zsOf(p.id); return z ? zsCls(z.zs) : ""; } },
-  { k: "iso", lab: "ISO", num: function (p) { var s = p.season || {}; var sl = parseFloat(s.slg), av = parseFloat(s.avg); return isFinite(sl) && isFinite(av) ? +(sl - av).toFixed(3) : null; }, get: function (p) { var v = this.num(p); return v != null ? v.toFixed(3).replace(/^0/, "") : null; } },
-  { k: "slg", lab: "SLG", num: function (p) { var v = parseFloat(p.season && p.season.slg); return isFinite(v) ? v : null; }, get: function (p) { return (p.season && p.season.slg) || null; } },
-  { k: "obp", lab: "OBP", num: function (p) { var v = parseFloat(p.season && p.season.obp); return isFinite(v) ? v : null; }, get: function (p) { return (p.season && p.season.obp) || null; } },
-  { k: "kPct", lab: "K%", num: function (p) { var s = p.season || {}; return s.pa ? +((s.so / s.pa) * 100).toFixed(1) : null; }, get: function (p) { var v = this.num(p); return v != null ? v + "%" : null; } },
-  { k: "bbPct", lab: "BB%", num: function (p) { var s = p.season || {}; return s.pa ? +((s.bb / s.pa) * 100).toFixed(1) : null; }, get: function (p) { var v = this.num(p); return v != null ? v + "%" : null; } },
+  { k: "iso", lab: "ISO", num: function (p) { var sl, av; if (state.advWin !== "szn") { var w = advW(p); if (!w) return null; sl = parseFloat(w.slg); av = parseFloat(w.avg); } else { var s = p.season || {}; sl = parseFloat(s.slg); av = parseFloat(s.avg); } return isFinite(sl) && isFinite(av) ? +(sl - av).toFixed(3) : null; }, get: function (p) { var v = this.num(p); return v != null ? v.toFixed(3).replace(/^0/, "") : null; } },
+  { k: "slg", lab: "SLG", num: function (p) { var src = state.advWin !== "szn" ? advW(p) : (p.season || {}); var v = parseFloat(src && src.slg); return isFinite(v) ? v : null; }, get: function (p) { var src = state.advWin !== "szn" ? advW(p) : (p.season || {}); var v = src && src.slg; return v && v !== "\u2014" ? v : null; } },
+  { k: "obp", lab: "OBP", num: function (p) { var src = state.advWin !== "szn" ? advW(p) : (p.season || {}); var v = parseFloat(src && src.obp); return isFinite(v) ? v : null; }, get: function (p) { var src = state.advWin !== "szn" ? advW(p) : (p.season || {}); var v = src && src.obp; return v && v !== "\u2014" ? v : null; } },
+  { k: "kPct", lab: "K%", num: function (p) { var src = state.advWin !== "szn" ? advW(p) : (p.season || {}); return src && src.pa ? +((src.so / src.pa) * 100).toFixed(1) : null; }, get: function (p) { var v = this.num(p); return v != null ? v + "%" : null; } },
+  { k: "bbPct", lab: "BB%", num: function (p) { var src = state.advWin !== "szn" ? advW(p) : (p.season || {}); return src && src.pa ? +((src.bb / src.pa) * 100).toFixed(1) : null; }, get: function (p) { var v = this.num(p); return v != null ? v + "%" : null; } },
   { k: "ev", lab: "EV", num: function (p) { return p.avgEV != null ? p.avgEV : null; }, get: function (p) { return p.avgEV != null ? p.avgEV.toFixed(1) : null; } },
   { k: "la", lab: "LA", num: function (p) { return p.avgLA != null ? p.avgLA : null; }, get: function (p) { return p.avgLA != null ? p.avgLA.toFixed(1) + "\u00b0" : null; } },
   { k: "brl", lab: "BRL%", num: function (p) { return p.brlPct != null ? p.brlPct : null; }, get: function (p) { return p.brlPct != null ? p.brlPct + "%" : null; } },
@@ -1543,8 +1571,8 @@ var ADV_METRICS = [
   { k: "gb", lab: "GB%", num: function (p) { return p.gbPct != null ? p.gbPct : null; }, get: function (p) { return p.gbPct != null ? p.gbPct + "%" : null; } },
   { k: "fb", lab: "FB%", num: function (p) { return p.fbPct != null ? p.fbPct : null; }, get: function (p) { return p.fbPct != null ? p.fbPct + "%" : null; } },
   { k: "xrbi", lab: "xRBI", num: function (p) { return p.xRbi != null ? p.xRbi : null; }, get: function (p) { return p.xRbi != null ? p.xRbi.toFixed(2) : null; } },
-  { k: "hr", lab: "HR", num: function (p) { return p.season ? p.season.hr : null; }, get: function (p) { return p.season ? String(p.season.hr) : null; } },
-  { k: "rbi", lab: "RBI", num: function (p) { return p.season ? p.season.rbi : null; }, get: function (p) { return p.season ? String(p.season.rbi) : null; } }
+  { k: "hr", lab: "HR", num: function (p) { if (state.advWin !== "szn") { var w = advW(p); return w ? w.hr : null; } return p.season ? p.season.hr : null; }, get: function (p) { var v = this.num(p); return v != null ? String(v) : null; } },
+  { k: "rbi", lab: "RBI", num: function (p) { if (state.advWin !== "szn") { var w = advW(p); return w ? w.rbi : null; } return p.season ? p.season.rbi : null; }, get: function (p) { var v = this.num(p); return v != null ? String(v) : null; } }
 ];
 function advPass(p) {
   var keys = Object.keys(state.advFilters);
@@ -1594,8 +1622,12 @@ function advancedView() {
   var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
   var players = ((state.data && state.data.players) || []).filter(function (p) { return state.game === "all" || String(p.gamePk) === String(state.game); });
   var banner = '<div class="fn-banner" style="border-color:rgba(167,139,250,0.5)"><div class="fn-title" style="color:#a78bfa">ADVANCED \u00b7 YOUR METRICS CONSOLE</div>' +
-    '<div class="fn-sub">Choose the advanced metrics you want on every card \u2014 open \u2699 Metrics and flip the pills; the slate re-renders instantly \u00b7 opening this tab pulls the latest scouting snapshot and keeps refreshing every 20s until the slate is filled \u2014 on a freshly restarted server the first fill takes the scouting march a few minutes, then it\u2019s instant all day \u00b7 an em-dash means not scouted yet, and filtering on a Statcast field drops unscouted bats \u00b7 type YOUR OWN number in a filter box (\u2265/\u2264 flips direction) and the slate obeys it \u00b7 all alignment marks ride along: gold \u2605 suggested \u00b7 purple \u2605 numerology \u00b7 rose \u2605 name energy</div>' +
-    '<button class="wk-toggle" data-advmenu="1">\u2699 Metrics ' + (state.advMenu ? "\u25b2" : "\u25bc") + '</button></div>';
+    '<div class="fn-sub">Choose the advanced metrics you want on every card \u2014 open \u2699 Metrics and flip the pills; the slate re-renders instantly \u00b7 SZN/L3/L5/L10/L15 pills switch the game-log metrics (HR%, ISO, SLG, OBP, K%, BB%, HR, RBI) to that window \u2014 Statcast fields, ZS, and xRBI stay season-scope \u00b7 opening this tab pulls the latest scouting snapshot and keeps refreshing every 20s until the slate is filled \u2014 on a freshly restarted server the first fill takes the scouting march a few minutes, then it\u2019s instant all day \u00b7 an em-dash means not scouted yet, and filtering on a Statcast field drops unscouted bats \u00b7 type YOUR OWN number in a filter box (\u2265/\u2264 flips direction) and the slate obeys it \u00b7 all alignment marks ride along: gold \u2605 suggested \u00b7 purple \u2605 numerology \u00b7 rose \u2605 name energy</div>' +
+    '<button class="wk-toggle" data-advmenu="1">\u2699 Metrics ' + (state.advMenu ? "\u25b2" : "\u25bc") + '</button>' +
+    '<div style="margin-top:9px">' + [["szn","SZN"],["3","L3"],["5","L5"],["10","L10"],["15","L15"]].map(function (wd) {
+      return '<button class="adv-pill' + (state.advWin === wd[0] ? " on" : "") + '" data-advwin="' + wd[0] + '" style="margin-right:6px">' + wd[1] + '</button>';
+    }).join("") + '</div>' +
+    (state.advWin !== "szn" && (!state.advWinData[state.day] || state.advWinData[state.day].building) ? '<div class="adv-count" style="margin-top:7px">Building the last-' + state.advWin + ' windows for the slate\u2026 refreshing itself.</div>' : "") + '</div>';
   if (state.advMenu) {
     var frows = ADV_METRICS.filter(function (m) { return state.advCols[m.k]; }).map(function (m) {
       var f = state.advFilters[m.k];
@@ -2543,7 +2575,7 @@ document.addEventListener("change", function (e) {
   render();
 });
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -2584,8 +2616,13 @@ document.addEventListener("click", function (e) {
     state.tab = state.tab === "advanced" ? "hr" : "advanced";
     state.god = false; state.ops = false; state.zoneMode = false; state.open = null; state.advMenu = false;
     render();
-    if (state.tab === "advanced") refreshStatcast();
+    if (state.tab === "advanced") { refreshStatcast(); if (state.advWin !== "szn") loadAdvWin(); }
     return;
+  }
+  if (el.dataset.advwin) {
+    state.advWin = el.dataset.advwin;
+    if (state.advWin !== "szn") loadAdvWin();
+    render(); return;
   }
   if (el.dataset.advmenu) {
     state.advMenu = !state.advMenu;
