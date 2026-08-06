@@ -63,6 +63,20 @@ button { font-family: inherit; }
 .god-on { color: var(--ink); border-color: #f2b134; background: linear-gradient(90deg, #f2b134, #ffe08a, #f2b134); background-size: 200% 100%; animation: godsheen 2.2s linear infinite, godpulse 1.6s ease-in-out infinite; }
 @keyframes godsheen { 0% { background-position: 0 0; } 100% { background-position: 200% 0; } }
 @keyframes godpulse { 0%, 100% { box-shadow: 0 0 8px rgba(242,177,52,0.35); } 50% { box-shadow: 0 0 24px rgba(242,177,52,0.8); } }
+.adv-btn { border-color: rgba(167,139,250,0.55); color: #a78bfa; }
+.adv-on { color: var(--ink); border-color: #a78bfa; background: #a78bfa; box-shadow: 0 0 12px rgba(167,139,250,0.4); }
+.adv-menu { border: 1px solid rgba(167,139,250,0.4); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 7px; }
+.adv-pill { font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 11px; padding: 3px 11px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--dim); cursor: pointer; }
+.adv-pill.on { color: var(--ink); background: #a78bfa; border-color: #a78bfa; }
+.adv-chip { font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 11px; border: 1px solid rgba(167,139,250,0.35); border-radius: 7px; padding: 1px 8px; color: var(--chalk); }
+.adv-filters { border-top: 1px solid rgba(167,139,250,0.25); margin-top: 9px; padding-top: 9px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%; }
+.adv-frow { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 9px; padding: 3px 7px; }
+.adv-frow .fl { font-weight: 800; font-size: 10.5px; color: #a78bfa; letter-spacing: 0.05em; }
+.adv-op { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; background: none; border: 1px solid rgba(167,139,250,0.5); color: #a78bfa; border-radius: 6px; padding: 0 7px; cursor: pointer; }
+.adv-in { font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 12px; width: 58px; background: rgba(0,0,0,0.3); border: 1px solid var(--line); color: var(--chalk); border-radius: 6px; padding: 2px 6px; }
+.adv-x { background: none; border: none; color: var(--dim); cursor: pointer; font-size: 12px; }
+.adv-count { font-weight: 800; font-size: 11px; color: #a78bfa; }
+.adv-chip .k { color: #a78bfa; font-size: 9.5px; letter-spacing: 0.06em; margin-right: 4px; }
 .stad-btn { border-color: rgba(125,211,224,0.55); color: #7dd3e0; }
 .stad-on { color: var(--ink); border-color: #7dd3e0; background: #7dd3e0; box-shadow: 0 0 12px rgba(125,211,224,0.4); }
 .stad-card { border: 1px solid var(--line); border-radius: 13px; padding: 12px 14px; margin-bottom: 12px; cursor: pointer; }
@@ -669,7 +683,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -1511,6 +1525,90 @@ function loadWeak() {
     .catch(function () { state.weak[state.day] = { error: true }; })
     .finally(function () { state.weakLoading = false; if (state.tab === "weak") render(); });
 }
+/* ADVANCED — a metrics console for the slate: a dropdown of toggle
+   pills chooses which advanced metrics render on every player card.
+   Statcast-fed fields fill in as each bat's pack loads. */
+var ADV_METRICS = [
+  { k: "hrPct", lab: "HR%", num: function (p) { return p.hrPct != null ? p.hrPct : null; }, get: function (p) { return p.hrPct != null ? p.hrPct.toFixed(1) + "%" : null; } },
+  { k: "zs", lab: "ZS", num: function (p) { var z = zsOf(p.id); return z ? z.zs : null; }, get: function (p) { var z = zsOf(p.id); return z ? String(z.zs) : null; }, cls: function (p) { var z = zsOf(p.id); return z ? zsCls(z.zs) : ""; } },
+  { k: "iso", lab: "ISO", num: function (p) { var s = p.season || {}; var sl = parseFloat(s.slg), av = parseFloat(s.avg); return isFinite(sl) && isFinite(av) ? +(sl - av).toFixed(3) : null; }, get: function (p) { var v = this.num(p); return v != null ? v.toFixed(3).replace(/^0/, "") : null; } },
+  { k: "slg", lab: "SLG", num: function (p) { var v = parseFloat(p.season && p.season.slg); return isFinite(v) ? v : null; }, get: function (p) { return (p.season && p.season.slg) || null; } },
+  { k: "obp", lab: "OBP", num: function (p) { var v = parseFloat(p.season && p.season.obp); return isFinite(v) ? v : null; }, get: function (p) { return (p.season && p.season.obp) || null; } },
+  { k: "kPct", lab: "K%", num: function (p) { var s = p.season || {}; return s.pa ? +((s.so / s.pa) * 100).toFixed(1) : null; }, get: function (p) { var v = this.num(p); return v != null ? v + "%" : null; } },
+  { k: "bbPct", lab: "BB%", num: function (p) { var s = p.season || {}; return s.pa ? +((s.bb / s.pa) * 100).toFixed(1) : null; }, get: function (p) { var v = this.num(p); return v != null ? v + "%" : null; } },
+  { k: "ev", lab: "EV", num: function (p) { return p.avgEV != null ? p.avgEV : null; }, get: function (p) { return p.avgEV != null ? p.avgEV.toFixed(1) : null; } },
+  { k: "la", lab: "LA", num: function (p) { return p.avgLA != null ? p.avgLA : null; }, get: function (p) { return p.avgLA != null ? p.avgLA.toFixed(1) + "\u00b0" : null; } },
+  { k: "brl", lab: "BRL%", num: function (p) { return p.brlPct != null ? p.brlPct : null; }, get: function (p) { return p.brlPct != null ? p.brlPct + "%" : null; } },
+  { k: "whiff", lab: "WHIFF%", num: function (p) { return p.whiffPct != null ? p.whiffPct : null; }, get: function (p) { return p.whiffPct != null ? p.whiffPct + "%" : null; } },
+  { k: "gb", lab: "GB%", num: function (p) { return p.gbPct != null ? p.gbPct : null; }, get: function (p) { return p.gbPct != null ? p.gbPct + "%" : null; } },
+  { k: "fb", lab: "FB%", num: function (p) { return p.fbPct != null ? p.fbPct : null; }, get: function (p) { return p.fbPct != null ? p.fbPct + "%" : null; } },
+  { k: "xrbi", lab: "xRBI", num: function (p) { return p.xRbi != null ? p.xRbi : null; }, get: function (p) { return p.xRbi != null ? p.xRbi.toFixed(2) : null; } },
+  { k: "hr", lab: "HR", num: function (p) { return p.season ? p.season.hr : null; }, get: function (p) { return p.season ? String(p.season.hr) : null; } },
+  { k: "rbi", lab: "RBI", num: function (p) { return p.season ? p.season.rbi : null; }, get: function (p) { return p.season ? String(p.season.rbi) : null; } }
+];
+function advPass(p) {
+  var keys = Object.keys(state.advFilters);
+  for (var i = 0; i < keys.length; i++) {
+    var f = state.advFilters[keys[i]];
+    if (f == null || f.val == null || !isFinite(f.val)) continue;
+    var m = null;
+    for (var j = 0; j < ADV_METRICS.length; j++) if (ADV_METRICS[j].k === keys[i]) m = ADV_METRICS[j];
+    if (!m) continue;
+    var v = m.num(p);
+    if (v == null) return false; // can't prove a number he doesn't have yet
+    if (f.op === "lte" ? v > f.val : v < f.val) return false;
+  }
+  return true;
+}
+function advancedView() {
+  var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
+  var players = ((state.data && state.data.players) || []).filter(function (p) { return state.game === "all" || String(p.gamePk) === String(state.game); });
+  var banner = '<div class="fn-banner" style="border-color:rgba(167,139,250,0.5)"><div class="fn-title" style="color:#a78bfa">ADVANCED \u00b7 YOUR METRICS CONSOLE</div>' +
+    '<div class="fn-sub">Choose the advanced metrics you want on every card \u2014 open \u2699 Metrics and flip the pills; the slate re-renders instantly \u00b7 Statcast-fed fields (EV, LA, BRL%, WHIFF%, GB/FB) fill in as each bat\u2019s pack loads \u2014 an em-dash means not scouted yet, and filtering on one drops unscouted bats \u00b7 type YOUR OWN number in a filter box (\u2265/\u2264 flips direction) and the slate obeys it \u00b7 all alignment marks ride along: gold \u2605 suggested \u00b7 purple \u2605 numerology \u00b7 rose \u2605 name energy</div>' +
+    '<button class="wk-toggle" data-advmenu="1">\u2699 Metrics ' + (state.advMenu ? "\u25b2" : "\u25bc") + '</button></div>';
+  if (state.advMenu) {
+    var frows = ADV_METRICS.filter(function (m) { return state.advCols[m.k]; }).map(function (m) {
+      var f = state.advFilters[m.k];
+      return '<span class="adv-frow"><span class="fl">' + m.lab + '</span>' +
+        '<button class="adv-op" data-advop="' + m.k + '" title="Flip direction">' + (f && f.op === "lte" ? "\u2264" : "\u2265") + '</button>' +
+        '<input class="adv-in" type="number" step="any" data-advin="' + m.k + '" placeholder="\u2014" value="' + (f && f.val != null ? f.val : "") + '">' +
+        (f && f.val != null ? '<button class="adv-x" data-advclear="' + m.k + '" title="Clear">\u2715</button>' : "") + '</span>';
+    }).join("");
+    banner += '<div class="adv-menu">' + ADV_METRICS.map(function (m) {
+      return '<button class="adv-pill' + (state.advCols[m.k] ? " on" : "") + '" data-advcol="' + m.k + '">' + m.lab + '</button>';
+    }).join("") +
+    '<div class="adv-filters"><span class="fl" style="color:#a78bfa;font-weight:800;font-size:10.5px">FILTERS</span>' + frows +
+    (Object.keys(state.advFilters).length ? '<button class="adv-x" data-advfclear="1" title="Clear all">clear all \u2715</button>' : "") + '</div></div>';
+  }
+  if (!players.length) return banner + '<div class="loading">Waiting on the board\u2026</div>';
+  var total = players.length;
+  players = players.filter(advPass);
+  var active = ADV_METRICS.filter(function (m) { return state.advCols[m.k]; });
+  players = players.slice().sort(function (a, b) { return (b.hrPct || 0) - (a.hrPct || 0); });
+  var hasF = Object.keys(state.advFilters).some(function (k) { var f = state.advFilters[k]; return f && f.val != null; });
+  if (hasF) banner += '<div class="adv-count" style="margin:-4px 0 9px">' + players.length + ' of ' + total + ' bats clear your lines</div>';
+  if (!players.length) return banner + '<div class="loading">No bats clear every line \u2014 loosen a filter.</div>';
+  return banner + players.map(function (p, i) {
+    if (p._lt === undefined) p._lt = letterFor(p.name);
+    var ltAl = 0;
+    if (p._lt) ltAl = [p._lt.fin, p._lt.fl.v, p._lt.fv && p._lt.fv.v, p._lt.vs.v, p._lt.red.v, p._lt.raw.v]
+      .filter(function (v) { return v != null && daySet.indexOf(v) !== -1; }).length;
+    var chips = active.map(function (m) {
+      var v = m.get(p);
+      var cls = m.cls ? m.cls(p) : "";
+      return '<span class="adv-chip"><span class="k">' + m.lab + '</span>' + (v != null ? '<span class="' + cls + '">' + v + '</span>' : '<span class="dim">\u2014</span>') + '</span>';
+    }).join("");
+    var out = '<div class="astro-row" data-row="' + p.id + '">' +
+      '<span class="astro-rank">' + (i + 1) + '</span>' + luDot(p.lineup) +
+      (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") +
+      (crossAligned(p) ? '<span class="star-num" title="Numerology-aligned today">\u2605</span>' : "") +
+      (ltAl >= 2 ? '<span class="star-lt" title="Name energy: ' + ltAl + '/6 letter values align today">\u2605</span>' : "") +
+      '<span class="player-name">' + esc(p.name) + '</span>' + batTag(p) +
+      chips + faceImg(p.id) + '</div>';
+    if (String(state.open) === String(p.id)) out += '<div class="gen-scout">' + scoutCard(p) + '</div>';
+    return out;
+  }).join("");
+}
 /* STADIUM ENERGY — every park on the slate read through the letter
    system, ranked by how many of its six values land in the day's
    numbers. Press a card to open both lineups with alignment stars. */
@@ -1965,7 +2063,8 @@ function renderDaybar() {
     '<button class="god-btn zone-btn' + (state.zoneMode ? " zone-on" : "") + '" data-zone="1" aria-pressed="' + !!state.zoneMode + '">ZONE</button>' +
     '<button class="god-btn letter-btn' + (state.tab === "letter" ? " letter-on" : "") + '" data-lettab="1" aria-pressed="' + (state.tab === "letter") + '">LETTEROLOGY</button>' +
     '<button class="god-btn sl-btn' + (state.tab === "sleaders" ? " sl-on" : "") + '" data-sltab="1" aria-pressed="' + (state.tab === "sleaders") + '">SEASON LEADERS</button>' +
-    '<button class="god-btn stad-btn' + (state.tab === "stadium" ? " stad-on" : "") + '" data-stadtab="1" aria-pressed="' + (state.tab === "stadium") + '">STADIUM ENERGY</button>';
+    '<button class="god-btn stad-btn' + (state.tab === "stadium" ? " stad-on" : "") + '" data-stadtab="1" aria-pressed="' + (state.tab === "stadium") + '">STADIUM ENERGY</button>' +
+    '<button class="god-btn adv-btn' + (state.tab === "advanced" ? " adv-on" : "") + '" data-advtab="1" aria-pressed="' + (state.tab === "advanced") + '">ADVANCED</button>';
 }
 function render() {
   renderDaybar();
@@ -1995,6 +2094,11 @@ function render() {
   if (state.god) {
     intro.innerHTML = 'GOD mode overrides the tabs while it\u2019s lit \u2014 tap the gold button again to return. Names still open their full scouting cards.';
     board.innerHTML = godView();
+    return;
+  }
+  if (state.tab === "advanced") {
+    intro.innerHTML = 'Your metrics console: flip \u2699 Metrics pills to choose exactly which advanced numbers ride every player card \u2014 the slate re-renders as you toggle.';
+    board.innerHTML = advancedView();
     return;
   }
   if (state.tab === "stadium") {
@@ -2397,8 +2501,19 @@ function loadPen(p) {
 }
 
 /* ---------- events ---------- */
+document.addEventListener("change", function (e) {
+  var t = e.target;
+  if (!t || !t.dataset || !t.dataset.advin) return;
+  var k = t.dataset.advin;
+  var v = parseFloat(t.value);
+  if (!isFinite(v)) { delete state.advFilters[k]; render(); return; }
+  var cur = state.advFilters[k] || { op: "gte", val: null };
+  cur.val = v;
+  state.advFilters[k] = cur;
+  render();
+});
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -2433,6 +2548,34 @@ document.addEventListener("click", function (e) {
   if (el.dataset.wk) {
     state.weakOpen = String(state.weakOpen) === String(el.dataset.wk) ? null : el.dataset.wk;
     state.open = null;
+    render(); return;
+  }
+  if (el.dataset.advtab) {
+    state.tab = state.tab === "advanced" ? "hr" : "advanced";
+    state.god = false; state.ops = false; state.zoneMode = false; state.open = null; state.advMenu = false;
+    render(); return;
+  }
+  if (el.dataset.advmenu) {
+    state.advMenu = !state.advMenu;
+    render(); return;
+  }
+  if (el.dataset.advop) {
+    var fk = el.dataset.advop;
+    var cur = state.advFilters[fk] || { op: "gte", val: null };
+    cur.op = cur.op === "gte" ? "lte" : "gte";
+    state.advFilters[fk] = cur;
+    render(); return;
+  }
+  if (el.dataset.advclear) {
+    delete state.advFilters[el.dataset.advclear];
+    render(); return;
+  }
+  if (el.dataset.advfclear) {
+    state.advFilters = {};
+    render(); return;
+  }
+  if (el.dataset.advcol) {
+    state.advCols[el.dataset.advcol] = !state.advCols[el.dataset.advcol];
     render(); return;
   }
   if (el.dataset.stadtab) {
