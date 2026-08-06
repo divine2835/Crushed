@@ -57,6 +57,10 @@ async function cached(key, ttlMs, fn) {
   cache.set(key, { v, t: Date.now() });
   return v;
 }
+function cachePeek(key, ttlMs) {
+  const hit = cache.get(key);
+  return hit && Date.now() - hit.t < ttlMs ? hit.v : null;
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ---------------- csv ---------------- */
@@ -1110,6 +1114,20 @@ async function assembleBoard(date) {
     players.push(...(await buildTeamSide(g, "home", box, carry, dayNums)));
     } catch (e) { console.error(`[assemble:${date}] skip game ${g.gamePk}: ${e.message}`); }
   }
+  // re-inherit Statcast from every already-scouted pack (zone build,
+  // enrichment, or manual taps filled the cache) — instant, zero fetches,
+  // and it survives the 30-min lineup reassembly that creates fresh objects
+  players.forEach((p) => {
+    const pk = cachePeek(`bpk:${p.id}`, 12 * H);
+    if (pk) {
+      if (p.avgEV == null) p.avgEV = pk.avgEV;
+      if (p.avgLA == null) p.avgLA = pk.avgLA;
+      if (p.gbPct == null) p.gbPct = pk.gbPct;
+      if (p.fbPct == null) p.fbPct = pk.fbPct;
+      if (p.brlPct == null) p.brlPct = pk.brlPct;
+      if (p.whiffPct == null) p.whiffPct = pk.whiffPct;
+    }
+  });
   return { date, generatedAt: new Date().toISOString(),
     numerology: dayNums,
     thresholds: THRESH,
