@@ -1714,6 +1714,13 @@ app.get("/api/zone", async (req, res) => {
             const chunk = await Promise.all(pool.slice(i, i + 2).map(async (p) => {
               try {
                 const [bpk, ppk] = await Promise.all([batterPack(p.id), pitcherPack(p.sp.id)]);
+                if (bpk) {
+                  // the pack is in hand — feed the board so every bat's
+                  // Statcast fields fill as the build marches (free: same fetch)
+                  p.avgEV = bpk.avgEV; p.avgLA = bpk.avgLA;
+                  p.gbPct = bpk.gbPct; p.fbPct = bpk.fbPct;
+                  p.brlPct = bpk.brlPct; p.whiffPct = bpk.whiffPct;
+                }
                 const m = zoneMatchFor(bpk, p.sp && p.sp.hand, ppk && ppk.pzones);
                 return m ? { id: p.id, ...m } : null;
               } catch { return null; }
