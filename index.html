@@ -1560,11 +1560,41 @@ function advPass(p) {
   }
   return true;
 }
+var advPollArmed = false;
+function refreshStatcast() {
+  advPollArmed = false;
+  if (state.demo || state.tab !== "advanced") return;
+  fetch(apiBase + "/api/board?day=" + state.day)
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (j) {
+      if (!j || j.warming || !j.players || !state.data || !state.data.players) return;
+      var by = {};
+      j.players.forEach(function (x) { by[x.id] = x; });
+      var missing = 0;
+      state.data.players.forEach(function (p) {
+        var f = by[p.id];
+        if (f) {
+          ["avgEV", "avgLA", "gbPct", "fbPct", "brlPct", "whiffPct"].forEach(function (k) {
+            if (p[k] == null && f[k] != null) p[k] = f[k];
+          });
+        }
+        if (p.avgEV == null) missing++;
+      });
+      render();
+      // while the day's first scouting march is still filling the cache,
+      // keep pulling so the cards fill live in front of the user
+      if (state.tab === "advanced" && missing > 3 && !advPollArmed) {
+        advPollArmed = true;
+        setTimeout(refreshStatcast, 20000);
+      }
+    })
+    .catch(function () {});
+}
 function advancedView() {
   var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
   var players = ((state.data && state.data.players) || []).filter(function (p) { return state.game === "all" || String(p.gamePk) === String(state.game); });
   var banner = '<div class="fn-banner" style="border-color:rgba(167,139,250,0.5)"><div class="fn-title" style="color:#a78bfa">ADVANCED \u00b7 YOUR METRICS CONSOLE</div>' +
-    '<div class="fn-sub">Choose the advanced metrics you want on every card \u2014 open \u2699 Metrics and flip the pills; the slate re-renders instantly \u00b7 Statcast-fed fields (EV, LA, BRL%, WHIFF%, GB/FB) fill in as each bat\u2019s pack loads \u2014 an em-dash means not scouted yet, and filtering on one drops unscouted bats \u00b7 type YOUR OWN number in a filter box (\u2265/\u2264 flips direction) and the slate obeys it \u00b7 all alignment marks ride along: gold \u2605 suggested \u00b7 purple \u2605 numerology \u00b7 rose \u2605 name energy</div>' +
+    '<div class="fn-sub">Choose the advanced metrics you want on every card \u2014 open \u2699 Metrics and flip the pills; the slate re-renders instantly \u00b7 opening this tab pulls the latest scouting snapshot and keeps refreshing every 20s until the slate is filled \u2014 on a freshly restarted server the first fill takes the scouting march a few minutes, then it\u2019s instant all day \u00b7 an em-dash means not scouted yet, and filtering on a Statcast field drops unscouted bats \u00b7 type YOUR OWN number in a filter box (\u2265/\u2264 flips direction) and the slate obeys it \u00b7 all alignment marks ride along: gold \u2605 suggested \u00b7 purple \u2605 numerology \u00b7 rose \u2605 name energy</div>' +
     '<button class="wk-toggle" data-advmenu="1">\u2699 Metrics ' + (state.advMenu ? "\u25b2" : "\u25bc") + '</button></div>';
   if (state.advMenu) {
     var frows = ADV_METRICS.filter(function (m) { return state.advCols[m.k]; }).map(function (m) {
@@ -2553,7 +2583,9 @@ document.addEventListener("click", function (e) {
   if (el.dataset.advtab) {
     state.tab = state.tab === "advanced" ? "hr" : "advanced";
     state.god = false; state.ops = false; state.zoneMode = false; state.open = null; state.advMenu = false;
-    render(); return;
+    render();
+    if (state.tab === "advanced") refreshStatcast();
+    return;
   }
   if (el.dataset.advmenu) {
     state.advMenu = !state.advMenu;
