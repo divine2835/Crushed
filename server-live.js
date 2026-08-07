@@ -925,7 +925,7 @@ async function ghLearn(method, content) {
     LEARN_SHA = j.sha;
     return JSON.parse(Buffer.from(j.content, "base64").toString("utf8"));
   }
-  const body = { message: "learn-state update", content: Buffer.from(content).toString("base64") };
+  const body = { message: "learn-state update [skip render]", content: Buffer.from(content).toString("base64") }; // [skip render] keeps the brain's saves from triggering Render rebuilds
   if (LEARN_SHA) body.sha = LEARN_SHA;
   const r = await fetch(url, { method: "PUT", headers, body: JSON.stringify(body) });
   if (r.ok) { const j = await r.json(); LEARN_SHA = j.content?.sha || LEARN_SHA; }
