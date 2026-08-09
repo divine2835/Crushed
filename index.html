@@ -683,7 +683,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, mixWin:"szn", profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -1048,7 +1048,16 @@ function mixPanel(p, arm, activePitch) {
     }
     return '<div class="mix-panel">' + toggle + rowsHtml + '</div>';
   }
-  var mix = arm === "sp" ? (p.sp && p.sp.mix) : currentPen(p);
+  var mixWinNote = "";
+  var mix;
+  if (arm === "sp") {
+    mix = p.sp && p.sp.mix;
+    if (state.mixWin !== "szn" && p.sp) {
+      var wm = state.mixWin === "3" ? p.sp.mixL3 : p.sp.mixL5;
+      if (wm && wm.length) { mix = wm; mixWinNote = "last " + state.mixWin + " starts \u00b7 batter SLG stays season-scope"; }
+      else mixWinNote = wm ? "no pitches in that window \u2014 showing season" : "window not synced yet \u2014 tap again in a moment \u00b7 showing season";
+    }
+  } else mix = currentPen(p);
   if (arm === "pen" && !mix) {
     rowsHtml = '<p class="mix-caption">' + (state.penLoading[p.id] ? "Loading bullpen arsenal from Statcast\u2026" : "Bullpen arsenal loads from the live server.") + '</p>';
   } else if (!mix || !mix.length) {
@@ -1058,7 +1067,10 @@ function mixPanel(p, arm, activePitch) {
       : (p.sp && p.sp.mixFail ? "Savant arsenal fetch failed \u2014 check the server logs and re-tap." : "Arsenal not synced yet.");
     rowsHtml = '<p class="mix-caption">' + armMsg + '</p>';
   } else {
-    rowsHtml = '<div class="mix-cols mono"><span>Pitch</span><span>Usage</span><span>Velo</span><span>HR</span><span>' + last + ' SLG</span></div>' +
+    rowsHtml = (arm === "sp" ? '<div style="margin-bottom:7px">' + [["szn","SEASON"],["3","L3"],["5","L5"]].map(function (wd) {
+        return '<button class="adv-pill' + (state.mixWin === wd[0] ? " on" : "") + '" data-mixwin="' + wd[0] + '" style="margin-right:6px">' + wd[1] + '</button>';
+      }).join("") + (mixWinNote ? '<span class="mix-caption" style="margin-left:4px">' + mixWinNote + '</span>' : "") + '</div>' : "") +
+      '<div class="mix-cols mono"><span>Pitch</span><span>Usage</span><span>Velo</span><span>HR</span><span>' + last + ' SLG</span></div>' +
       mix.map(function (m) {
         var slg = p.vsPitch ? p.vsPitch[m.pt] : null;
         var dim = activePitch && activePitch !== m.pt ? " mix-dim" : "";
@@ -2395,6 +2407,8 @@ function loadArsenal(p) {
       if (mix && mix.length) {
         state.arsenals[spId] = j;
         p.sp.mix = mix;
+        p.sp.mixL3 = j.mixL3 || [];
+        p.sp.mixL5 = j.mixL5 || [];
         if (j && j.swstr != null) p.sp.swstr = j.swstr;
         recomputeTags(p);
       } else { p.sp.mixFail = true; }
@@ -2575,7 +2589,7 @@ document.addEventListener("change", function (e) {
   render();
 });
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-mixwin],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -2675,6 +2689,26 @@ document.addEventListener("click", function (e) {
   if (el.dataset.lettab) {
     state.tab = state.tab === "letter" ? "hr" : "letter";
     state.god = false; state.ops = false; state.zoneMode = false; state.open = null;
+    render(); return;
+  }
+  if (el.dataset.mixwin) {
+    state.mixWin = el.dataset.mixwin;
+    var op = ((state.data && state.data.players) || []).filter(function (x) { return String(x.id) === String(state.open); })[0];
+    if (state.mixWin !== "szn" && op && op.sp && op.sp.id && !op.sp.mixL3 && !state.demo) {
+      fetch(apiBase + "/api/arsenal/" + op.sp.id)
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then(function (j) {
+          ((state.data && state.data.players) || []).forEach(function (x) {
+            if (x.sp && String(x.sp.id) === String(op.sp.id)) {
+              if (!x.sp.mix || !x.sp.mix.length) x.sp.mix = j.mix || [];
+              x.sp.mixL3 = j.mixL3 || [];
+              x.sp.mixL5 = j.mixL5 || [];
+            }
+          });
+          render();
+        })
+        .catch(function () {});
+    }
     render(); return;
   }
   if (el.dataset.zone) {

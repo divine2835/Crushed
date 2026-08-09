@@ -152,7 +152,13 @@ function pitcherZoneUsage(rows) {
 }
 const pitcherPack = (id) => cached(`ppk:${id}`, 12 * H, async () => {
   const rows = await savantRowsRaw(id, "pitcher");
-  return { mix: arsenalFromRows(rows), swstr: swstrFromRows(rows), n: rows.length, bbByHand: battedByHand(rows, "stand"), dmg: pitcherDamage(rows), pzones: pitcherZoneUsage(rows) };
+  const dates = [...new Set(rows.map((r) => r.game_date).filter(Boolean))].sort().reverse();
+  const lastN = (n) => {
+    const keep = new Set(dates.slice(0, n));
+    return rows.filter((r) => keep.has(r.game_date));
+  };
+  return { mix: arsenalFromRows(rows), mixL3: arsenalFromRows(lastN(3)), mixL5: arsenalFromRows(lastN(5)),
+    swstr: swstrFromRows(rows), n: rows.length, bbByHand: battedByHand(rows, "stand"), dmg: pitcherDamage(rows), pzones: pitcherZoneUsage(rows) };
 });
 
 const person = (id) => cached(`person:${id}`, 240 * H, () =>
@@ -1240,7 +1246,7 @@ app.get("/api/board", (req, res) => {
 app.get("/api/arsenal/:pitcherId", async (req, res) => {
   try {
     const pk = await pitcherPack(req.params.pitcherId);
-    res.json({ mix: pk.mix, swstr: pk.swstr });
+    res.json({ mix: pk.mix, mixL3: pk.mixL3, mixL5: pk.mixL5, swstr: pk.swstr });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
