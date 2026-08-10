@@ -683,7 +683,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, mixWin:"szn", profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn", profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -1540,6 +1540,24 @@ function loadWeak() {
 /* ADVANCED — a metrics console for the slate: a dropdown of toggle
    pills chooses which advanced metrics render on every player card.
    Statcast-fed fields fill in as each bat's pack loads. */
+function advDenom(p) {
+  if (state.advWin === "szn") {
+    var s = p.season || {};
+    var bbe = s.pa != null ? s.pa - (s.bb || 0) - (s.so || 0) : null;
+    return { g: s.g || null, bbe: bbe > 0 ? bbe : null };
+  }
+  var w = advW(p);
+  if (!w) return { g: null, bbe: null };
+  var wb = w.pa != null ? w.pa - (w.bb || 0) - (w.so || 0) : null;
+  return { g: w.g || null, bbe: wb > 0 ? wb : null };
+}
+function advCount(p, raw) {
+  if (raw == null) return null;
+  if (state.advMode === "tot") return { v: raw, txt: String(raw) };
+  var d = advDenom(p);
+  if (state.advMode === "game") return d.g ? { v: +(raw / d.g).toFixed(2), txt: (raw / d.g).toFixed(2) } : null;
+  return d.bbe ? { v: +((raw / d.bbe) * 100).toFixed(1), txt: ((raw / d.bbe) * 100).toFixed(1) + "%" } : null;
+}
 function advW(p) {
   if (state.advWin === "szn") return null;
   var d = state.advWinData[state.day];
@@ -1583,8 +1601,8 @@ var ADV_METRICS = [
   { k: "gb", lab: "GB%", num: function (p) { return p.gbPct != null ? p.gbPct : null; }, get: function (p) { return p.gbPct != null ? p.gbPct + "%" : null; } },
   { k: "fb", lab: "FB%", num: function (p) { return p.fbPct != null ? p.fbPct : null; }, get: function (p) { return p.fbPct != null ? p.fbPct + "%" : null; } },
   { k: "xrbi", lab: "xRBI", num: function (p) { return p.xRbi != null ? p.xRbi : null; }, get: function (p) { return p.xRbi != null ? p.xRbi.toFixed(2) : null; } },
-  { k: "hr", lab: "HR", num: function (p) { if (state.advWin !== "szn") { var w = advW(p); return w ? w.hr : null; } return p.season ? p.season.hr : null; }, get: function (p) { var v = this.num(p); return v != null ? String(v) : null; } },
-  { k: "rbi", lab: "RBI", num: function (p) { if (state.advWin !== "szn") { var w = advW(p); return w ? w.rbi : null; } return p.season ? p.season.rbi : null; }, get: function (p) { var v = this.num(p); return v != null ? String(v) : null; } }
+  { k: "hr", lab: "HR", raw: function (p) { if (state.advWin !== "szn") { var w = advW(p); return w ? w.hr : null; } return p.season ? p.season.hr : null; }, num: function (p) { var c = advCount(p, this.raw(p)); return c ? c.v : null; }, get: function (p) { var c = advCount(p, this.raw(p)); return c ? c.txt : null; } },
+  { k: "rbi", lab: "RBI", raw: function (p) { if (state.advWin !== "szn") { var w = advW(p); return w ? w.rbi : null; } return p.season ? p.season.rbi : null; }, num: function (p) { var c = advCount(p, this.raw(p)); return c ? c.v : null; }, get: function (p) { var c = advCount(p, this.raw(p)); return c ? c.txt : null; } }
 ];
 function advPass(p) {
   var keys = Object.keys(state.advFilters);
@@ -1634,10 +1652,12 @@ function advancedView() {
   var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
   var players = ((state.data && state.data.players) || []).filter(function (p) { return state.game === "all" || String(p.gamePk) === String(state.game); });
   var banner = '<div class="fn-banner" style="border-color:rgba(167,139,250,0.5)"><div class="fn-title" style="color:#a78bfa">ADVANCED \u00b7 YOUR METRICS CONSOLE</div>' +
-    '<div class="fn-sub">Choose the advanced metrics you want on every card \u2014 open \u2699 Metrics and flip the pills; the slate re-renders instantly \u00b7 SZN/L3/L5/L10/L15 pills switch the game-log metrics (HR%, ISO, SLG, OBP, K%, BB%, HR, RBI) to that window \u2014 Statcast fields, ZS, and xRBI stay season-scope \u00b7 opening this tab pulls the latest scouting snapshot and keeps refreshing every 20s until the slate is filled \u2014 on a freshly restarted server the first fill takes the scouting march a few minutes, then it\u2019s instant all day \u00b7 an em-dash means not scouted yet, and filtering on a Statcast field drops unscouted bats \u00b7 type YOUR OWN number in a filter box (\u2265/\u2264 flips direction) and the slate obeys it \u00b7 all alignment marks ride along: gold \u2605 suggested \u00b7 purple \u2605 numerology \u00b7 rose \u2605 name energy</div>' +
+    '<div class="fn-sub">Choose the advanced metrics you want on every card \u2014 open \u2699 Metrics and flip the pills; the slate re-renders instantly \u00b7 SZN/L3/L5/L10/L15 pills switch the game-log metrics (HR%, ISO, SLG, OBP, K%, BB%, HR, RBI) to that window \u00b7 TOTALS / PER GAME / PER BBE (right side) re-denominate the HR and RBI chips over that same window, and your filters obey the mode \u2014 Statcast fields, ZS, and xRBI stay season-scope \u00b7 opening this tab pulls the latest scouting snapshot and keeps refreshing every 20s until the slate is filled \u2014 on a freshly restarted server the first fill takes the scouting march a few minutes, then it\u2019s instant all day \u00b7 an em-dash means not scouted yet, and filtering on a Statcast field drops unscouted bats \u00b7 type YOUR OWN number in a filter box (\u2265/\u2264 flips direction) and the slate obeys it \u00b7 all alignment marks ride along: gold \u2605 suggested \u00b7 purple \u2605 numerology \u00b7 rose \u2605 name energy</div>' +
     '<button class="wk-toggle" data-advmenu="1">\u2699 Metrics ' + (state.advMenu ? "\u25b2" : "\u25bc") + '</button>' +
-    '<div style="margin-top:9px">' + [["szn","SZN"],["3","L3"],["5","L5"],["10","L10"],["15","L15"]].map(function (wd) {
-      return '<button class="adv-pill' + (state.advWin === wd[0] ? " on" : "") + '" data-advwin="' + wd[0] + '" style="margin-right:6px">' + wd[1] + '</button>';
+    '<div style="margin-top:9px;display:flex;align-items:center;flex-wrap:wrap;gap:6px">' + [["szn","SZN"],["3","L3"],["5","L5"],["10","L10"],["15","L15"]].map(function (wd) {
+      return '<button class="adv-pill' + (state.advWin === wd[0] ? " on" : "") + '" data-advwin="' + wd[0] + '">' + wd[1] + '</button>';
+    }).join("") + '<span style="flex:1"></span>' + [["tot","TOTALS"],["game","PER GAME"],["bbe","PER BBE"]].map(function (md) {
+      return '<button class="adv-pill' + (state.advMode === md[0] ? " on" : "") + '" data-advmode="' + md[0] + '" title="HR &amp; RBI as ' + (md[0] === "tot" ? "raw totals" : md[0] === "game" ? "per-game averages" : "per batted-ball event (\u2248 PA \u2212 BB \u2212 K)") + ' over the active window">' + md[1] + '</button>';
     }).join("") + '</div>' +
     (state.advWin !== "szn" && (!state.advWinData[state.day] || state.advWinData[state.day].building) ? '<div class="adv-count" style="margin-top:7px">Building the last-' + state.advWin + ' windows for the slate\u2026 refreshing itself.</div>' : "") + '</div>';
   if (state.advMenu) {
@@ -2589,7 +2609,7 @@ document.addEventListener("change", function (e) {
   render();
 });
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-mixwin],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-mixwin],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -2632,6 +2652,10 @@ document.addEventListener("click", function (e) {
     render();
     if (state.tab === "advanced") { refreshStatcast(); if (state.advWin !== "szn") loadAdvWin(); }
     return;
+  }
+  if (el.dataset.advmode) {
+    state.advMode = el.dataset.advmode;
+    render(); return;
   }
   if (el.dataset.advwin) {
     state.advWin = el.dataset.advwin;
