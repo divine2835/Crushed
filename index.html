@@ -1054,7 +1054,11 @@ function mixPanel(p, arm, activePitch) {
     mix = p.sp && p.sp.mix;
     if (state.mixWin !== "szn" && p.sp) {
       var wm = state.mixWin === "3" ? p.sp.mixL3 : p.sp.mixL5;
-      if (wm && wm.length) { mix = wm; mixWinNote = "last " + state.mixWin + " starts \u00b7 batter SLG stays season-scope"; }
+      if (wm && wm.length) {
+        mix = wm;
+        var hasBW = state.mixWin === "3" ? p.vsPitchL3 : p.vsPitchL5;
+        mixWinNote = "last " + state.mixWin + " starts \u00b7 SLG = his last " + state.mixWin + " games" + (hasBW ? " (thin samples dash)" : " \u2014 tap his row once to sync it; season shown");
+      }
       else mixWinNote = wm ? "no pitches in that window \u2014 showing season" : "window not synced yet \u2014 tap again in a moment \u00b7 showing season";
     }
   } else mix = currentPen(p);
@@ -1073,6 +1077,15 @@ function mixPanel(p, arm, activePitch) {
       '<div class="mix-cols mono"><span>Pitch</span><span>Usage</span><span>Velo</span><span>HR</span><span>' + last + ' SLG</span></div>' +
       mix.map(function (m) {
         var slg = p.vsPitch ? p.vsPitch[m.pt] : null;
+        var slgTitle = "";
+        if (state.mixWin !== "szn") {
+          var wvs = state.mixWin === "3" ? p.vsPitchL3 : p.vsPitchL5;
+          if (wvs) {
+            var we = wvs[m.pt];
+            slg = we ? we.slg : null;
+            slgTitle = we ? "over " + we.ab + " AB in his last " + state.mixWin + " games" : "too few ABs vs this pitch in his last " + state.mixWin + " games";
+          }
+        }
         var dim = activePitch && activePitch !== m.pt ? " mix-dim" : "";
         var on = activePitch === m.pt ? " mix-on" : "";
         return '<button class="mix-row' + dim + on + '" data-pitch="' + m.pt + '" aria-pressed="' + (activePitch === m.pt) + '">' +
@@ -1080,7 +1093,7 @@ function mixPanel(p, arm, activePitch) {
           '<span class="mix-bar-cell">' + meter(m.pct, 60, pInfo(m.pt).color) + '<em>' + m.pct + '%</em></span>' +
           '<span class="mono dim">' + (m.velo ? m.velo.toFixed(1) : "\u2014") + '</span>' +
           '<span class="mono" style="' + (p.hrByPt && p.hrByPt[m.pt] ? "color:var(--hr);font-weight:600" : "color:var(--dim)") + '">' + (p.hrByPt ? (p.hrByPt[m.pt] || 0) : "\u2014") + '</span>' +
-          '<span class="mono" style="color:' + heat(slg) + ';font-weight:600">' + fmtSlg(slg) + '</span></button>';
+          '<span class="mono" style="color:' + heat(slg) + ';font-weight:600"' + (slgTitle ? ' title="' + slgTitle + '"' : "") + '>' + fmtSlg(slg) + '</span></button>';
       }).join("") +
       '<p class="mix-caption">Tap a pitch to isolate it on the spray chart and see its full location pattern in the zone map.</p>';
   }
@@ -1659,7 +1672,7 @@ function advancedView() {
     }).join("") + '<span style="flex:1"></span>' + [["tot","TOTALS"],["game","PER GAME"],["bbe","PER BBE"]].map(function (md) {
       return '<button class="adv-pill' + (state.advMode === md[0] ? " on" : "") + '" data-advmode="' + md[0] + '" title="HR &amp; RBI as ' + (md[0] === "tot" ? "raw totals" : md[0] === "game" ? "per-game averages" : "per batted-ball event (\u2248 PA \u2212 BB \u2212 K)") + ' over the active window">' + md[1] + '</button>';
     }).join("") + '</div>' +
-    (state.advWin !== "szn" && (!state.advWinData[state.day] || state.advWinData[state.day].building) ? '<div class="adv-count" style="margin-top:7px">Building the last-' + state.advWin + ' windows for the slate\u2026 refreshing itself.</div>' : "") + '</div>';
+    (state.advWin !== "szn" && (!state.advWinData[state.day] || state.advWinData[state.day].building) ? '<div class="adv-count" style="margin-top:7px">Building the last-' + state.advWin + ' windows\u2026 ' + (state.advWinData[state.day] ? Object.keys(state.advWinData[state.day].map).length : 0) + ' bats in \u00b7 numbers fill as it marches, refreshing itself.</div>' : "") + '</div>';
   if (state.advMenu) {
     var frows = ADV_METRICS.filter(function (m) { return state.advCols[m.k]; }).map(function (m) {
       var f = state.advFilters[m.k];
@@ -2390,6 +2403,8 @@ function loadDetail(p) {
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(function (j) {
       p.vsPitch = j.vsPitch || null;
+      p.vsPitchL3 = j.vsPitchL3 || null;
+      p.vsPitchL5 = j.vsPitchL5 || null;
       p.zones = j.zones || null;
       p.spray = j.spray || null;
       p.hardHitPct = j.hardHitPct != null ? j.hardHitPct : null;
@@ -2650,11 +2665,14 @@ document.addEventListener("click", function (e) {
     state.tab = state.tab === "advanced" ? "hr" : "advanced";
     state.god = false; state.ops = false; state.zoneMode = false; state.open = null; state.advMenu = false;
     render();
-    if (state.tab === "advanced") { refreshStatcast(); if (state.advWin !== "szn") loadAdvWin(); }
+    if (state.tab === "advanced") { refreshStatcast(); loadAdvWin(); }
     return;
   }
   if (el.dataset.advmode) {
     state.advMode = el.dataset.advmode;
+    if (state.advMode !== "tot" && !state.advCols.hr && !state.advCols.rbi) {
+      state.advCols.hr = true; state.advCols.rbi = true; // the mode's subjects join the cards
+    }
     render(); return;
   }
   if (el.dataset.advwin) {

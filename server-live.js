@@ -359,6 +359,24 @@ function batterAggregates(rows) {
   });
   const vsPitch = {};
   Object.entries(vs).forEach(([pt, v]) => { if (v.ab >= 10) vsPitch[pt] = +(v.tb / v.ab).toFixed(3); });
+  // windowed batter SLG vs pitch: his last N distinct game dates, honest AB floors
+  const bDates = [...new Set(rows.map((r) => r.game_date).filter(Boolean))].sort().reverse();
+  const vsWin = (n, abFloor) => {
+    const keep = new Set(bDates.slice(0, n));
+    const acc = {};
+    for (const r of rows) {
+      if (!keep.has(r.game_date) || !r.pitch_type) continue;
+      const ev = r.events;
+      if (!AB_END.has(ev)) continue;
+      (acc[r.pitch_type] = acc[r.pitch_type] || { ab: 0, tb: 0 });
+      acc[r.pitch_type].ab++;
+      acc[r.pitch_type].tb += TB[ev] || 0;
+    }
+    const out = {};
+    Object.entries(acc).forEach(([pt, v]) => { if (v.ab >= abFloor) out[pt] = { slg: +(v.tb / v.ab).toFixed(3), ab: v.ab }; });
+    return out;
+  };
+  const vsPitchL3 = vsWin(3, 2), vsPitchL5 = vsWin(5, 3);
   const zones = [];
   for (let i = 1; i <= 9; i++) zones.push(z[i] && z[i].ab >= 5 ? +(z[i].tb / z[i].ab).toFixed(3) : null);
   const zonesX = z; // rich per-zone counts for the zone-match engine
@@ -368,7 +386,7 @@ function batterAggregates(rows) {
     R: hand.R.ab >= THRESH.platoonAb ? +(hand.R.tb / hand.R.ab).toFixed(3) : null,
   };
   return {
-    vsPitch, zones, zonesX, zonesXBy: { L: zL, R: zR },
+    vsPitch, vsPitchL3, vsPitchL5, zones, zonesX, zonesXBy: { L: zL, R: zR },
     whiffPct: swAll >= 50 ? +((wfAll / swAll) * 100).toFixed(1) : null,
     spray: spray.slice(0, 120).map(({ x, y, pt, ev }) => ({ x, y, pt, ev })),
     hardHitPct: bbe >= 20 ? Math.round((hard / bbe) * 100) : null,
@@ -1165,7 +1183,7 @@ async function enrichDayInner(day, b) {
     for (const p of top) {
       try {
         const agg = await batterPack(p.id);
-        p.vsPitch = agg.vsPitch; p.zones = agg.zones; p.spray = agg.spray;
+        p.vsPitch = agg.vsPitch; p.vsPitchL3 = agg.vsPitchL3; p.vsPitchL5 = agg.vsPitchL5; p.zones = agg.zones; p.spray = agg.spray;
         p.hardHitPct = agg.hardHitPct; p.pullPct = agg.pullPct;
         p.barrelsByPt = agg.barrelsByPt; p.hrByPt = agg.hrByPt; p.vsHand = agg.vsHand;
         p.avgEV = agg.avgEV; p.avgLA = agg.avgLA; p.gbPct = agg.gbPct; p.fbPct = agg.fbPct; p.brlPct = agg.brlPct; p.whiffPct = agg.whiffPct;
