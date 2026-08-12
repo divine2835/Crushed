@@ -2,6 +2,11 @@
   "name": "crushed",
   "version": "1.0.0",
   "private": true,
-  "scripts": { "start": "node server-live.js" },
-  "dependencies": { "express": "^4.19.0" }
+  "scripts": {
+    "start": "node server-live.js"
+  },
+  "dependencies": {
+    "express": "^4.19.0",
+    "web-push": "^3.6.7"
+  }
 }

@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0d1117">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Crushed">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#0c1017">
 <title>Crushed — Live HR + RBI Scouting Terminal</title>
 <style>
@@ -683,7 +689,8 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn", profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
+  alerts: (function () { try { return JSON.parse(localStorage.getItem("crushedAlerts") || "[]"); } catch (e) { return []; } })(), profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -1120,7 +1127,9 @@ function scoutCard(p) {
   var tagsHtml = (p.tags && p.tags.length)
     ? '<div class="tagrow">' + (p.suggested ? '<span class="tagchip">★ Suggested play</span>' : "") + p.tags.map(function (t) { return '<span class="tagchip">' + esc(t) + '</span>'; }).join("") + '</div>'
     : (p.suggested ? '<div class="tagrow"><span class="tagchip">★ Suggested play</span></div>' : "");
+  var watched = state.alerts.indexOf(Number(p.id)) !== -1 || state.alerts.indexOf(String(p.id)) !== -1;
   return '<div class="scout">' +
+    '<div style="margin-bottom:8px"><button class="wk-toggle" data-alert="' + p.id + '" style="' + (watched ? "border-color:#f2c14e;color:#f2c14e" : "") + '">' + (watched ? "\ud83d\udd14 Alerts ON \u00b7 HR &amp; RBI" : "\ud83d\udd15 Alert me \u00b7 HR &amp; RBI") + '</button></div>' +
     '<div class="note">' + noteFor(p) + '</div>' +
     tagsHtml +
     ownageStrip(p) +
@@ -2612,6 +2621,41 @@ function loadPen(p) {
 }
 
 /* ---------- events ---------- */
+if (typeof navigator !== "undefined" && navigator.serviceWorker) {
+  try { navigator.serviceWorker.register("/sw.js"); } catch (e) {}
+}
+function saveAlerts() {
+  try { localStorage.setItem("crushedAlerts", JSON.stringify(state.alerts)); } catch (e) {}
+}
+function syncWatch() {
+  fetch(apiBase + "/api/push/watch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ players: state.alerts }) }).catch(function () {});
+}
+function ensurePush() {
+  try {
+  if (typeof Notification === "undefined" || !navigator.serviceWorker || typeof PushManager === "undefined") {
+    try { alert("Alerts need the installed app: open this site in Safari, Share \u2192 Add to Home Screen, then enable alerts from inside the Crushed app (iOS 16.4+)."); } catch (e) {}
+    return;
+  }
+  Notification.requestPermission().then(function (perm) {
+    if (perm !== "granted") return;
+    fetch(apiBase + "/api/push/pubkey").then(function (r) { return r.json(); }).then(function (k) {
+      if (!k.enabled) { alert("The server\u2019s alert engine isn\u2019t on yet \u2014 make sure the new package.json was deployed."); return; }
+      var pad = "=".repeat((4 - (k.key.length % 4)) % 4);
+      var b64 = (k.key + pad).replace(/-/g, "+").replace(/_/g, "/");
+      var raw = atob(b64), arr = new Uint8Array(raw.length);
+      for (var i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+      navigator.serviceWorker.ready.then(function (reg) {
+        reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: arr }).then(function (sub) {
+          fetch(apiBase + "/api/push/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ subscription: sub, players: state.alerts }) }).catch(function () {});
+        }).catch(function () {});
+      });
+    }).catch(function () {});
+  });
+  } catch (e) {}
+}
+if (typeof navigator !== "undefined" && navigator.serviceWorker && state.alerts.length) {
+  setTimeout(syncWatch, 3000); // re-arm the watchlist after any server restart
+}
 document.addEventListener("change", function (e) {
   var t = e.target;
   if (!t || !t.dataset || !t.dataset.advin) return;
@@ -2624,7 +2668,7 @@ document.addEventListener("change", function (e) {
   render();
 });
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-mixwin],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -2731,6 +2775,15 @@ document.addEventListener("click", function (e) {
   if (el.dataset.lettab) {
     state.tab = state.tab === "letter" ? "hr" : "letter";
     state.god = false; state.ops = false; state.zoneMode = false; state.open = null;
+    render(); return;
+  }
+  if (el.dataset.alert) {
+    var aid = Number(el.dataset.alert);
+    var ix = state.alerts.map(Number).indexOf(aid);
+    if (ix === -1) { state.alerts.push(aid); ensurePush(); }
+    else state.alerts.splice(ix, 1);
+    saveAlerts();
+    syncWatch();
     render(); return;
   }
   if (el.dataset.mixwin) {
