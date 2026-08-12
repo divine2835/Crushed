@@ -69,6 +69,11 @@ button { font-family: inherit; }
 .god-on { color: var(--ink); border-color: #f2b134; background: linear-gradient(90deg, #f2b134, #ffe08a, #f2b134); background-size: 200% 100%; animation: godsheen 2.2s linear infinite, godpulse 1.6s ease-in-out infinite; }
 @keyframes godsheen { 0% { background-position: 0 0; } 100% { background-position: 200% 0; } }
 @keyframes godpulse { 0%, 100% { box-shadow: 0 0 8px rgba(242,177,52,0.35); } 50% { box-shadow: 0 0 24px rgba(242,177,52,0.8); } }
+.odds-btn { border-color: rgba(110,231,183,0.55); color: #6ee7b7; }
+.odds-on { color: var(--ink); border-color: #6ee7b7; background: #6ee7b7; box-shadow: 0 0 12px rgba(110,231,183,0.4); }
+.odds-edge td { background: rgba(110,231,183,0.09); }
+.odds-edge td:first-child { border-left: 3px solid #6ee7b7; }
+.odds-bk { font-size: 9.5px; color: var(--dim); margin-left: 5px; }
 .adv-btn { border-color: rgba(167,139,250,0.55); color: #a78bfa; }
 .adv-on { color: var(--ink); border-color: #a78bfa; background: #a78bfa; box-shadow: 0 0 12px rgba(167,139,250,0.4); }
 .adv-menu { border: 1px solid rgba(167,139,250,0.4); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 7px; }
@@ -714,7 +719,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", oddsData:{}, oddsLoading:false, advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
   alerts: (function () { try { return JSON.parse(localStorage.getItem("crushedAlerts") || "[]"); } catch (e) { return []; } })(), profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
@@ -1590,6 +1595,87 @@ function loadWeak() {
 /* ADVANCED — a metrics console for the slate: a dropdown of toggle
    pills chooses which advanced metrics render on every player card.
    Statcast-fed fields fill in as each bat's pack loads. */
+/* TRUE ODDS — our weather/park-adjusted HR% as a fair American line
+   vs the best sportsbook price. Edge = our probability minus theirs. */
+function probToAm(p) {
+  if (p <= 0 || p >= 1) return null;
+  return p >= 0.5 ? -Math.round((100 * p) / (1 - p)) : Math.round((100 * (1 - p)) / p);
+}
+function amToProb(a) {
+  a = +a;
+  if (!isFinite(a) || a === 0) return null;
+  return a < 0 ? -a / (-a + 100) : 100 / (a + 100);
+}
+function fmtAm(a) { return a == null ? "\u2014" : (a > 0 ? "+" + a : String(a)); }
+function oddsEdge(p) {
+  var ourP = p.hrPct != null ? p.hrPct / 100 : null;
+  var d = state.oddsData[state.day];
+  var hit = d && d.players ? d.players[p.id] : null;
+  if (ourP == null) return { ourP: null, fair: null, hit: hit || null, bookP: null, edge: null, green: false };
+  var fair = probToAm(ourP);
+  if (!hit) return { ourP: ourP, fair: fair, hit: null, bookP: null, edge: null, green: false };
+  var bookP = amToProb(hit.odds);
+  var edge = bookP != null ? ourP - bookP : null;
+  var green = edge != null && ourP >= bookP * 1.15 && edge >= 0.02;
+  return { ourP: ourP, fair: fair, hit: hit, bookP: bookP, edge: edge, green: green };
+}
+function loadOdds() {
+  if (state.oddsLoading) return;
+  var day = state.day;
+  var d = state.oddsData[day];
+  if (d && !d.warming) return;
+  state.oddsLoading = true;
+  fetch(apiBase + "/api/odds?day=" + day)
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (j) { state.oddsData[day] = j; })
+    .catch(function () {})
+    .finally(function () {
+      state.oddsLoading = false;
+      render();
+      var d2 = state.oddsData[day];
+      if (state.tab === "oddsx" && d2 && d2.warming) setTimeout(loadOdds, 15000);
+    });
+}
+function oddsView() {
+  var d = state.oddsData[state.day] || {};
+  if (state.demo) {
+    // demo books shade our fair price so the view teaches itself
+    var demoP = {};
+    ((state.data && state.data.players) || []).forEach(function (p, i) {
+      if (p.hrPct != null && i % 3 !== 2) demoP[p.id] = { odds: probToAm(Math.max(0.02, (p.hrPct / 100) * (i % 2 ? 0.8 : 1.12))), book: "DemoBook" };
+    });
+    d = { enabled: true, players: demoP };
+  }
+  var banner = '<div class="fn-banner" style="border-color:rgba(110,231,183,0.5)"><div class="fn-title" style="color:#6ee7b7">TRUE ODDS \u00b7 OUR FAIR PRICE vs THE BOOKS</div>' +
+    '<div class="fn-sub">FAIR = your weather- and park-adjusted HR% converted straight to an American line (25% \u2192 +300, no bookmaker margin) \u00b7 BOOK = each bat\u2019s best available price across sportsbooks \u00b7 EDGE = our probability minus the book\u2019s implied \u2014 rows glow mint when the model likes a price at least 15% and 2+ points better than the market \u00b7 analysis of pricing, not betting advice</div></div>';
+  var players = ((state.data && state.data.players) || []).filter(function (p) { return state.game === "all" || String(p.gamePk) === String(state.game); });
+  if (!players.length) return banner + '<div class="loading">Waiting on the board\u2026</div>';
+  if (d.enabled === false) {
+    banner += '<div class="adv-count" style="color:#6ee7b7;margin-bottom:10px">Book odds are asleep: grab a free key at the-odds-api.com, add it on Render as env var ODDS_API_KEY, and this column wakes up \u2014 the FAIR side below is fully live already.</div>';
+  } else if (d.warming) {
+    banner += '<div class="adv-count" style="color:#6ee7b7;margin-bottom:10px">Pulling the books\u2026 refreshing itself.</div>';
+  }
+  var rows = players.map(function (p) { return { p: p, e: oddsEdge(p) }; });
+  rows.sort(function (a, b) {
+    var ae = a.e.edge != null ? a.e.edge : -9, be = b.e.edge != null ? b.e.edge : -9;
+    return be - ae || (b.p.hrPct || 0) - (a.p.hrPct || 0);
+  });
+  var body = rows.map(function (r) {
+    var p = r.p, e = r.e;
+    var out = '<tr class="row' + (e.green ? " odds-edge" : "") + '" data-row="' + p.id + '">' +
+      '<td><div class="pface"><div class="player"><span class="player-name">' + luDot(p.lineup) +
+      (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") +
+      (crossAligned(p) ? '<span class="star-num" title="Numerology-aligned today">\u2605</span>' : "") +
+      esc(p.name) + batTag(p) + '</span>' +
+      '<span class="player-team">' + esc(p.teamAbbr) + ' \u00b7 #' + p.slot + (p.sp ? ' \u00b7 vs ' + esc(p.sp.name) + pitParen(p.sp) : "") + '</span></div>' + faceImg(p.id) + '</div></td>' +
+      '<td title="' + (e.ourP != null ? (e.ourP * 100).toFixed(1) + '% \u2192 fair ' + fmtAm(e.fair) : "") + '">' + fmtAm(e.fair) + '</td>' +
+      '<td>' + (e.hit ? fmtAm(e.hit.odds) + '<span class="odds-bk">' + esc(e.hit.book || "") + '</span>' : '<span class="dim">\u2014</span>') + '</td>' +
+      '<td>' + (e.edge != null ? '<span style="color:' + (e.edge > 0 ? "#6ee7b7" : "var(--dim)") + ';font-weight:800">' + (e.edge > 0 ? "+" : "") + (e.edge * 100).toFixed(1) + ' pts</span>' : '<span class="dim">\u2014</span>') + '</td></tr>';
+    if (String(state.open) === String(p.id)) out += '<tr class="note-row"><td colspan="4">' + scoutCard(p) + '</td></tr>';
+    return out;
+  }).join("");
+  return banner + '<div class="table-wrap"><table><thead><tr><th>Batter</th><th>Fair</th><th>Book</th><th>Edge</th></tr></thead><tbody>' + body + '</tbody></table></div>';
+}
 function advDenom(p) {
   if (state.advWin === "szn") {
     var s = p.season || {};
@@ -2208,7 +2294,8 @@ function renderDaybar() {
     '<button class="god-btn letter-btn' + (state.tab === "letter" ? " letter-on" : "") + '" data-lettab="1" aria-pressed="' + (state.tab === "letter") + '">LETTEROLOGY</button>' +
     '<button class="god-btn sl-btn' + (state.tab === "sleaders" ? " sl-on" : "") + '" data-sltab="1" aria-pressed="' + (state.tab === "sleaders") + '">SEASON LEADERS</button>' +
     '<button class="god-btn stad-btn' + (state.tab === "stadium" ? " stad-on" : "") + '" data-stadtab="1" aria-pressed="' + (state.tab === "stadium") + '">STADIUM ENERGY</button>' +
-    '<button class="god-btn adv-btn' + (state.tab === "advanced" ? " adv-on" : "") + '" data-advtab="1" aria-pressed="' + (state.tab === "advanced") + '">ADVANCED</button>';
+    '<button class="god-btn adv-btn' + (state.tab === "advanced" ? " adv-on" : "") + '" data-advtab="1" aria-pressed="' + (state.tab === "advanced") + '">ADVANCED</button>' +
+    '<button class="god-btn odds-btn' + (state.tab === "oddsx" ? " odds-on" : "") + '" data-oddstab="1" aria-pressed="' + (state.tab === "oddsx") + '">TRUE ODDS</button>';
 }
 function render() {
   renderDaybar();
@@ -2238,6 +2325,11 @@ function render() {
   if (state.god) {
     intro.innerHTML = 'GOD mode overrides the tabs while it\u2019s lit \u2014 tap the gold button again to return. Names still open their full scouting cards.';
     board.innerHTML = godView();
+    return;
+  }
+  if (state.tab === "oddsx") {
+    intro.innerHTML = 'Our fair price for every bat next to the best book price \u2014 sorted by edge, mint rows where the market underprices the model. Tap a name to scout him.';
+    board.innerHTML = oddsView();
     return;
   }
   if (state.tab === "advanced") {
@@ -2696,7 +2788,7 @@ document.addEventListener("change", function (e) {
   render();
 });
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -2733,11 +2825,23 @@ document.addEventListener("click", function (e) {
     state.open = null;
     render(); return;
   }
+  if (el.dataset.oddstab) {
+    state.tab = state.tab === "oddsx" ? "hr" : "oddsx";
+    state.god = false; state.ops = false; state.zoneMode = false; state.open = null;
+    render();
+    if (state.tab === "oddsx" && !state.demo) loadOdds();
+    return;
+  }
   if (el.dataset.advtab) {
     state.tab = state.tab === "advanced" ? "hr" : "advanced";
     state.god = false; state.ops = false; state.zoneMode = false; state.open = null; state.advMenu = false;
     render();
-    if (state.tab === "advanced") { refreshStatcast(); loadAdvWin(); }
+    if (state.tab === "oddsx") {
+    intro.innerHTML = 'Our fair price for every bat next to the best book price \u2014 sorted by edge, mint rows where the market underprices the model. Tap a name to scout him.';
+    board.innerHTML = oddsView();
+    return;
+  }
+  if (state.tab === "advanced") { refreshStatcast(); loadAdvWin(); }
     return;
   }
   if (el.dataset.advmode) {
