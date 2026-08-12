@@ -719,7 +719,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", oddsData:{}, oddsLoading:false, advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", oddsData:{}, oddsLoading:false, oddsBook:"best", oddsMenu:false, advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
   alerts: (function () { try { return JSON.parse(localStorage.getItem("crushedAlerts") || "[]"); } catch (e) { return []; } })(), profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
@@ -1614,6 +1614,11 @@ function oddsEdge(p) {
   if (ourP == null) return { ourP: null, fair: null, hit: hit || null, bookP: null, edge: null, green: false };
   var fair = probToAm(ourP);
   if (!hit) return { ourP: ourP, fair: fair, hit: null, bookP: null, edge: null, green: false };
+  if (state.oddsBook !== "best") {
+    var bp = hit.all ? hit.all[state.oddsBook] : null;
+    if (bp == null) return { ourP: ourP, fair: fair, hit: null, bookP: null, edge: null, green: false };
+    hit = { odds: bp, book: state.oddsBook, all: hit.all };
+  }
   var bookP = amToProb(hit.odds);
   var edge = bookP != null ? ourP - bookP : null;
   var green = edge != null && ourP >= bookP * 1.15 && edge >= 0.02;
@@ -1642,12 +1647,32 @@ function oddsView() {
     // demo books shade our fair price so the view teaches itself
     var demoP = {};
     ((state.data && state.data.players) || []).forEach(function (p, i) {
-      if (p.hrPct != null && i % 3 !== 2) demoP[p.id] = { odds: probToAm(Math.max(0.02, (p.hrPct / 100) * (i % 2 ? 0.8 : 1.12))), book: "DemoBook" };
+      if (p.hrPct != null && i % 3 !== 2) {
+        var o1 = probToAm(Math.max(0.02, (p.hrPct / 100) * (i % 2 ? 0.8 : 1.12)));
+        var o2 = probToAm(Math.max(0.02, (p.hrPct / 100) * 0.9));
+        demoP[p.id] = { odds: Math.max(o1, o2), book: o1 >= o2 ? "DemoBook" : "RiverDemo", all: { DemoBook: o1, RiverDemo: o2 } };
+      }
     });
     d = { enabled: true, players: demoP };
   }
   var banner = '<div class="fn-banner" style="border-color:rgba(110,231,183,0.5)"><div class="fn-title" style="color:#6ee7b7">TRUE ODDS \u00b7 OUR FAIR PRICE vs THE BOOKS</div>' +
     '<div class="fn-sub">FAIR = your weather- and park-adjusted HR% converted straight to an American line (25% \u2192 +300, no bookmaker margin) \u00b7 BOOK = each bat\u2019s best available price across sportsbooks \u00b7 EDGE = our probability minus the book\u2019s implied \u2014 rows glow mint when the model likes a price at least 15% and 2+ points better than the market \u00b7 analysis of pricing, not betting advice</div></div>';
+  var books = {};
+  Object.keys(d.players || {}).forEach(function (id) {
+    var a = d.players[id] && d.players[id].all;
+    if (a) Object.keys(a).forEach(function (bn) { books[bn] = 1; });
+  });
+  var bookList = Object.keys(books).sort();
+  if (state.oddsBook !== "best" && bookList.indexOf(state.oddsBook) === -1) state.oddsBook = "best";
+  if (bookList.length) {
+    banner += '<div style="margin:-4px 0 10px"><button class="wk-toggle" data-bookmenu="1" style="border-color:rgba(110,231,183,0.5);color:#6ee7b7">\ud83d\udcd6 Book: ' + (state.oddsBook === "best" ? "BEST PRICE" : esc(state.oddsBook)) + " " + (state.oddsMenu ? "\u25b2" : "\u25be") + '</button>' +
+      (state.oddsMenu ? '<div class="adv-menu" style="border-color:rgba(110,231,183,0.4);margin-top:8px">' +
+        '<button class="adv-pill' + (state.oddsBook === "best" ? " on" : "") + '" data-bookpick="best" style="' + (state.oddsBook === "best" ? "background:#6ee7b7;border-color:#6ee7b7" : "border-color:rgba(110,231,183,0.5);color:#6ee7b7") + '">BEST PRICE</button>' +
+        bookList.map(function (bn) {
+          var on = state.oddsBook === bn;
+          return '<button class="adv-pill' + (on ? " on" : "") + '" data-bookpick="' + esc(bn) + '" style="' + (on ? "background:#6ee7b7;border-color:#6ee7b7" : "border-color:rgba(110,231,183,0.5);color:#6ee7b7") + '">' + esc(bn) + '</button>';
+        }).join("") + '</div>' : "") + '</div>';
+  }
   var players = ((state.data && state.data.players) || []).filter(function (p) { return state.game === "all" || String(p.gamePk) === String(state.game); });
   if (!players.length) return banner + '<div class="loading">Waiting on the board\u2026</div>';
   if (d.enabled === false) {
@@ -2788,7 +2813,7 @@ document.addEventListener("change", function (e) {
   render();
 });
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-bookmenu],[data-bookpick],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -2823,6 +2848,15 @@ document.addEventListener("click", function (e) {
   if (el.dataset.wk) {
     state.weakOpen = String(state.weakOpen) === String(el.dataset.wk) ? null : el.dataset.wk;
     state.open = null;
+    render(); return;
+  }
+  if (el.dataset.bookmenu) {
+    state.oddsMenu = !state.oddsMenu;
+    render(); return;
+  }
+  if (el.dataset.bookpick) {
+    state.oddsBook = el.dataset.bookpick;
+    state.oddsMenu = false;
     render(); return;
   }
   if (el.dataset.oddstab) {

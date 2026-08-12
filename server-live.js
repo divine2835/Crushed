@@ -1805,7 +1805,11 @@ async function fetchDayOdds(b) {
           (mk.outcomes || []).forEach((out) => {
             if (out.name !== "Over" || +out.point !== 0.5) return;
             const key = normName(out.description);
-            if (!byName[key] || +out.price > +byName[key].odds) byName[key] = { odds: +out.price, book: bk.title };
+            if (!byName[key]) byName[key] = { odds: +out.price, book: bk.title, all: {} };
+            // keep every book's line (best per book for doubleheaders) AND the best overall
+            const cur = byName[key].all[bk.title];
+            if (cur == null || +out.price > cur) byName[key].all[bk.title] = +out.price;
+            if (+out.price > byName[key].odds) { byName[key].odds = +out.price; byName[key].book = bk.title; }
           });
         });
       });
