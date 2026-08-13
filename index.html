@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#0d1117">
+<meta name="theme-color" content="#08110c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Crushed">
@@ -1642,9 +1642,9 @@ function loadOdds() {
     });
 }
 function oddsView() {
-  var d = state.oddsData[state.day] || {};
-  if (state.demo) {
-    // demo books shade our fair price so the view teaches itself
+  if (state.demo && !state.oddsData[state.day]) {
+    // demo books shade our fair price so the view teaches itself —
+    // written into state so the edge math reads the same source as live
     var demoP = {};
     ((state.data && state.data.players) || []).forEach(function (p, i) {
       if (p.hrPct != null && i % 3 !== 2) {
@@ -1653,8 +1653,9 @@ function oddsView() {
         demoP[p.id] = { odds: Math.max(o1, o2), book: o1 >= o2 ? "DemoBook" : "RiverDemo", all: { DemoBook: o1, RiverDemo: o2 } };
       }
     });
-    d = { enabled: true, players: demoP };
+    state.oddsData[state.day] = { enabled: true, players: demoP };
   }
+  var d = state.oddsData[state.day] || {};
   var banner = '<div class="fn-banner" style="border-color:rgba(110,231,183,0.5)"><div class="fn-title" style="color:#6ee7b7">TRUE ODDS \u00b7 OUR FAIR PRICE vs THE BOOKS</div>' +
     '<div class="fn-sub">FAIR = your weather- and park-adjusted HR% converted straight to an American line (25% \u2192 +300, no bookmaker margin) \u00b7 BOOK = each bat\u2019s best available price across sportsbooks \u00b7 EDGE = our probability minus the book\u2019s implied \u2014 rows glow mint when the model likes a price at least 15% and 2+ points better than the market \u00b7 analysis of pricing, not betting advice</div></div>';
   var books = {};
