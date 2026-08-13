@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#08110c">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -57,7 +57,20 @@ button { font-family: inherit; }
 .chip-hot { color: var(--ink); background: var(--hot); border-color: var(--hot); }
 .chip-cold { color: var(--cold); border-color: var(--cold); }
 
-.tabs { display: flex; gap: 8px; margin: 18px 0 10px; }
+.tabs { display: flex; gap: 8px; margin: 18px 0 10px; overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs > * { flex: none; }
+html, body { overflow-x: hidden; max-width: 100vw; }
+body { touch-action: pan-y; padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+/* every wide lane scrolls inside itself — portrait frame stays locked,
+   landscape simply gets a wider frame; both orientations just work */
+.tabs, .filterbar, .table-wrap, .glog, .parkstrip, .adv-menu, .bk-menu { touch-action: pan-x pan-y; }
+.glog { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.glog table { min-width: 100%; }
+.wk-slot-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
+.filterbar { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.filterbar::-webkit-scrollbar { display: none; }
+.filterbar > * { flex: none; }
 .tab { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 0.06em; font-size: 15px; font-weight: 500; background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 6px; padding: 8px 18px; cursor: pointer; }
 .tab:focus-visible { outline: 2px solid var(--chalk); outline-offset: 2px; }
 .tab-on.tab-hr { color: var(--ink); background: var(--hr); border-color: var(--hr); }
@@ -74,6 +87,30 @@ button { font-family: inherit; }
 .odds-edge td { background: rgba(110,231,183,0.09); }
 .odds-edge td:first-child { border-left: 3px solid #6ee7b7; }
 .odds-bk { font-size: 9.5px; color: var(--dim); margin-left: 5px; }
+.bk-btn { display: inline-flex; align-items: center; gap: 7px; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12.5px; letter-spacing: 0.03em;
+  color: #073b2a; padding: 8px 16px; border-radius: 12px; cursor: pointer; border: 1px solid rgba(110,231,183,0.9);
+  background: linear-gradient(180deg, #8ef0c6, #6ee7b7 55%, #4cc99a);
+  box-shadow: 0 4px 9px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.65), inset 0 -2px 4px rgba(6,60,40,0.35);
+  transition: transform 0.12s ease, box-shadow 0.12s ease; -webkit-tap-highlight-color: transparent; }
+.bk-btn:active { transform: translateY(2px); box-shadow: 0 1px 3px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.5), inset 0 -1px 2px rgba(6,60,40,0.3); }
+.bk-menu { border: 1px solid rgba(110,231,183,0.45); border-radius: 13px; margin-top: 9px; padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 7px;
+  background: linear-gradient(180deg, rgba(20,40,32,0.92), rgba(10,20,16,0.95));
+  box-shadow: 0 10px 24px rgba(0,0,0,0.55), inset 0 1px 1px rgba(255,255,255,0.06); }
+/* 3D BOOKMARK — a ribbon that folds and fills when a bat is saved */
+.bm { background: none; border: none; cursor: pointer; padding: 2px 4px; -webkit-tap-highlight-color: transparent; flex: none; }
+.bm .rib { display: inline-block; width: 15px; height: 20px;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 74%, 0 100%);
+  background: linear-gradient(180deg, #2a3440, #1a222c);
+  box-shadow: inset 0 1px 1px rgba(255,255,255,0.12);
+  border: none; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5));
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.5, 1), background 0.25s ease, filter 0.25s ease; }
+.bm:active .rib { transform: scale(0.85); }
+.bm.on .rib { background: linear-gradient(180deg, #b9e2ff, #93c5fd 55%, #5d9cf0);
+  filter: drop-shadow(0 0 7px rgba(147,197,253,0.7)) drop-shadow(0 2px 2px rgba(0,0,0,0.5));
+  animation: bmPop 0.4s cubic-bezier(0.34, 1.56, 0.5, 1); }
+@keyframes bmPop { 0% { transform: scale(0.6); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+.saved-btn { border-color: rgba(147,197,253,0.55); color: #93c5fd; }
+.saved-on { color: var(--ink); border-color: #93c5fd; background: #93c5fd; box-shadow: 0 0 12px rgba(147,197,253,0.4); }
 .adv-btn { border-color: rgba(167,139,250,0.55); color: #a78bfa; }
 .adv-on { color: var(--ink); border-color: #a78bfa; background: #a78bfa; box-shadow: 0 0 12px rgba(167,139,250,0.4); }
 .adv-menu { border: 1px solid rgba(167,139,250,0.4); border-radius: 12px; padding: 10px 12px; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 7px; }
@@ -719,7 +756,8 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", oddsData:{}, oddsLoading:false, oddsBook:"best", oddsMenu:false, advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", oddsData:{}, oddsLoading:false, oddsBook:"best", oddsMenu:false,
+  saved: (function () { try { return JSON.parse(localStorage.getItem("crushedSaved") || "[]").map(Number); } catch (e) { return []; } })(), advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
   alerts: (function () { try { return JSON.parse(localStorage.getItem("crushedAlerts") || "[]"); } catch (e) { return []; } })(), profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
@@ -1159,7 +1197,7 @@ function scoutCard(p) {
     : (p.suggested ? '<div class="tagrow"><span class="tagchip">★ Suggested play</span></div>' : "");
   var watched = state.alerts.indexOf(Number(p.id)) !== -1 || state.alerts.indexOf(String(p.id)) !== -1;
   return '<div class="scout">' +
-    '<div style="margin-bottom:9px"><button class="al-tog' + (watched ? " on" : "") + '" data-alert="' + p.id + '" aria-pressed="' + watched + '">' +
+    '<div style="margin-bottom:9px;display:flex;align-items:center;gap:12px">' + bmBtn(p.id) + '<button class="al-tog' + (watched ? " on" : "") + '" data-alert="' + p.id + '" aria-pressed="' + watched + '">' +
     '<span class="al-track"><span class="al-knob"></span></span>' +
     '<span class="al-bell">' + (watched ? "\ud83d\udd14" : "\ud83d\udd15") + '</span>' +
     '<span class="al-lab">' + (watched ? "Alerts ON \u00b7 HR &amp; RBI" : "Alert me \u00b7 HR &amp; RBI") + '</span></button></div>' +
@@ -1198,7 +1236,7 @@ function sortVal(p, key) {
 function playerRow(p, cols) {
   var cells = cols.map(function (c) { return '<td>' + c.render(p) + '</td>'; }).join("");
   var html = '<tr class="row" data-row="' + p.id + '">' +
-    '<td><div class="pface"><div class="player"><span class="player-name">' + luDot(p.lineup) + (p.suggested ? '<span class="star" title="Suggested play">★</span>' : "") + (crossAligned(p) ? '<span class="star-num" title="Also numerology-aligned today">★</span>' : "") + esc(p.name) + batTag(p) + ownMini(p) + '</span>' +
+    '<td><div class="pface"><div class="player"><span class="player-name">' + bmBtn(p.id) + luDot(p.lineup) + (p.suggested ? '<span class="star" title="Suggested play">★</span>' : "") + (crossAligned(p) ? '<span class="star-num" title="Also numerology-aligned today">★</span>' : "") + esc(p.name) + batTag(p) + ownMini(p) + '</span>' +
     '<span class="player-team">' + esc(p.teamAbbr) + ' · #' + p.slot + (p.sp ? ' · vs ' + esc(p.sp.name) + pitParen(p.sp) : "") + '</span></div>' + faceImg(p.id) + '</div></td>' + zsCell(p.id) + cells + '</tr>';
   if (String(state.open) === String(p.id)) {
     html += '<tr class="note-row"><td colspan="' + (cols.length + 2) + '">' + scoutCard(p) + '</td></tr>';
@@ -1595,6 +1633,34 @@ function loadWeak() {
 /* ADVANCED — a metrics console for the slate: a dropdown of toggle
    pills chooses which advanced metrics render on every player card.
    Statcast-fed fields fill in as each bat's pack loads. */
+/* SAVED — the user's own shortlist. A 3D ribbon on every card files a
+   bat here; the tab holds them for the slate. */
+function isSaved(id) { return state.saved.indexOf(Number(id)) !== -1; }
+function bmBtn(id) {
+  return '<button class="bm' + (isSaved(id) ? " on" : "") + '" data-save="' + id + '" title="' + (isSaved(id) ? "Saved \u00b7 tap to remove" : "Save this bat") + '" aria-pressed="' + isSaved(id) + '"><span class="rib"></span></button>';
+}
+function saveSaved() { try { localStorage.setItem("crushedSaved", JSON.stringify(state.saved)); } catch (e) {} }
+function savedView() {
+  var banner = '<div class="fn-banner" style="border-color:rgba(147,197,253,0.5)"><div class="fn-title" style="color:#93c5fd">SAVED \u00b7 YOUR SHORTLIST</div>' +
+    '<div class="fn-sub">Every bat you\u2019ve ribboned, in one place \u2014 tap the bookmark on any player card to file him here, tap it again (here or there) to release him \u00b7 the list lives on your device and follows you across the slate \u00b7 tap a name for his full scouting card</div></div>';
+  var all = (state.data && state.data.players) || [];
+  var mine = all.filter(function (p) { return isSaved(p.id); });
+  var ghosts = state.saved.length - mine.length;
+  if (!state.saved.length) return banner + '<div class="loading">Nothing saved yet \u2014 find a bat you like and tap his ribbon.</div>';
+  var out = mine.sort(function (a, b) { return (b.hrPct || 0) - (a.hrPct || 0); }).map(function (p, i) {
+    var o = '<div class="astro-row" data-row="' + p.id + '">' +
+      '<span class="astro-rank">' + (i + 1) + '</span>' + bmBtn(p.id) + luDot(p.lineup) +
+      (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") +
+      (crossAligned(p) ? '<span class="star-num" title="Numerology-aligned today">\u2605</span>' : "") +
+      '<span class="player-name">' + esc(p.name) + '</span>' + batTag(p) +
+      '<span class="player-team" style="margin-left:4px">' + esc(p.teamAbbr) + (p.sp ? ' \u00b7 vs ' + esc(p.sp.name) + pitParen(p.sp) : "") + '</span>' +
+      '<span class="gen-hr">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "") + '</span>' + faceImg(p.id) + '</div>';
+    if (String(state.open) === String(p.id)) o += '<div class="gen-scout">' + scoutCard(p) + '</div>';
+    return o;
+  }).join("");
+  if (ghosts > 0) out += '<div class="dim" style="font-size:11.5px;margin-top:10px">' + ghosts + ' saved bat' + (ghosts > 1 ? "s aren\u2019t" : " isn\u2019t") + ' on this slate \u2014 they\u2019ll reappear when their teams play.</div>';
+  return banner + out;
+}
 /* TRUE ODDS — our weather/park-adjusted HR% as a fair American line
    vs the best sportsbook price. Edge = our probability minus theirs. */
 function probToAm(p) {
@@ -1666,8 +1732,8 @@ function oddsView() {
   var bookList = Object.keys(books).sort();
   if (state.oddsBook !== "best" && bookList.indexOf(state.oddsBook) === -1) state.oddsBook = "best";
   if (bookList.length) {
-    banner += '<div style="margin:-4px 0 10px"><button class="wk-toggle" data-bookmenu="1" style="border-color:rgba(110,231,183,0.5);color:#6ee7b7">\ud83d\udcd6 Book: ' + (state.oddsBook === "best" ? "BEST PRICE" : esc(state.oddsBook)) + " " + (state.oddsMenu ? "\u25b2" : "\u25be") + '</button>' +
-      (state.oddsMenu ? '<div class="adv-menu" style="border-color:rgba(110,231,183,0.4);margin-top:8px">' +
+    banner += '<div style="margin:-4px 0 10px"><button class="bk-btn" data-bookmenu="1">\ud83d\udcd6 Book: ' + (state.oddsBook === "best" ? "BEST PRICE" : esc(state.oddsBook)) + " " + (state.oddsMenu ? "\u25b2" : "\u25be") + '</button>' +
+      (state.oddsMenu ? '<div class="bk-menu">' +
         '<button class="adv-pill' + (state.oddsBook === "best" ? " on" : "") + '" data-bookpick="best" style="' + (state.oddsBook === "best" ? "background:#6ee7b7;border-color:#6ee7b7" : "border-color:rgba(110,231,183,0.5);color:#6ee7b7") + '">BEST PRICE</button>' +
         bookList.map(function (bn) {
           var on = state.oddsBook === bn;
@@ -1855,7 +1921,7 @@ function advancedView() {
       return '<span class="adv-chip"><span class="k">' + m.lab + '</span>' + (v != null ? '<span class="' + cls + '">' + v + '</span>' : '<span class="dim">\u2014</span>') + '</span>';
     }).join("");
     var out = '<div class="astro-row" data-row="' + p.id + '">' +
-      '<span class="astro-rank">' + (i + 1) + '</span>' + luDot(p.lineup) +
+      '<span class="astro-rank">' + (i + 1) + '</span>' + bmBtn(p.id) + luDot(p.lineup) +
       (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") +
       (crossAligned(p) ? '<span class="star-num" title="Numerology-aligned today">\u2605</span>' : "") +
       (ltAl >= 2 ? '<span class="star-lt" title="Name energy: ' + ltAl + '/6 letter values align today">\u2605</span>' : "") +
@@ -2158,7 +2224,7 @@ function weakView() {
       var exp = '<div class="wk-exp">';
       if (w.slots && w.slots.length) {
         exp += '<div class="gd-label">His season line by opposing lineup slot</div>' +
-          '<div class="glog" style="border-top:none;padding-top:0;margin-top:0;margin-bottom:12px"><table><thead><tr><th>Slot</th><th>BF</th><th>HR</th><th>OPS against</th></tr></thead><tbody>' +
+          '<div class="glog" style="border-top:none;padding-top:0;margin-top:0;margin-bottom:12px" class="wk-slot-wrap"><table><thead><tr><th>Slot</th><th>BF</th><th>HR</th><th>OPS against</th></tr></thead><tbody>' +
           w.slots.map(function (s) {
             return '<tr class="' + (s.weak ? "wk-hot-row" : "") + '">' +
               '<td' + (s.slotAligned ? ' class="num-flash" title="Slot ' + s.slot + ' is one of the day\u2019s numbers"' : "") + '>' + s.slot + '</td>' +
@@ -2321,7 +2387,8 @@ function renderDaybar() {
     '<button class="god-btn sl-btn' + (state.tab === "sleaders" ? " sl-on" : "") + '" data-sltab="1" aria-pressed="' + (state.tab === "sleaders") + '">SEASON LEADERS</button>' +
     '<button class="god-btn stad-btn' + (state.tab === "stadium" ? " stad-on" : "") + '" data-stadtab="1" aria-pressed="' + (state.tab === "stadium") + '">STADIUM ENERGY</button>' +
     '<button class="god-btn adv-btn' + (state.tab === "advanced" ? " adv-on" : "") + '" data-advtab="1" aria-pressed="' + (state.tab === "advanced") + '">ADVANCED</button>' +
-    '<button class="god-btn odds-btn' + (state.tab === "oddsx" ? " odds-on" : "") + '" data-oddstab="1" aria-pressed="' + (state.tab === "oddsx") + '">TRUE ODDS</button>';
+    '<button class="god-btn odds-btn' + (state.tab === "oddsx" ? " odds-on" : "") + '" data-oddstab="1" aria-pressed="' + (state.tab === "oddsx") + '">TRUE ODDS</button>' +
+    '<button class="god-btn saved-btn' + (state.tab === "savedx" ? " saved-on" : "") + '" data-savetab="1" aria-pressed="' + (state.tab === "savedx") + '">SAVED' + (state.saved.length ? " \u00b7 " + state.saved.length : "") + '</button>';
 }
 function render() {
   renderDaybar();
@@ -2351,6 +2418,11 @@ function render() {
   if (state.god) {
     intro.innerHTML = 'GOD mode overrides the tabs while it\u2019s lit \u2014 tap the gold button again to return. Names still open their full scouting cards.';
     board.innerHTML = godView();
+    return;
+  }
+  if (state.tab === "savedx") {
+    intro.innerHTML = 'Your shortlist \u2014 every bat you\u2019ve ribboned, ranked by HR%. The bookmark on any card files or releases him.';
+    board.innerHTML = savedView();
     return;
   }
   if (state.tab === "oddsx") {
@@ -2814,7 +2886,7 @@ document.addEventListener("change", function (e) {
   render();
 });
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-bookmenu],[data-bookpick],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-bookmenu],[data-bookpick],[data-save],[data-savetab],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -2860,6 +2932,19 @@ document.addEventListener("click", function (e) {
     state.oddsMenu = false;
     render(); return;
   }
+  if (el.dataset.save) {
+    var sid = Number(el.dataset.save);
+    var six = state.saved.indexOf(sid);
+    if (six === -1) state.saved.push(sid);
+    else state.saved.splice(six, 1);
+    saveSaved();
+    render(); return;
+  }
+  if (el.dataset.savetab) {
+    state.tab = state.tab === "savedx" ? "hr" : "savedx";
+    state.god = false; state.ops = false; state.zoneMode = false; state.open = null;
+    render(); return;
+  }
   if (el.dataset.oddstab) {
     state.tab = state.tab === "oddsx" ? "hr" : "oddsx";
     state.god = false; state.ops = false; state.zoneMode = false; state.open = null;
@@ -2871,7 +2956,12 @@ document.addEventListener("click", function (e) {
     state.tab = state.tab === "advanced" ? "hr" : "advanced";
     state.god = false; state.ops = false; state.zoneMode = false; state.open = null; state.advMenu = false;
     render();
-    if (state.tab === "oddsx") {
+    if (state.tab === "savedx") {
+    intro.innerHTML = 'Your shortlist \u2014 every bat you\u2019ve ribboned, ranked by HR%. The bookmark on any card files or releases him.';
+    board.innerHTML = savedView();
+    return;
+  }
+  if (state.tab === "oddsx") {
     intro.innerHTML = 'Our fair price for every bat next to the best book price \u2014 sorted by edge, mint rows where the market underprices the model. Tap a name to scout him.';
     board.innerHTML = oddsView();
     return;
