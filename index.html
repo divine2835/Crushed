@@ -383,7 +383,17 @@ tbody td { padding: 11px 12px; border-top: 1px solid var(--line); vertical-align
 .scout { padding: 4px 0 10px; }
 .scout-grid { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(280px, 340px); gap: 18px; align-items: start; }
 .scout-col { display: flex; flex-direction: column; gap: 14px; }
-@media (max-width: 720px) { .scout-grid { grid-template-columns: 1fr; } }
+@media (max-width: 720px) {
+  .scout-grid { grid-template-columns: 1fr; }
+  /* the open scout card pins to the phone's width and stacks fully,
+     even while the board table behind it stays horizontally scrollable */
+  .note-row .scout {
+    position: sticky; left: 0;
+    max-width: calc(100vw - 46px);
+    box-sizing: border-box;
+  }
+  .prof-grid { grid-template-columns: repeat(2, 1fr); }
+}
 .scout-src { font-size: 10.5px; margin-top: 12px; }
 .panel-title { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11.5px; color: var(--chalk); }
 
@@ -2566,7 +2576,7 @@ function setBanner(kind, msg) {
   var b = document.getElementById("banner");
   b.className = "banner show " + (kind === "live" ? "banner-live" : "banner-demo");
   b.innerHTML = msg;
-  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b88";
+  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b89";
 }
 
 /* ---------- data loading ---------- */
