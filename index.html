@@ -61,10 +61,11 @@ button { font-family: inherit; }
 .tabs::-webkit-scrollbar { display: none; }
 .tabs > * { flex: none; }
 html, body { overflow-x: hidden; max-width: 100vw; }
-body { touch-action: pan-y; padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
 /* every wide lane scrolls inside itself — portrait frame stays locked,
    landscape simply gets a wider frame; both orientations just work */
 .tabs, .filterbar, .table-wrap, .glog, .parkstrip, .adv-menu, .bk-menu { touch-action: pan-x pan-y; }
+.table-wrap > table { min-width: 100%; width: max-content; }
 .glog { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .astro-row { overflow-x: auto; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; scrollbar-width: none; }
 .astro-row::-webkit-scrollbar { display: none; }
@@ -114,6 +115,10 @@ body { touch-action: pan-y; padding-left: env(safe-area-inset-left); padding-rig
   filter: drop-shadow(0 0 7px rgba(147,197,253,0.7)) drop-shadow(0 2px 2px rgba(0,0,0,0.5));
   animation: bmPop 0.4s cubic-bezier(0.34, 1.56, 0.5, 1); }
 @keyframes bmPop { 0% { transform: scale(0.6); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+.cs-num { font-weight: 800; }
+.cs-hot { color: #3ddc84; text-shadow: 0 0 9px rgba(61,220,132,0.45); }
+.cs-mid { color: #b8e0c8; }
+.cs-cold { color: #6b7f74; }
 .saved-btn { border-color: rgba(147,197,253,0.55); color: #93c5fd; }
 .saved-on { color: var(--ink); border-color: #93c5fd; background: #93c5fd; box-shadow: 0 0 12px rgba(147,197,253,0.4); }
 .adv-btn { border-color: rgba(167,139,250,0.55); color: #a78bfa; }
@@ -1221,8 +1226,49 @@ function scoutCard(p) {
 }
 
 /* ---------- boards ---------- */
+/* CRUSHED SCORE — the kHR blueprint rebuilt from our own engines:
+   0.6 x matchup (slate percentile of our park/weather/brain-adjusted HR%,
+   sharpened by ZS when the zone build has scored him) +
+   0.4 x form (his L10 window vs his own season rates; neutral 50 until
+   the windows land or when his sample is thin). */
+var _csRef = null, _csSorted = null;
+function hrPctile(p) {
+  var all = (state.data && state.data.players) || [];
+  if (_csRef !== all) {
+    _csRef = all;
+    _csSorted = all.map(function (x) { return x.hrPct; }).filter(function (v) { return v != null; }).sort(function (a, b) { return a - b; });
+  }
+  if (p.hrPct == null || _csSorted.length < 2) return 50;
+  var below = 0;
+  for (var i = 0; i < _csSorted.length; i++) if (_csSorted[i] < p.hrPct) below++;
+  return (below / (_csSorted.length - 1)) * 100;
+}
+function csForm(p) {
+  var d = state.advWinData[state.day];
+  var e = d && d.map ? d.map[p.id] : null;
+  var w = e && e.w ? e.w[10] : null;
+  var s = p.season;
+  if (!w || !s || !w.pa || w.pa < 10 || !s.pa) return 50;
+  var ratios = [];
+  var sHrRate = s.hr / s.pa, wHrRate = w.hr / w.pa;
+  if (sHrRate > 0) ratios.push(wHrRate / sHrRate);
+  var sIso = parseFloat(s.slg) - parseFloat(s.avg);
+  var wIso = parseFloat(w.slg) - parseFloat(w.avg);
+  if (isFinite(sIso) && sIso > 0.02 && isFinite(wIso)) ratios.push(wIso / sIso);
+  if (!ratios.length) return 50;
+  var r = ratios.reduce(function (a, b) { return a + b; }, 0) / ratios.length;
+  return Math.max(0, Math.min(100, 50 * r));
+}
+function crushedScore(p) {
+  var m = hrPctile(p);
+  var z = zsOf(p.id);
+  var match = z ? 0.7 * m + 0.3 * z.zs : m;
+  return Math.round(0.6 * match + 0.4 * csForm(p));
+}
+function csCls(v) { return v >= 70 ? "cs-hot" : v >= 50 ? "cs-mid" : "cs-cold"; }
 var HR_COLS = [
   { key:"hrPct", label:"HR%", render:function (p) { return '<div class="stat-cell"><span class="mono strong hr-num">' + p.hrPct.toFixed(1) + '</span>' + meter(p.hrPct, 35, "var(--hr)") + '</div>'; } },
+  { label:"CS", render:function (p) { var v = crushedScore(p); return '<span class="cs-num ' + csCls(v) + '" title="Crushed Score ' + v + ' \u00b7 0.6\u00d7matchup (HR% slate percentile' + (zsOf(p.id) ? ' + ZS' : '') + ') + 0.4\u00d7form (L10 vs his season' + (csForm(p) === 50 ? ' \u00b7 neutral until windows land or sample thickens' : '') + ')">' + v + '</span>'; } },
   { key:"seasonHr", label:"HR (szn)", render:function (p) { return '<span class="mono">' + (p.season ? p.season.hr : "—") + '</span>'; } },
   { key:"parkHR", label:"Park", render:function (p) { return factorChip(p.parkHR); } },
   { key:"carry", label:"Carry", render:function (p) { return factorChip(p.carry); } }
@@ -1816,7 +1862,7 @@ function loadAdvWin() {
       state.advWinLoading = false;
       render();
       var d2 = state.advWinData[day];
-      if (state.tab === "advanced" && (!d2 || d2.building)) setTimeout(loadAdvWin, 15000);
+      if ((state.tab === "advanced" || state.tab === "hr") && (!d2 || d2.building)) setTimeout(loadAdvWin, 15000);
     });
 }
 var ADV_METRICS = [
@@ -2521,7 +2567,7 @@ function setBanner(kind, msg) {
   var b = document.getElementById("banner");
   b.className = "banner show " + (kind === "live" ? "banner-live" : "banner-demo");
   b.innerHTML = msg;
-  document.getElementById("sync-label").textContent = kind === "live" ? "Statcast synced" : "demo data";
+  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b88";
 }
 
 /* ---------- data loading ---------- */
@@ -2573,6 +2619,7 @@ function loadBoard() {
         if (state.day === day) {
           state.data = j;
           if (!state.demo) loadZone();
+          if (!state.demo) loadAdvWin();
           var t = j.generatedAt ? new Date(j.generatedAt) : new Date();
           setBanner("live", "Live \u00b7 " + day + " slate assembled " + t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + " \u00b7 lineups re-check every 30 min \u00b7 weather-adjusted scores");
           renderSlate(); render();
