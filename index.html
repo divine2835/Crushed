@@ -87,6 +87,8 @@ body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-ins
 .god-on { color: var(--ink); border-color: #f2b134; background: linear-gradient(90deg, #f2b134, #ffe08a, #f2b134); background-size: 200% 100%; animation: godsheen 2.2s linear infinite, godpulse 1.6s ease-in-out infinite; }
 @keyframes godsheen { 0% { background-position: 0 0; } 100% { background-position: 200% 0; } }
 @keyframes godpulse { 0%, 100% { box-shadow: 0 0 8px rgba(242,177,52,0.35); } 50% { box-shadow: 0 0 24px rgba(242,177,52,0.8); } }
+.slgm-btn { border-color: rgba(240,161,95,0.55); color: #f0a15f; }
+.slgm-on { color: var(--ink); border-color: #f0a15f; background: #f0a15f; box-shadow: 0 0 12px rgba(240,161,95,0.4); }
 .odds-btn { border-color: rgba(110,231,183,0.55); color: #6ee7b7; }
 .odds-on { color: var(--ink); border-color: #6ee7b7; background: #6ee7b7; box-shadow: 0 0 12px rgba(110,231,183,0.4); }
 .odds-edge td { background: rgba(110,231,183,0.09); }
@@ -402,8 +404,8 @@ tbody td { padding: 11px 12px; border-top: 1px solid var(--line); vertical-align
 .arm { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 0.05em; font-size: 11.5px; background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 5px; padding: 5px 10px; cursor: pointer; }
 .arm:focus-visible { outline: 2px solid var(--chalk); outline-offset: 2px; }
 .arm-on { color: var(--chalk); border-color: var(--line-strong); background: var(--panel-2); }
-.mix-cols { display: grid; grid-template-columns: 1.2fr 1.3fr 0.55fr 0.45fr 0.8fr; gap: 8px; font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; padding: 0 6px 6px; }
-.mix-row { display: grid; grid-template-columns: 1.2fr 1.3fr 0.55fr 0.45fr 0.8fr; gap: 8px; align-items: center; width: 100%; text-align: left; background: none; border: 1px solid transparent; border-radius: 6px; padding: 7px 6px; cursor: pointer; color: var(--chalk); font-size: 13px; }
+.mix-cols { display: grid; grid-template-columns: 1.15fr 1.1fr 0.5fr 0.4fr 0.7fr 0.6fr 0.55fr; gap: 7px; font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; padding: 0 6px 6px; }
+.mix-row { display: grid; grid-template-columns: 1.15fr 1.1fr 0.5fr 0.4fr 0.7fr 0.6fr 0.55fr; gap: 7px; align-items: center; width: 100%; text-align: left; background: none; border: 1px solid transparent; border-radius: 6px; padding: 7px 6px; cursor: pointer; color: var(--chalk); font-size: 13px; }
 .mix-row:hover { background: var(--panel); }
 .mix-row.mix-on { border-color: var(--line-strong); background: var(--panel-2); }
 .mix-row.mix-dim { opacity: 0.35; }
@@ -777,7 +779,7 @@ var DEMO = {
 /* ---------- state ---------- */
 var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", oddsData:{}, oddsLoading:false, oddsBook:"best", oddsMenu:false,
   saved: (function () { try { return JSON.parse(localStorage.getItem("crushedSaved") || "[]").map(Number); } catch (e) { return []; } })(), advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
-  alerts: (function () { try { return JSON.parse(localStorage.getItem("crushedAlerts") || "[]"); } catch (e) { return []; } })(), profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
+  alerts: (function () { try { return JSON.parse(localStorage.getItem("crushedAlerts") || "[]"); } catch (e) { return []; } })(), profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", hrDir:"desc", slgMode:false, slgWin:"szn", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
 
@@ -1168,17 +1170,23 @@ function mixPanel(p, arm, activePitch) {
     rowsHtml = (arm === "sp" ? '<div style="margin-bottom:7px">' + [["szn","SEASON"],["3","L3"],["5","L5"]].map(function (wd) {
         return '<button class="adv-pill' + (state.mixWin === wd[0] ? " on" : "") + '" data-mixwin="' + wd[0] + '" style="margin-right:6px">' + wd[1] + '</button>';
       }).join("") + (mixWinNote ? '<span class="mix-caption" style="margin-left:4px">' + mixWinNote + '</span>' : "") + '</div>' : "") +
-      '<div class="mix-cols mono"><span>Pitch</span><span>Usage</span><span>Velo</span><span>HR</span><span>' + last + ' SLG</span></div>' +
+      '<div class="mix-cols mono"><span>Pitch</span><span>Usage</span><span>Velo</span><span>HR</span><span>' + last + ' SLG</span><span title="His swing-and-miss rate vs this pitch">Whiff</span><span title="How often his PAs vs this pitch end in a K">K%</span></div>' +
       mix.map(function (m) {
         var slg = p.vsPitch ? p.vsPitch[m.pt] : null;
         var slgTitle = "";
+        var whv = p.vsPitchWhiff ? p.vsPitchWhiff[m.pt] : null, whT = "";
+        var kv = p.vsPitchK ? p.vsPitchK[m.pt] : null, kT = "";
         if (state.mixWin !== "szn") {
           var wvs = state.mixWin === "3" ? p.vsPitchL3 : p.vsPitchL5;
           if (wvs) {
             var we = wvs[m.pt];
-            slg = we ? we.slg : null;
-            slgTitle = we ? "over " + we.ab + " AB in his last " + state.mixWin + " games" : "too few ABs vs this pitch in his last " + state.mixWin + " games";
-          }
+            slg = we && we.slg != null ? we.slg : null;
+            slgTitle = we && we.slg != null ? "over " + we.ab + " AB in his last " + state.mixWin + " games" : "too few ABs vs this pitch in his last " + state.mixWin + " games";
+            whv = we && we.whiff != null ? we.whiff : null;
+            whT = we && we.whiff != null ? "over " + we.sw + " swings in his last " + state.mixWin + " games" : "too few swings in his last " + state.mixWin + " games";
+            kv = we && we.k != null ? we.k : null;
+            kT = we && we.k != null ? "over " + we.end + " PA endings in his last " + state.mixWin + " games" : "too few PAs ending vs it in his last " + state.mixWin + " games";
+          } else { whv = null; kv = null; }
         }
         var dim = activePitch && activePitch !== m.pt ? " mix-dim" : "";
         var on = activePitch === m.pt ? " mix-on" : "";
@@ -1187,7 +1195,9 @@ function mixPanel(p, arm, activePitch) {
           '<span class="mix-bar-cell">' + meter(m.pct, 60, pInfo(m.pt).color) + '<em>' + m.pct + '%</em></span>' +
           '<span class="mono dim">' + (m.velo ? m.velo.toFixed(1) : "\u2014") + '</span>' +
           '<span class="mono" style="' + (p.hrByPt && p.hrByPt[m.pt] ? "color:var(--hr);font-weight:600" : "color:var(--dim)") + '">' + (p.hrByPt ? (p.hrByPt[m.pt] || 0) : "\u2014") + '</span>' +
-          '<span class="mono" style="color:' + heat(slg) + ';font-weight:600"' + (slgTitle ? ' title="' + slgTitle + '"' : "") + '>' + fmtSlg(slg) + '</span></button>';
+          '<span class="mono" style="color:' + heat(slg) + ';font-weight:600"' + (slgTitle ? ' title="' + slgTitle + '"' : "") + '>' + fmtSlg(slg) + '</span>' +
+          '<span class="mono"' + (whT ? ' title="' + whT + '"' : "") + ' style="font-size:12px;color:' + (whv != null && whv >= 30 ? "var(--hr)" : "var(--chalk)") + '">' + (whv != null ? whv.toFixed(1) + "%" : "\u2014") + '</span>' +
+          '<span class="mono"' + (kT ? ' title="' + kT + '"' : "") + ' style="font-size:12px;color:' + (kv != null && kv >= 28 ? "var(--hr)" : "var(--chalk)") + '">' + (kv != null ? kv.toFixed(1) + "%" : "\u2014") + '</span></button>';
       }).join("") +
       '<p class="mix-caption">Tap a pitch to isolate it on the spray chart and see its full location pattern in the zone map.</p>';
   }
@@ -1277,7 +1287,7 @@ function crushedScore(p) {
 function csCls(v) { return v >= 70 ? "cs-hot" : v >= 50 ? "cs-mid" : "cs-cold"; }
 var HR_COLS = [
   { key:"hrPct", label:"HR%", render:function (p) { return '<div class="stat-cell"><span class="mono strong hr-num">' + p.hrPct.toFixed(1) + '</span>' + meter(p.hrPct, 35, "var(--hr)") + '</div>'; } },
-  { label:"CS", render:function (p) { var v = crushedScore(p); return '<span class="cs-num ' + csCls(v) + '" title="Crushed Score ' + v + ' \u00b7 0.6\u00d7matchup (HR% slate percentile' + (zsOf(p.id) ? ' + ZS' : '') + ') + 0.4\u00d7form (L10 vs his season' + (csForm(p) === 50 ? ' \u00b7 neutral until windows land or sample thickens' : '') + ')">' + v + '</span>'; } },
+  { key:"cs", label:"CS", render:function (p) { var v = crushedScore(p); return '<span class="cs-num ' + csCls(v) + '" title="Crushed Score ' + v + ' \u00b7 0.6\u00d7matchup (HR% slate percentile' + (zsOf(p.id) ? ' + ZS' : '') + ') + 0.4\u00d7form (L10 vs his season' + (csForm(p) === 50 ? ' \u00b7 neutral until windows land or sample thickens' : '') + ')">' + v + '</span>'; } },
   { key:"seasonHr", label:"HR (szn)", render:function (p) { return '<span class="mono">' + (p.season ? p.season.hr : "—") + '</span>'; } },
   { key:"parkHR", label:"Park", render:function (p) { return factorChip(p.parkHR); } },
   { key:"carry", label:"Carry", render:function (p) { return factorChip(p.carry); } }
@@ -1291,6 +1301,7 @@ var RBI_COLS = [
 ];
 function sortVal(p, key) {
   if (key === "seasonHr") return p.season ? p.season.hr : 0;
+  if (key === "cs") return crushedScore(p);
   return p[key] == null ? -1 : p[key];
 }
 function playerRow(p, cols) {
@@ -1304,14 +1315,15 @@ function playerRow(p, cols) {
   return html;
 }
 function boardTable(players, cols, sortKey) {
+  var asc = state.tab === "hr" && state.hrDir === "asc";
   var head = '<th>Batter</th><th class="th-static" title="Zone Score vs tonight\u2019s SP">ZS</th>' + cols.map(function (c) {
     var cls = sortKey === c.key ? ' class="th-active"' : (c.key ? "" : ' class="th-static"');
     var attr = c.key ? ' data-sort="' + c.key + '"' : "";
-    return '<th' + cls + attr + '>' + c.label + (sortKey === c.key ? " ▾" : "") + '</th>';
+    return '<th' + cls + attr + (c.key ? ' title="Tap to sort \u00b7 tap again to flip highest/lowest"' : "") + '>' + c.label + (sortKey === c.key ? (asc ? " \u25b4" : " \u25be") : "") + '</th>';
   }).join("");
   var body;
   if (state.game === "all") {
-    body = players.slice().sort(function (a, b) { return sortVal(b, sortKey) - sortVal(a, sortKey); })
+    body = players.slice().sort(function (a, b) { return (sortVal(b, sortKey) - sortVal(a, sortKey)) * (asc ? -1 : 1); })
       .map(function (p) { return playerRow(p, cols); }).join("");
   } else {
     // lineup view: group by team, order by lineup slot
@@ -1871,7 +1883,7 @@ function loadAdvWin() {
       state.advWinLoading = false;
       render();
       var d2 = state.advWinData[day];
-      if ((state.tab === "advanced" || state.tab === "hr") && (!d2 || d2.building)) setTimeout(loadAdvWin, 15000);
+      if ((state.tab === "advanced" || state.tab === "hr" || state.slgMode) && (!d2 || d2.building)) setTimeout(loadAdvWin, 15000);
     });
 }
 var ADV_METRICS = [
@@ -2344,6 +2356,57 @@ function loadOps25() {
       }
     });
 }
+function slgView() {
+  var isL10 = state.slgWin === "l10";
+  var head = '<div class="god-head" style="border-color:rgba(240,161,95,0.5);background:linear-gradient(180deg,rgba(240,161,95,0.07),rgba(240,161,95,0.02))">' +
+    '<div class="god-title" style="color:#f0a15f">\u25c8 SLG BOARD</div>' +
+    '<div class="god-sub">' + (isL10
+      ? 'The slate\u2019s bats ranked by SLUGGING over their LAST 10 GAMES \u2014 who\u2019s driving the ball right now \u00b7 built from the same windows engine behind the Crushed Score \u00b7 bats need 20+ window PAs to rank'
+      : 'The slate\u2019s bats ranked purely by SEASON SLUGGING (100+ PA) \u2014 with every alignment badge riding alongside \u00b7 a lens, not a model \u2014 no other tab\u2019s ranking is touched') + '</div>' +
+    '<div class="arm-toggle" style="margin-top:9px">' +
+    '<button class="arm' + (!isL10 ? " arm-on" : "") + '" data-slgwin="szn">Season</button>' +
+    '<button class="arm' + (isL10 ? " arm-on" : "") + '" data-slgwin="l10">Last 10</button></div></div>';
+  var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
+  var pool = ((state.data && state.data.players) || []).filter(function (p) {
+    if (state.game !== "all" && String(p.gamePk) !== String(state.game)) return false;
+    return p.season && p.season.pa >= 100 && p.season.slg;
+  });
+  if (!pool.length) return head + '<div class="loading">No qualified bats on this filter yet \u2014 wait for the board.</div>';
+  if (isL10) {
+    var d = state.advWinData[state.day];
+    if (!d || !d.map || !Object.keys(d.map).length) return head + '<div class="loading">Building the last-10 windows for the slate\u2026 this page re-checks itself.</div>';
+    pool = pool.filter(function (p) {
+      var e = d.map[p.id];
+      var w = e && e.w ? e.w[10] : null;
+      if (!w || !w.pa || w.pa < 20 || !w.slg) return false;
+      p._slg = parseFloat(w.slg);
+      p._slgPa = w.pa;
+      return isFinite(p._slg);
+    });
+    if (!pool.length) return head + '<div class="loading">Windows still marching \u2014 re-checking itself.</div>';
+    if (d.building) head += '<div class="adv-count" style="margin-bottom:10px">Still marching the slate \u00b7 rankings sharpen as it fills.</div>';
+  } else {
+    pool.forEach(function (p) { p._slg = parseFloat(p.season.slg) || 0; });
+  }
+  pool.sort(function (a, b) { return b._slg - a._slg; });
+  return head + pool.map(function (p, i) {
+    var chartAl = 0;
+    if (p.chart) chartAl = [p.chart.lp, p.chart.py, p.chart.pm].filter(function (x) { return x && daySet.indexOf(x.v) !== -1; }).length;
+    var slgStr = p._slg >= 1 ? p._slg.toFixed(3) : p._slg.toFixed(3).replace(/^0\./, ".");
+    var out = '<div class="astro-row" data-row="' + p.id + '">' +
+      '<span class="astro-rank">' + (i + 1) + '</span>' +
+      luDot(p.lineup) +
+      (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") +
+      (crossAligned(p) ? '<span class="star-num" title="Numerology convergence">\u2605</span>' : "") +
+      '<span class="player-name">' + esc(p.name) + '</span>' + batTag(p) + ownMini(p) +
+      (p.numerHits && p.numerHits.length ? '<span class="fn-al" title="Numerology alignments today">' + p.numerHits.length + ' aligned</span>' : "") +
+      (chartAl ? '<span class="fn-al" title="LP/PY/PM matching the day">' + chartAl + '/3 chart</span>' : "") +
+      '<span class="gen-hr" style="color:#f0a15f" title="' + (isL10 ? "Slugging over his last 10 games (" + p._slgPa + " PA)" : "Season slugging") + '">' + slgStr + (isL10 ? '<span class="dim mono" style="font-size:9px"> L10</span>' : "") + '</span>' +
+      '<span class="mono dim" style="font-size:10px">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "% HR" : "") + '</span></div>';
+    if (String(state.open) === String(p.id)) out += '<div class="gen-scout">' + scoutCard(p) + '</div>';
+    return out;
+  }).join("");
+}
 function opsView() {
   var isL25 = state.opsWin === "l25";
   var head = '<div class="god-head" style="border-color:rgba(232,227,216,0.5);background:linear-gradient(180deg,rgba(232,227,216,0.07),rgba(232,227,216,0.02))">' +
@@ -2442,6 +2505,7 @@ function renderDaybar() {
     '<button class="fchip' + (state.day === "tomorrow" ? " fchip-on" : "") + '" data-day="tomorrow">' + dayLabel("tomorrow") + '</button>' +
     '<button class="god-btn' + (state.god ? " god-on" : "") + '" data-god="1" aria-pressed="' + !!state.god + '">GOD</button>' +
     '<button class="god-btn ops-btn' + (state.ops ? " ops-on" : "") + '" data-ops="1" aria-pressed="' + !!state.ops + '">OPS</button>' +
+    '<button class="god-btn slgm-btn' + (state.slgMode ? " slgm-on" : "") + '" data-slg="1" aria-pressed="' + !!state.slgMode + '">SLG</button>' +
     '<button class="god-btn zone-btn' + (state.zoneMode ? " zone-on" : "") + '" data-zone="1" aria-pressed="' + !!state.zoneMode + '">ZONE</button>' +
     '<button class="god-btn letter-btn' + (state.tab === "letter" ? " letter-on" : "") + '" data-lettab="1" aria-pressed="' + (state.tab === "letter") + '">LETTEROLOGY</button>' +
     '<button class="god-btn sl-btn' + (state.tab === "sleaders" ? " sl-on" : "") + '" data-sltab="1" aria-pressed="' + (state.tab === "sleaders") + '">SEASON LEADERS</button>' +
@@ -2468,6 +2532,11 @@ function render() {
   if (state.zoneMode && !state.god && !state.ops) {
     intro.innerHTML = 'ZONE mode overrides the tabs while it\u2019s lit \u2014 every bat\u2019s zone profile matched against tonight\u2019s starter, ranked by Zone Score. Tap a name for his scouting card.';
     board.innerHTML = zoneView();
+    return;
+  }
+  if (state.slgMode && !state.god) {
+    intro.innerHTML = 'SLG mode overrides the tabs while it\u2019s lit \u2014 tap the button again to return. Pure slugging ranking, Season or Last 10, with every alignment stamped alongside; names open their full scouting cards.';
+    board.innerHTML = slgView();
     return;
   }
   if (state.ops && !state.god) {
@@ -2691,6 +2760,8 @@ function loadDetail(p) {
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(function (j) {
       p.vsPitch = j.vsPitch || null;
+      p.vsPitchK = j.vsPitchK || null;
+      p.vsPitchWhiff = j.vsPitchWhiff || null;
       p.vsPitchL3 = j.vsPitchL3 || null;
       p.vsPitchL5 = j.vsPitchL5 || null;
       p.zones = j.zones || null;
@@ -2947,7 +3018,7 @@ document.addEventListener("change", function (e) {
   render();
 });
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-bookmenu],[data-bookpick],[data-save],[data-savetab],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-slg],[data-slgwin],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-bookmenu],[data-bookpick],[data-save],[data-savetab],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -3003,19 +3074,30 @@ document.addEventListener("click", function (e) {
   }
   if (el.dataset.savetab) {
     state.tab = state.tab === "savedx" ? "hr" : "savedx";
+    state.god = false; state.ops = false; state.slgMode = false; state.zoneMode = false; state.open = null;
+    render(); return;
+  }
+  if (el.dataset.slg) {
+    state.slgMode = !state.slgMode;
     state.god = false; state.ops = false; state.zoneMode = false; state.open = null;
+    render();
+    if (state.slgMode && !state.demo) loadAdvWin();
+    return;
+  }
+  if (el.dataset.slgwin) {
+    state.slgWin = el.dataset.slgwin;
     render(); return;
   }
   if (el.dataset.oddstab) {
     state.tab = state.tab === "oddsx" ? "hr" : "oddsx";
-    state.god = false; state.ops = false; state.zoneMode = false; state.open = null;
+    state.god = false; state.ops = false; state.slgMode = false; state.zoneMode = false; state.open = null;
     render();
     if (state.tab === "oddsx" && !state.demo) loadOdds();
     return;
   }
   if (el.dataset.advtab) {
     state.tab = state.tab === "advanced" ? "hr" : "advanced";
-    state.god = false; state.ops = false; state.zoneMode = false; state.open = null; state.advMenu = false;
+    state.god = false; state.ops = false; state.slgMode = false; state.zoneMode = false; state.open = null; state.advMenu = false;
     render();
     if (state.tab === "savedx") {
     intro.innerHTML = 'Your shortlist \u2014 every bat you\u2019ve ribboned, ranked by HR%. The bookmark on any card files or releases him.';
@@ -3067,7 +3149,7 @@ document.addEventListener("click", function (e) {
   }
   if (el.dataset.stadtab) {
     state.tab = state.tab === "stadium" ? "hr" : "stadium";
-    state.god = false; state.ops = false; state.zoneMode = false; state.open = null; state.stadOpen = null;
+    state.god = false; state.ops = false; state.slgMode = false; state.zoneMode = false; state.open = null; state.stadOpen = null;
     render(); return;
   }
   if (el.dataset.staddir) {
@@ -3081,7 +3163,7 @@ document.addEventListener("click", function (e) {
   }
   if (el.dataset.sltab) {
     state.tab = state.tab === "sleaders" ? "hr" : "sleaders";
-    state.god = false; state.ops = false; state.zoneMode = false; state.open = null;
+    state.god = false; state.ops = false; state.slgMode = false; state.zoneMode = false; state.open = null;
     render(); return;
   }
   if (el.dataset.slsort) {
@@ -3092,7 +3174,7 @@ document.addEventListener("click", function (e) {
   }
   if (el.dataset.lettab) {
     state.tab = state.tab === "letter" ? "hr" : "letter";
-    state.god = false; state.ops = false; state.zoneMode = false; state.open = null;
+    state.god = false; state.ops = false; state.slgMode = false; state.zoneMode = false; state.open = null;
     render(); return;
   }
   if (el.dataset.alert) {
@@ -3125,12 +3207,12 @@ document.addEventListener("click", function (e) {
     render(); return;
   }
   if (el.dataset.zone) {
-    state.zoneMode = !state.zoneMode; state.god = false; state.ops = false; state.open = null;
+    state.zoneMode = !state.zoneMode; state.god = false; state.ops = false; state.slgMode = false; state.open = null;
     if (state.zoneMode) loadZone();
     render(); return;
   }
   if (el.dataset.ops) {
-    state.ops = !state.ops; state.god = false; state.zoneMode = false; state.open = null;
+    state.ops = !state.ops; state.god = false; state.zoneMode = false; state.slgMode = false; state.open = null;
     if (state.ops && state.opsWin === "l25" && !state.demo) loadOps25();
     render(); return;
   }
@@ -3140,7 +3222,7 @@ document.addEventListener("click", function (e) {
     render(); return;
   }
   if (el.dataset.god) {
-    state.god = !state.god; state.ops = false; state.zoneMode = false; state.open = null;
+    state.god = !state.god; state.ops = false; state.slgMode = false; state.zoneMode = false; state.open = null;
     if (state.god && !state.demo && !state.godData[state.day]) loadGod();
     render(); return;
   }
@@ -3174,7 +3256,10 @@ document.addEventListener("click", function (e) {
     render(); return;
   }
   if (el.dataset.sort) {
-    if (state.tab === "hr") state.hrSort = el.dataset.sort; else state.rbiSort = el.dataset.sort;
+    if (state.tab === "hr") {
+      if (state.hrSort === el.dataset.sort) state.hrDir = state.hrDir === "desc" ? "asc" : "desc";
+      else { state.hrSort = el.dataset.sort; state.hrDir = "desc"; }
+    } else state.rbiSort = el.dataset.sort;
     render(); return;
   }
   if (el.dataset.rwin) { state.recentWin = +el.dataset.rwin; render(); return; }
