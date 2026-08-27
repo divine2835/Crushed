@@ -1421,6 +1421,40 @@ function synergyScore(p, combo, gamesById, stackMode) {
   });
   return s;
 }
+/* GENERATE edge: beyond the brain's composite, each bat earns or loses
+   ground on (a) his windowed SLG vs this pitcher's actual mix (L5, then
+   L3, then season), (b) his contact profile vs that mix (low whiff + low
+   K), and (c) his Zone Score \u2014 how squarely the pitcher's locations sit
+   in his damage zones. Unknowns score neutral 50 so unscouted bats
+   aren't buried. */
+function genEdge(p) {
+  var mix = p.sp && p.sp.mix ? p.sp.mix : [];
+  var wSlg = 0, slgWt = 0, wK = 0, kWt = 0, wWh = 0, whWt = 0, slgSrc = "";
+  mix.forEach(function (m) {
+    var use = m.pct || 0;
+    if (!use) return;
+    var s = null;
+    var e5 = p.vsPitchL5 && p.vsPitchL5[m.pt], e3 = p.vsPitchL3 && p.vsPitchL3[m.pt];
+    if (e5 && e5.slg != null) { s = e5.slg; slgSrc = slgSrc || "L5"; }
+    else if (e3 && e3.slg != null) { s = e3.slg; slgSrc = slgSrc || "L3"; }
+    else if (p.vsPitch && p.vsPitch[m.pt] != null) { s = p.vsPitch[m.pt]; slgSrc = slgSrc || "season"; }
+    if (s != null) { wSlg += s * use; slgWt += use; }
+    var k = null;
+    if (e5 && e5.k != null) k = e5.k; else if (e3 && e3.k != null) k = e3.k; else if (p.vsPitchK && p.vsPitchK[m.pt] != null) k = p.vsPitchK[m.pt];
+    if (k != null) { wK += k * use; kWt += use; }
+    var wh = null;
+    if (e5 && e5.whiff != null) wh = e5.whiff; else if (e3 && e3.whiff != null) wh = e3.whiff; else if (p.vsPitchWhiff && p.vsPitchWhiff[m.pt] != null) wh = p.vsPitchWhiff[m.pt];
+    if (wh != null) { wWh += wh * use; whWt += use; }
+  });
+  var slgScore = slgWt ? Math.max(0, Math.min(100, (wSlg / slgWt) * 130)) : 50;
+  var kPct = kWt ? wK / kWt : null, whPct = whWt ? wWh / whWt : null;
+  var miss = kPct == null && whPct == null ? null : ((kPct != null ? kPct : whPct) + (whPct != null ? whPct : kPct)) / 2;
+  var contact = miss == null ? 50 : Math.max(0, Math.min(100, 100 - miss * 1.8));
+  var z = zsOf(p.id);
+  var zPart = z ? z.zs : 50;
+  var edge = 0.4 * slgScore + 0.3 * contact + 0.3 * zPart;
+  return { edge: edge, slgScore: slgScore, slgVal: slgWt ? wSlg / slgWt : null, slgSrc: slgSrc, kPct: kPct, whPct: whPct, zs: z ? z.zs : null, contact: contact };
+}
 function genCombo(size) {
   var pool = ((state.data && state.data.players) || []).slice();
   if (pool.length < size) {
@@ -1430,9 +1464,19 @@ function genCombo(size) {
   var TH = (state.data && state.data.thresholds) || DEFAULT_THRESH;
   var gamesById = {};
   ((state.data && state.data.games) || []).forEach(function (g) { gamesById[g.gamePk] = g; });
-  pool.forEach(function (p) { p._cs = compositeScore(p, TH); });
-  pool.sort(function (a, b) { return b._cs - a._cs; });
-  var cand = pool.slice(0, Math.max(16, size * 4));
+  pool.forEach(function (p) {
+    p._cs = compositeScore(p, TH);
+    var e = genEdge(p);
+    p._genE = e;
+    p._gen = p._cs + (e.edge - 50) * 0.35; // the new signals shift the brain's score, never replace it
+  });
+  pool.sort(function (a, b) { return b._gen - a._gen; });
+  var cand = pool.slice(0, Math.max(20, size * 5));
+  state.genUsed = state.genUsed || {};
+  var fresh = cand.filter(function (p) { return !state.genUsed[p.id]; });
+  var cycled = false;
+  if (fresh.length < size) { state.genUsed = {}; fresh = cand; cycled = true; } // every strong bat has had his spin \u2014 fresh cycle
+  cand = fresh;
   var stackMode = !!state.genStack;
   var uniq = {};
   pool.forEach(function (p) { uniq[String(p.gamePk)] = 1; });
@@ -1442,7 +1486,7 @@ function genCombo(size) {
   function countGame(pk) { return combo.filter(function (q) { return String(q.gamePk) === String(pk); }).length; }
   while (combo.length < size) {
     var scored = cand.filter(function (p) { return combo.indexOf(p) === -1 && countGame(p.gamePk) < maxPerGame; })
-      .map(function (p) { return { p: p, s: p._cs + synergyScore(p, combo, gamesById, stackMode) }; })
+      .map(function (p) { return { p: p, s: p._gen + synergyScore(p, combo, gamesById, stackMode) }; })
       .sort(function (a, b) { return b.s - a.s; });
     if (!scored.length) break;
     var pick = scored[Math.floor(Math.random() * Math.min(scored.length, 3))]; // explore among the top 3 for fresh combos
@@ -1453,14 +1497,16 @@ function genCombo(size) {
   combo.forEach(function (p) { (p.numerHits || []).forEach(function (h) { covered[h.num] = 1; }); });
   var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
   var covList = daySet.filter(function (n) { return covered[n]; });
-  var blend = Math.round(combo.reduce(function (s, p) { return s + p._cs; }, 0) + covList.length * 2);
+  combo.forEach(function (p) { state.genUsed[p.id] = 1; });
+  var usedN = Object.keys(state.genUsed).length;
+  var blend = Math.round(combo.reduce(function (s, p) { return s + p._gen; }, 0) + covList.length * 2);
   var stacks = [];
   combo.forEach(function (p, i) {
     combo.slice(i + 1).forEach(function (q) {
       if (String(p.gamePk) === String(q.gamePk) && p.teamAbbr === q.teamAbbr) stacks.push(p.teamAbbr + " stack");
     });
   });
-  state.genResult = { ids: combo.map(function (p) { return p.id; }), blend: blend, joint: joint, covList: covList, daySet: daySet, stacks: stackMode ? stacks : [], size: size, mode: stackMode ? "Stack mode" : "Multi-game spread" };
+  state.genResult = { ids: combo.map(function (p) { return p.id; }), blend: blend, joint: joint, covList: covList, daySet: daySet, stacks: stackMode ? stacks : [], size: size, mode: stackMode ? "Stack mode" : "Multi-game spread", cycled: cycled, usedN: usedN, candN: Math.max(20, size * 5) };
 }
 function generateView() {
   var sizes = [2, 3, 4, 5].map(function (n) {
@@ -1488,7 +1534,7 @@ function generateView() {
     '<button class="gen-btn" data-generate="1">\u2726 Generate</button></div>';
   var r = state.genResult;
   if (!r) {
-    return controls + '<p class="mix-caption" style="padding:10px 6px">Pick a size and hit Generate. The engine blends model HR%, all thirteen signal tags, your numerology alignments, convergence stars, and lineup status \u2014 then spreads names across different games by default (one per game) so a single pitcher dealing can\u2019t kill multiple legs. Flip <b>Stack on</b> to allow up to two names per game with same-team stacks rewarded on launch nights. Generate again for fresh high-scoring variations.</p>';
+    return controls + '<p class="mix-caption" style="padding:10px 6px">Pick a size and hit Generate. The engine blends model HR%, all thirteen signal tags, numerology alignments, convergence stars, and lineup status \u2014 then sharpens each bat by his windowed SLG against this pitcher\u2019s actual mix (L5 \u2192 L3 \u2192 season), his contact profile vs that mix (low whiff + low K climbs), and his Zone Score, and spreads names across different games by default. Every Generate rotates through the shortlist without repeating a name until the strong bats are exhausted \u2014 then it announces a fresh cycle. Flip <b>Stack on</b> to allow up to two names per game with same-team stacks rewarded on launch nights. Generate again for fresh high-scoring variations.</p>';
   }
   if (r.error) return controls + '<div class="loading">' + esc(r.error) + '</div>';
   var players = r.ids.map(function (id) { return byId(id); }).filter(Boolean);
@@ -1500,7 +1546,7 @@ function generateView() {
       '<span class="gen-rank">' + (i + 1) + '</span>' +
       '<div class="gen-main"><span class="player-name">' + luDot(p.lineup) + (p.suggested ? '<span class="star" title="Suggested play">\u2605</span>' : "") + (crossAligned(p) ? '<span class="star-num" title="Also numerology-aligned">\u2605</span>' : "") + esc(p.name) + batTag(p) + ownMini(p) + '</span>' +
       '<span class="player-team">' + esc(p.teamAbbr) + ' \u00b7 #' + p.slot + (p.sp ? ' \u00b7 vs ' + esc(p.sp.name) + pitParen(p.sp) : "") + '</span></div>' +
-      '<span class="gen-hr">' + (p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "\u2014") + '</span>' +
+      '<span class="gen-hr"' + (p._genE ? ' title="Engine: ' + (p._genE.slgVal != null ? p._genE.slgSrc + " SLG vs his mix " + p._genE.slgVal.toFixed(3) : "mix SLG unscouted") + (p._genE.whPct != null ? " \u00b7 whiff " + p._genE.whPct.toFixed(0) + "%" : "") + (p._genE.kPct != null ? " \u00b7 K " + p._genE.kPct.toFixed(0) + "%" : "") + (p._genE.zs != null ? " \u00b7 zone threat " + p._genE.zs : "") + '"' : "") + '>' + (p.hrPct != null ? p.hrPct.toFixed(1) + "%" : "\u2014") + '</span>' +
       (chips ? '<div class="gen-chips">' + chips + '</div>' : "") +
       '</div>';
     if (String(state.open) === String(p.id)) out += '<div class="gen-scout">' + scoutCard(p) + '</div>';
@@ -1510,6 +1556,7 @@ function generateView() {
     '<span class="mono" style="color:var(--hr);font-weight:600">Blend score ' + r.blend + '</span>' +
     (r.mode ? '<span class="mono dim">' + esc(r.mode) + '</span>' : "") +
     '<span class="mono dim">All-hit estimate: ' + (r.joint >= 1 ? r.joint.toFixed(1) : r.joint.toFixed(2)) + '% \u00b7 baseline model</span>' +
+    '<span class="mono dim">Rotation: ' + r.usedN + ' of the top ' + r.candN + ' bats spun this session' + (r.cycled ? ' \u00b7 \u2726 fresh cycle \u2014 the shortlist reset' : '') + '</span>' +
     (r.daySet.length ? '<span class="mono" style="color:#c9a2e8">Day energies covered: ' + (r.covList.length ? r.covList.join(" \u00b7 ") : "none") + ' (' + r.covList.length + ' of ' + r.daySet.length + ')</span>' : "") +
     (r.stacks.length ? '<span class="mono dim">' + esc([...new Set(r.stacks)].join(", ")) + '</span>' : "") +
     '</div>';
