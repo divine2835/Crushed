@@ -1900,8 +1900,8 @@ function simPA(r) {
   return "OUT";
 }
 function simOneGame(A, B, rA, rB) {
-  const boxA = A.map(() => ({ ab: 0, r: 0, h: 0, hr: 0, rbi: 0, bb: 0, so: 0 }));
-  const boxB = B.map(() => ({ ab: 0, r: 0, h: 0, hr: 0, rbi: 0, bb: 0, so: 0 }));
+  const boxA = A.map(() => ({ ab: 0, r: 0, h: 0, hr: 0, rbi: 0, bb: 0, so: 0, tb: 0 }));
+  const boxB = B.map(() => ({ ab: 0, r: 0, h: 0, hr: 0, rbi: 0, bb: 0, so: 0, tb: 0 }));
   let ra = 0, rb = 0, ia = 0, ib = 0;
   const lineA = [], lineB = [];
   for (let inn = 1; inn <= 9; inn++) {
@@ -1941,6 +1941,7 @@ function simHalfTrack(lineup, rates, startIdx, box) {
       bases[0] = bi;
     } else {
       b.ab++; b.h++;
+      b.tb += out === "HR" ? 4 : out === "3B" ? 3 : out === "2B" ? 2 : 1;
       if (out === "HR") {
         b.hr++;
         [2, 1, 0].forEach((k) => { if (bases[k] != null) { scoreRun(bases[k]); b.rbi++; bases[k] = null; } });
@@ -1968,16 +1969,16 @@ function runGameSims(away, home, rateFor) {
   const rA = away.map(rf), rB = home.map(rf);
   const agg = {
     n: SIM_N, winA: 0, winB: 0, runsA: 0, runsB: 0,
-    batA: away.map(() => ({ hrSims: 0, h: 0, hr: 0, rbi: 0, r: 0 })),
-    batB: home.map(() => ({ hrSims: 0, h: 0, hr: 0, rbi: 0, r: 0 })),
+    batA: away.map(() => ({ hrSims: 0, h: 0, hr: 0, rbi: 0, r: 0, tb: 0 })),
+    batB: home.map(() => ({ hrSims: 0, h: 0, hr: 0, rbi: 0, r: 0, tb: 0 })),
     samples: [],
   };
   for (let i = 0; i < SIM_N; i++) {
     const g = simOneGame(away, home, rA, rB);
     if (g.ra > g.rb) agg.winA++; else agg.winB++;
     agg.runsA += g.ra; agg.runsB += g.rb;
-    g.boxA.forEach((b, j) => { const t = agg.batA[j]; if (b.hr > 0) t.hrSims++; t.h += b.h; t.hr += b.hr; t.rbi += b.rbi; t.r += b.r; });
-    g.boxB.forEach((b, j) => { const t = agg.batB[j]; if (b.hr > 0) t.hrSims++; t.h += b.h; t.hr += b.hr; t.rbi += b.rbi; t.r += b.r; });
+    g.boxA.forEach((b, j) => { const t = agg.batA[j]; if (b.hr > 0) t.hrSims++; t.h += b.h; t.hr += b.hr; t.rbi += b.rbi; t.r += b.r; t.tb += b.tb; });
+    g.boxB.forEach((b, j) => { const t = agg.batB[j]; if (b.hr > 0) t.hrSims++; t.h += b.h; t.hr += b.hr; t.rbi += b.rbi; t.r += b.r; t.tb += b.tb; });
     if (agg.samples.length < 24 && i % Math.floor(SIM_N / 24) === 0) agg.samples.push({ ra: g.ra, rb: g.rb, boxA: g.boxA, boxB: g.boxB, lineA: g.lineA, lineB: g.lineB });
   }
   return agg;
@@ -2076,16 +2077,11 @@ function beginnerRates(p) {
   r.hrPa = pa >= 50 ? Math.max(0.002, Math.min(0.18, (+s.hr || 0) / pa)) : SIM_AVG.hrPa;
   return r;
 }
-app.get("/api/sim", async (req, res) => {
-  try {
-    const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
-    const pk = String(req.query.gamePk || "");
-    const level = ["expert", "average", "beginner"].indexOf(req.query.level) !== -1 ? req.query.level : "average";
+function buildSimFor(day, pk, level) {
+  return cached(`sim:${day}:${pk}:${level}`, 1 * H, async () => {
     const b = BOARDS[day];
-    if (!b || !(b.players || []).length) return res.json({ warming: true });
     const game = (b.games || []).find((g) => String(g.gamePk) === pk);
-    if (!game) return res.status(404).json({ error: "game not found" });
-    const out = await cached(`sim:${day}:${pk}:${level}`, 1 * H, async () => {
+    {
       const inGame = b.players.filter((p) => String(p.gamePk) === pk);
       const mk = (abbr) => inGame.filter((p) => p.teamAbbr === abbr)
         .sort((x, y) => (x.slot || 9) - (y.slot || 9)).slice(0, 9);
@@ -2101,6 +2097,7 @@ app.get("/api/sim", async (req, res) => {
         hrSim: +((aggBats[i].hrSims / agg.n) * 100).toFixed(1),
         h: +(aggBats[i].h / agg.n).toFixed(2), hr: +(aggBats[i].hr / agg.n).toFixed(2),
         rbi: +(aggBats[i].rbi / agg.n).toFixed(2), r: +(aggBats[i].r / agg.n).toFixed(2),
+        tb: +(aggBats[i].tb / agg.n).toFixed(2),
       }));
       return {
         gamePk: pk, ran: agg.n, park: game.park, level: level, cover: cover,
@@ -2112,6 +2109,56 @@ app.get("/api/sim", async (req, res) => {
           boxB: s.boxB.map((x, i) => ({ name: home[i] ? home[i].name : "?", id: home[i] ? home[i].id : 0, ...x })),
         })),
       };
+    }
+  });
+}
+app.get("/api/sim", async (req, res) => {
+  try {
+    const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
+    const pk = String(req.query.gamePk || "");
+    const level = ["expert", "average", "beginner"].indexOf(req.query.level) !== -1 ? req.query.level : "average";
+    const b = BOARDS[day];
+    if (!b || !(b.players || []).length) return res.json({ warming: true });
+    const game = (b.games || []).find((g) => String(g.gamePk) === pk);
+    if (!game) return res.status(404).json({ error: "game not found" });
+    res.json(await buildSimFor(day, pk, level));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ---------------- QUANTOM ----------------
+   The slate collapsed into one ranked wave: every game simulated 1,500
+   times at EXPERT intelligence, every batter's expected day extracted \u2014
+   hits, homers, RBI, total bases, runs \u2014 and ranked by Q, the expected
+   production line (TB + RBI + R + half-credit hits). Shares the per-game
+   sim caches, so QUANTOM and the SIMULATOR feed each other. */
+app.get("/api/quantum", async (req, res) => {
+  try {
+    const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
+    const b = BOARDS[day];
+    if (!b || !(b.players || []).length) return res.json({ warming: true });
+    const out = await cached(`quantum:${day}`, 1 * H, async () => {
+      const rows = [];
+      let simmed = 0, thin = 0;
+      for (const g of b.games || []) {
+        try {
+          const sim = await buildSimFor(day, String(g.gamePk), "expert");
+          if (!sim || sim.thin) { thin++; continue; }
+          simmed++;
+          const take = (side, oppAbbr, win) => (side.bats || []).forEach((p) => {
+            rows.push({
+              id: p.id, name: p.name, slot: p.slot, team: side.abbr, opp: oppAbbr,
+              gamePk: g.gamePk, park: g.park, hrPct: p.hrPct, hrSim: p.hrSim,
+              h: p.h, hr: p.hr, rbi: p.rbi, r: p.r, tb: p.tb == null ? +((p.h + p.hr * 3)).toFixed(2) : p.tb,
+              teamWin: win,
+              q: +((p.tb == null ? p.h + p.hr * 3 : p.tb) + p.rbi + p.r + 0.5 * p.h).toFixed(1),
+            });
+          });
+          take(sim.away, sim.home.abbr, sim.away.win);
+          take(sim.home, sim.away.abbr, sim.home.win);
+        } catch { /* one game must not sink the wave */ }
+      }
+      rows.sort((a, z) => z.q - a.q);
+      return { day, built: Date.now(), games: simmed, thin, ran: simmed * SIM_N, rows: rows.slice(0, 30) };
     });
     res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -2484,11 +2531,17 @@ app.get("/api/pen/:teamId", async (req, res) => {
     const exclude = String(req.query.exclude || "");
     const data = await cached(`pen:${req.params.teamId}:${exclude}`, 12 * H, async () => {
       const roster = await getJson(`${STATS}/teams/${req.params.teamId}/roster?rosterType=active`);
-      const arms = (roster.roster || [])
+      const armsList = (roster.roster || [])
         .filter((r) => r.position?.abbreviation === "P" && String(r.person.id) !== exclude)
-        .slice(0, 5);
+        .slice(0, 8);
+      let handMap = {};
+      try {
+        const pj = await getJson(`${STATS}/people?personIds=${armsList.map((a) => a.person.id).join(",")}`);
+        (pj.people || []).forEach((per) => { handMap[per.id] = per.pitchHand && per.pitchHand.code; });
+      } catch { /* hands are a nicety */ }
       const agg = {}; // pitch counts + velo, weighted across the pen
-      for (const a of arms) {
+      const arms = [];
+      for (const a of armsList) {
         try {
           const pk = await pitcherPack(a.person.id);
           pk.mix.forEach((mm) => {
@@ -2497,15 +2550,33 @@ app.get("/api/pen/:teamId", async (req, res) => {
             agg[mm.pt].n += cnt;
             agg[mm.pt].velo += mm.velo * cnt;
           });
+          arms.push({ id: a.person.id, name: a.person.fullName, hand: handMap[a.person.id] || "?", n: pk.n, mix: pk.mix, mixL3: pk.mixL3, mixL5: pk.mixL5 });
         } catch { /* skip arm */ }
       }
       const total = Object.values(agg).reduce((s, v) => s + v.n, 0) || 1;
-      return Object.entries(agg)
+      const aggArr = Object.entries(agg)
         .map(([pt, v]) => ({ pt, pct: Math.round((v.n / total) * 100), velo: +(v.velo / v.n).toFixed(1) }))
         .filter((mm) => mm.pct >= 3)
         .sort((a, b) => b.pct - a.pct);
+      return { agg: aggArr, arms };
     });
     res.json(data);
+  } catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+/* score one batter's damage zones against ANY arm's locations \u2014 the
+   engine behind the scout card's reliever switch */
+app.get("/api/armzs", async (req, res) => {
+  try {
+    const batter = String(req.query.batter || ""), pitcher = String(req.query.pitcher || "");
+    const hand = req.query.hand === "L" ? "L" : "R";
+    if (!batter || !pitcher) return res.status(400).json({ error: "batter & pitcher required" });
+    const out = await cached(`armzs:${batter}:${pitcher}:${hand}`, 6 * H, async () => {
+      const bpk = await batterPack(batter);
+      const ppk = await pitcherPack(pitcher);
+      return zoneMatchFor(bpk, hand, ppk.pzones);
+    });
+    res.json(out || { zs: null });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
