@@ -161,12 +161,19 @@ setInterval(watchLoop, 75 * 1000);
 
 /* ---------------- cache ---------------- */
 const cache = new Map();
+const INFLIGHT = new Map(); // key -> promise, so concurrent callers share one build instead of stampeding
 async function cached(key, ttlMs, fn) {
   const hit = cache.get(key);
   if (hit && Date.now() - hit.t < ttlMs) return hit.v;
-  const v = await fn();
-  cache.set(key, { v, t: Date.now() });
-  return v;
+  const running = INFLIGHT.get(key);
+  if (running) return running;
+  const p = (async () => {
+    const v = await fn();
+    cache.set(key, { v, t: Date.now() });
+    return v;
+  })().finally(() => INFLIGHT.delete(key));
+  INFLIGHT.set(key, p);
+  return p;
 }
 function cachePeek(key, ttlMs) {
   const hit = cache.get(key);
@@ -2300,6 +2307,7 @@ app.get("/api/weak", async (req, res) => {
       });
       const list = [];
       for (const sp of Object.values(sps)) {
+        try {
         const g = byPk[sp.gamePk] || {};
         let pk = null, spl = null, sea = null;
         try { pk = await pitcherPack(sp.id); } catch { /* judge without statcast */ }
@@ -2351,6 +2359,7 @@ app.get("/api/weak", async (req, res) => {
           era: sea ? sea.era : "\u2014", swstr: pk ? pk.swstr : null, brl, fb,
           bleed, weakSide, targets, slots, lineup, score: +score.toFixed(1),
         });
+        } catch { /* one arm failing must not sink the slate */ }
       }
       list.sort((a, z) => z.score - a.score);
       return list;
