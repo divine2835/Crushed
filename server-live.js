@@ -1986,8 +1986,8 @@ function expertRateFor(date, gamePk) {
   const zl = ((ZONEB[date] || {}).list || []);
   const zoneMap = {};
   zl.forEach((z) => { if (z && z.id != null) zoneMap[z.id] = z.zs; });
-  const wk = cachePeek(`weak:${date}`, 0.5 * H);
-  const wkList = (wk && wk.list) || [];
+  const wk = cachePeek(`weak:${date}`, 24 * H);
+  const wkList = Array.isArray(wk) ? wk : (wk && (wk.pitchers || wk.list)) || [];
   const cover = { zoned: 0, mixed: 0, weak: 0 };
   const fn = (p) => {
     const r = simRates(p);
@@ -2015,9 +2015,17 @@ function expertRateFor(date, gamePk) {
       if (whW) { hitAdj *= Math.max(0.9, Math.min(1.12, 1 + ((25 - wWh / whW) / 25) * 0.08)); }
     }
     const wkSp = wkList.find((e) => String(e.gamePk) === String(gamePk) && e.opp === p.teamAbbr);
-    if (wkSp && Array.isArray(wkSp.slots)) {
-      const sl = wkSp.slots.find((s) => +s.slot === +p.slot);
-      if (sl && (sl.weak || sl.isWeak || parseFloat(sl.ops) >= 0.85)) { cover.weak++; dmg *= 1.12; }
+    if (wkSp) {
+      let isWeak = false;
+      if (Array.isArray(wkSp.lineup)) {
+        const le = wkSp.lineup.find((x) => x && (String(x.id) === String(p.id) || +x.slot === +p.slot));
+        if (le && Array.isArray(le.matches) && le.matches.length) isWeak = true;
+      }
+      if (!isWeak && Array.isArray(wkSp.slots)) {
+        const sl = wkSp.slots.find((s) => +s.slot === +p.slot);
+        if (sl && (sl.weak || parseFloat(sl.ops) >= 0.85)) isWeak = true;
+      }
+      if (isWeak) { cover.weak++; dmg *= 1.12; }
     }
     r.hrPa = Math.min(0.18, r.hrPa * dmg);
     r.b2 = Math.min(0.12, r.b2 * (1 + (dmg - 1) * 0.6));
@@ -2257,7 +2265,7 @@ app.get("/api/weak", async (req, res) => {
   try {
     const b = BOARDS[day];
     if (!b || b.date !== date || !(b.players || []).length) return res.json({ warming: true, pitchers: [] });
-    const out = await cached(`weak:${date}`, 0.5 * H, async () => {
+    const out = await cached(`weak:${date}`, 12 * H, async () => {
       const byPk = {};
       (b.games || []).forEach((g) => { byPk[g.gamePk] = g; });
       const sps = {};
