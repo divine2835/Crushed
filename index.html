@@ -120,6 +120,16 @@ body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-ins
 .cs-hot { color: #3ddc84; text-shadow: 0 0 9px rgba(61,220,132,0.45); }
 .cs-mid { color: #b8e0c8; }
 .cs-cold { color: #6b7f74; }
+.sim-btn { border-color: rgba(244,114,182,0.55); color: #f472b6; }
+.sim-on { color: var(--ink); border-color: #f472b6; background: #f472b6; box-shadow: 0 0 12px rgba(244,114,182,0.4); }
+.sim-card { border: 1px solid rgba(244,114,182,0.35); border-radius: 13px; padding: 13px 15px; margin-bottom: 9px; background: linear-gradient(180deg, rgba(244,114,182,0.05), rgba(0,0,0,0.12)); cursor: pointer; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 10px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06); transition: transform 0.15s ease, box-shadow 0.15s ease; }
+.sim-card:active { transform: scale(0.985); }
+.sim-vs { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 15px; }
+.sim-winbar { height: 9px; border-radius: 999px; background: #1b2530; overflow: hidden; display: flex; width: 100%; box-shadow: inset 0 1px 3px rgba(0,0,0,0.6); }
+.sim-winbar > span { height: 100%; }
+.sim-box th, .sim-box td { font-size: 12px; padding: 6px 8px; }
+.sim-hrchip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(244,114,182,0.4); border-radius: 999px; padding: 4px 10px; margin: 3px 4px 3px 0; font-size: 11.5px; }
 .saved-btn { border-color: rgba(147,197,253,0.55); color: #93c5fd; }
 .saved-on { color: var(--ink); border-color: #93c5fd; background: #93c5fd; box-shadow: 0 0 12px rgba(147,197,253,0.4); }
 .adv-btn { border-color: rgba(167,139,250,0.55); color: #a78bfa; }
@@ -778,7 +788,8 @@ var DEMO = {
 
 /* ---------- state ---------- */
 var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", oddsData:{}, oddsLoading:false, oddsBook:"best", oddsMenu:false,
-  saved: (function () { try { return JSON.parse(localStorage.getItem("crushedSaved") || "[]").map(Number); } catch (e) { return []; } })(), advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
+  saved: (function () { try { return JSON.parse(localStorage.getItem("crushedSaved") || "[]").map(Number); } catch (e) { return []; } })(),
+  simData:{}, simOpen:null, simLoading:false, simIdx:0, advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
   alerts: (function () { try { return JSON.parse(localStorage.getItem("crushedAlerts") || "[]"); } catch (e) { return []; } })(), profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", hrDir:"desc", slgMode:false, slgWin:"szn", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
@@ -1780,6 +1791,62 @@ function savedView() {
   if (ghosts > 0) out += '<div class="dim" style="font-size:11.5px;margin-top:10px">' + ghosts + ' saved bat' + (ghosts > 1 ? "s aren\u2019t" : " isn\u2019t") + ' on this slate \u2014 they\u2019ll reappear when their teams play.</div>';
   return banner + out;
 }
+/* SIMULATOR — the terminal plays every game before it happens. */
+function loadSim(pk) {
+  if (state.simLoading) return;
+  state.simLoading = true;
+  fetch(apiBase + "/api/sim?day=" + state.day + "&gamePk=" + pk)
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (j) { state.simData[state.day + ":" + pk] = j; })
+    .catch(function () { state.simData[state.day + ":" + pk] = { error: true }; })
+    .finally(function () { state.simLoading = false; render(); });
+}
+function simView() {
+  var banner = '<div class="fn-banner" style="border-color:rgba(244,114,182,0.5)"><div class="fn-title" style="color:#f472b6">SIMULATOR \u00b7 THE SLATE, PLAYED IN ADVANCE</div>' +
+    '<div class="fn-sub">Every game simulated 1,500 times \u2014 each plate appearance samples K, walk, single, double, triple, homer, or out from the bat\u2019s real season rates, with his HR chance drawn from OUR park-, weather-, and brain-adjusted model \u00b7 tap a game for win odds, projected runs, who homers most often, and one full simulated box score you can re-deal \u00b7 batter rates only (bullpens averaged) \u2014 a lens from our model\u2019s worldview, not a picks service</div></div>';
+  var games = (state.data && state.data.games) || [];
+  if (!games.length) return banner + '<div class="loading">Waiting on the slate\u2026</div>';
+  if (state.simOpen == null) {
+    return banner + games.map(function (g) {
+      return '<div class="sim-card" data-simgame="' + g.gamePk + '">' +
+        '<span class="sim-vs">' + esc(g.away) + ' @ ' + esc(g.home) + '</span>' +
+        '<span class="mono dim" style="font-size:11px">' + esc(g.park || "") + '</span>' +
+        '<span class="mono" style="margin-left:auto;color:#f472b6;font-weight:800">SIMULATE \u25b8</span></div>';
+    }).join("");
+  }
+  var g = null;
+  games.forEach(function (x) { if (String(x.gamePk) === String(state.simOpen)) g = x; });
+  var backBtn = '<button class="wk-toggle" data-simback="1" style="border-color:rgba(244,114,182,0.5);color:#f472b6;margin-bottom:11px">\u25c2 All games</button>';
+  if (!g) { state.simOpen = null; return banner + '<div class="loading">Slate updated \u2014 pick a game again.</div>'; }
+  if (state.demo) return banner + backBtn + '<div class="loading">The sim engine runs on the live server \u2014 demo mode can\u2019t deal games.</div>';
+  var d = state.simData[state.day + ":" + state.simOpen];
+  if (!d) { if (!state.simLoading) loadSim(state.simOpen); return banner + backBtn + '<div class="loading">Playing ' + esc(g.away) + ' @ ' + esc(g.home) + ' 1,500 times\u2026</div>'; }
+  if (d.error) return banner + backBtn + '<div class="loading">The sim engine hiccuped \u2014 tap the game again.</div>';
+  if (d.warming) return banner + backBtn + '<div class="loading">The board is still assembling \u2014 back shortly.</div>';
+  if (d.thin) return banner + backBtn + '<div class="loading">Not enough posted bats in ' + esc(d.away) + ' @ ' + esc(d.home) + ' to field the sim yet \u2014 lineups firm up through the afternoon.</div>';
+  var A = d.away, B = d.home;
+  var head = backBtn + '<div class="god-head" style="border-color:rgba(244,114,182,0.5)">' +
+    '<div class="god-title" style="color:#f472b6">' + esc(A.abbr) + ' @ ' + esc(B.abbr) + ' \u00b7 ' + d.ran + ' SIMULATIONS</div>' +
+    '<div style="display:flex;justify-content:space-between;font-weight:800;margin:8px 0 5px"><span>' + esc(A.abbr) + ' ' + A.win.toFixed(0) + '%</span><span>' + esc(B.abbr) + ' ' + B.win.toFixed(0) + '%</span></div>' +
+    '<div class="sim-winbar"><span style="width:' + A.win + '%;background:linear-gradient(90deg,#f472b6,#e05a9d)"></span><span style="flex:1;background:#2b3a4a"></span></div>' +
+    '<div class="mono dim" style="margin-top:7px;font-size:11.5px">Average score: ' + esc(A.abbr) + ' ' + A.runs.toFixed(1) + ' \u2014 ' + B.runs.toFixed(1) + ' ' + esc(B.abbr) + '</div></div>';
+  var hrAll = A.bats.map(function (p) { return { p: p, t: A.abbr }; }).concat(B.bats.map(function (p) { return { p: p, t: B.abbr }; }))
+    .sort(function (a, b) { return b.p.hrSim - a.p.hrSim; }).slice(0, 8);
+  var hrs = '<div style="margin:12px 0 14px"><div class="adv-count" style="margin-bottom:7px">WHO HOMERS \u00b7 % of the ' + d.ran + ' sims</div>' +
+    hrAll.map(function (x) {
+      return '<span class="sim-hrchip" data-row="' + x.p.id + '" style="cursor:pointer"><b style="color:#f472b6">' + x.p.hrSim.toFixed(0) + '%</b>' + esc(x.p.name) + '<span class="dim mono" style="font-size:9.5px">' + esc(x.t) + '</span></span>';
+    }).join("") + '</div>';
+  var s = d.samples[state.simIdx % d.samples.length];
+  function boxTable(abbr, rows, runs) {
+    return '<div class="adv-count" style="margin:10px 0 5px">' + esc(abbr) + ' \u00b7 ' + runs + ' RUNS \u00b7 SIMULATED GAME #' + ((state.simIdx % d.samples.length) + 1) + '</div>' +
+      '<div class="table-wrap sim-box"><table><thead><tr><th>Batter</th><th>AB</th><th>R</th><th>H</th><th>HR</th><th>RBI</th></tr></thead><tbody>' +
+      rows.map(function (b) {
+        return '<tr class="row' + (b.hr > 0 ? " odds-edge" : "") + '" data-row="' + b.id + '"><td>' + esc(b.name) + '</td><td>' + b.ab + '</td><td>' + b.r + '</td><td>' + b.h + '</td><td' + (b.hr > 0 ? ' style="color:#f472b6;font-weight:800"' : "") + '>' + b.hr + '</td><td>' + b.rbi + '</td></tr>';
+      }).join("") + '</tbody></table></div>';
+  }
+  var deal = '<button class="bk-btn" data-resim="1" style="margin:6px 0 4px;background:linear-gradient(180deg,#f9a8d0,#f472b6 55%,#d4568f);border-color:rgba(244,114,182,0.9);color:#3d0f26">\u1f3b2\ufe0e \ud83c\udfb2 Deal another simulated game</button>';
+  return banner + head + hrs + deal + boxTable(A.abbr, s.boxA, s.ra) + boxTable(B.abbr, s.boxB, s.rb);
+}
 /* TRUE ODDS — our weather/park-adjusted HR% as a fair American line
    vs the best sportsbook price. Edge = our probability minus theirs. */
 function probToAm(p) {
@@ -2559,7 +2626,8 @@ function renderDaybar() {
     '<button class="god-btn stad-btn' + (state.tab === "stadium" ? " stad-on" : "") + '" data-stadtab="1" aria-pressed="' + (state.tab === "stadium") + '">STADIUM ENERGY</button>' +
     '<button class="god-btn adv-btn' + (state.tab === "advanced" ? " adv-on" : "") + '" data-advtab="1" aria-pressed="' + (state.tab === "advanced") + '">ADVANCED</button>' +
     '<button class="god-btn odds-btn' + (state.tab === "oddsx" ? " odds-on" : "") + '" data-oddstab="1" aria-pressed="' + (state.tab === "oddsx") + '">TRUE ODDS</button>' +
-    '<button class="god-btn saved-btn' + (state.tab === "savedx" ? " saved-on" : "") + '" data-savetab="1" aria-pressed="' + (state.tab === "savedx") + '">SAVED' + (state.saved.length ? " \u00b7 " + state.saved.length : "") + '</button>';
+    '<button class="god-btn saved-btn' + (state.tab === "savedx" ? " saved-on" : "") + '" data-savetab="1" aria-pressed="' + (state.tab === "savedx") + '">SAVED' + (state.saved.length ? " \u00b7 " + state.saved.length : "") + '</button>' +
+    '<button class="god-btn sim-btn' + (state.tab === "simx" ? " sim-on" : "") + '" data-simtab="1" aria-pressed="' + (state.tab === "simx") + '">SIMULATOR</button>';
 }
 function render() {
   renderDaybar();
@@ -2594,6 +2662,11 @@ function render() {
   if (state.god) {
     intro.innerHTML = 'GOD mode overrides the tabs while it\u2019s lit \u2014 tap the gold button again to return. Names still open their full scouting cards.';
     board.innerHTML = godView();
+    return;
+  }
+  if (state.tab === "simx") {
+    intro.innerHTML = 'The terminal plays tonight before tonight happens \u2014 tap any game to watch 1,500 simulated versions of it settle into odds, scores, and box lines.';
+    board.innerHTML = simView();
     return;
   }
   if (state.tab === "savedx") {
@@ -3065,7 +3138,7 @@ document.addEventListener("change", function (e) {
   render();
 });
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-slg],[data-slgwin],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-bookmenu],[data-bookpick],[data-save],[data-savetab],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-slg],[data-slgwin],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-bookmenu],[data-bookpick],[data-save],[data-savetab],[data-simtab],[data-simgame],[data-simback],[data-resim],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -3135,6 +3208,26 @@ document.addEventListener("click", function (e) {
     state.slgWin = el.dataset.slgwin;
     render(); return;
   }
+  if (el.dataset.simtab) {
+    state.tab = state.tab === "simx" ? "hr" : "simx";
+    state.god = false; state.ops = false; state.zoneMode = false; state.slgMode = false; state.open = null; state.simOpen = null;
+    render(); return;
+  }
+  if (el.dataset.simgame) {
+    state.simOpen = el.dataset.simgame;
+    state.simIdx = 0; state.open = null;
+    render();
+    if (!state.demo) loadSim(state.simOpen);
+    return;
+  }
+  if (el.dataset.simback) {
+    state.simOpen = null; state.open = null;
+    render(); return;
+  }
+  if (el.dataset.resim) {
+    state.simIdx++;
+    render(); return;
+  }
   if (el.dataset.oddstab) {
     state.tab = state.tab === "oddsx" ? "hr" : "oddsx";
     state.god = false; state.ops = false; state.slgMode = false; state.zoneMode = false; state.open = null;
@@ -3146,7 +3239,12 @@ document.addEventListener("click", function (e) {
     state.tab = state.tab === "advanced" ? "hr" : "advanced";
     state.god = false; state.ops = false; state.slgMode = false; state.zoneMode = false; state.open = null; state.advMenu = false;
     render();
-    if (state.tab === "savedx") {
+    if (state.tab === "simx") {
+    intro.innerHTML = 'The terminal plays tonight before tonight happens \u2014 tap any game to watch 1,500 simulated versions of it settle into odds, scores, and box lines.';
+    board.innerHTML = simView();
+    return;
+  }
+  if (state.tab === "savedx") {
     intro.innerHTML = 'Your shortlist \u2014 every bat you\u2019ve ribboned, ranked by HR%. The bookmark on any card files or releases him.';
     board.innerHTML = savedView();
     return;

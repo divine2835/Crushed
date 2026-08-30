@@ -1858,6 +1858,157 @@ app.get("/api/odds", async (req, res) => {
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
+/* ---------------- CRUSHED SIMULATOR ----------------
+   Monte Carlo game engine: every PA samples one of seven outcomes
+   (K, BB, 1B, 2B, 3B, HR, out) from the batter's real season rates,
+   with the HR probability derived from OUR park/weather/brain-adjusted
+   HR% \u2014 so the sims think like the terminal. Pure reader: touches no
+   learning state, no caches beyond its own. */
+const SIM_N = 1500;
+const SIM_AVG = { bb: 0.085, k: 0.22, b1: 0.14, b2: 0.045, b3: 0.004, hrPa: 0.032 };
+function simRates(p) {
+  const s = p.season || {};
+  const pa = +s.pa || 0;
+  if (pa < 50) return { ...SIM_AVG };
+  const hits = +s.hits || 0, d2 = +s.doubles || 0, d3 = +s.triples || 0, hr = +s.hr || 0;
+  const hrPa = p.hrPct != null ? 1 - Math.pow(1 - Math.min(0.9, p.hrPct / 100), 1 / 4.1) : (hr / pa || SIM_AVG.hrPa);
+  return {
+    bb: Math.min(0.25, (+s.bb || 0) / pa),
+    k: Math.min(0.45, (+s.so || 0) / pa),
+    b1: Math.max(0.02, (hits - d2 - d3 - hr) / pa),
+    b2: Math.max(0.005, d2 / pa),
+    b3: Math.max(0, d3 / pa),
+    hrPa: Math.max(0.002, Math.min(0.18, hrPa)),
+  };
+}
+function simPA(r) {
+  let x = Math.random();
+  if ((x -= r.hrPa) < 0) return "HR";
+  if ((x -= r.b3) < 0) return "3B";
+  if ((x -= r.b2) < 0) return "2B";
+  if ((x -= r.b1) < 0) return "1B";
+  if ((x -= r.bb) < 0) return "BB";
+  if ((x -= r.k) < 0) return "K";
+  return "OUT";
+}
+function simOneGame(A, B, rA, rB) {
+  const boxA = A.map(() => ({ ab: 0, r: 0, h: 0, hr: 0, rbi: 0, bb: 0, so: 0 }));
+  const boxB = B.map(() => ({ ab: 0, r: 0, h: 0, hr: 0, rbi: 0, bb: 0, so: 0 }));
+  let ra = 0, rb = 0, ia = 0, ib = 0;
+  const lineA = [], lineB = [];
+  for (let inn = 1; inn <= 9; inn++) {
+    const ha = simHalfTrack(A, rA, ia, boxA); ra += ha.runs; ia = ha.next; lineA.push(ha.runs);
+    if (inn === 9 && rb > ra) { lineB.push("x"); break; }
+    const hb = simHalfTrack(B, rB, ib, boxB); rb += hb.runs; ib = hb.next; lineB.push(hb.runs);
+  }
+  let extra = 0;
+  while (ra === rb && extra < 6) {
+    extra++;
+    const ha = simHalfTrack(A, rA, ia, boxA); ra += ha.runs; ia = ha.next; lineA.push(ha.runs);
+    const hb = simHalfTrack(B, rB, ib, boxB); rb += hb.runs; ib = hb.next; lineB.push(hb.runs);
+    if (rb > ra) break;
+  }
+  if (ra === rb) (Math.random() < 0.5 ? ra++ : rb++);
+  return { ra, rb, boxA, boxB, lineA, lineB };
+}
+function simHalfTrack(lineup, rates, startIdx, box) {
+  let outs = 0, runs = 0, idx = startIdx;
+  let bases = [null, null, null];
+  while (outs < 3) {
+    const bi = idx % lineup.length;
+    idx++;
+    const out = simPA(rates[bi]);
+    const b = box[bi];
+    const scoreRun = (who) => { runs++; box[who].r++; };
+    if (out === "K" || out === "OUT") { outs++; b.ab++; if (out === "K") b.so++; }
+    else if (out === "BB") {
+      b.bb++;
+      if (bases[0] != null) {
+        if (bases[1] != null) {
+          if (bases[2] != null) { scoreRun(bases[2]); b.rbi++; }
+          bases[2] = bases[1];
+        }
+        bases[1] = bases[0];
+      }
+      bases[0] = bi;
+    } else {
+      b.ab++; b.h++;
+      if (out === "HR") {
+        b.hr++;
+        [2, 1, 0].forEach((k) => { if (bases[k] != null) { scoreRun(bases[k]); b.rbi++; bases[k] = null; } });
+        scoreRun(bi); b.rbi++;
+      } else if (out === "3B") {
+        [2, 1, 0].forEach((k) => { if (bases[k] != null) { scoreRun(bases[k]); b.rbi++; bases[k] = null; } });
+        bases[2] = bi;
+      } else if (out === "2B") {
+        if (bases[2] != null) { scoreRun(bases[2]); b.rbi++; bases[2] = null; }
+        if (bases[1] != null) { scoreRun(bases[1]); b.rbi++; bases[1] = null; }
+        if (bases[0] != null) { bases[2] = bases[0]; bases[0] = null; }
+        bases[1] = bi;
+      } else {
+        if (bases[2] != null) { scoreRun(bases[2]); b.rbi++; bases[2] = null; }
+        if (bases[1] != null) { bases[2] = bases[1]; bases[1] = null; }
+        if (bases[0] != null) { bases[1] = bases[0]; }
+        bases[0] = bi;
+      }
+    }
+  }
+  return { runs, next: idx };
+}
+function runGameSims(away, home) {
+  const rA = away.map(simRates), rB = home.map(simRates);
+  const agg = {
+    n: SIM_N, winA: 0, winB: 0, runsA: 0, runsB: 0,
+    batA: away.map(() => ({ hrSims: 0, h: 0, hr: 0, rbi: 0, r: 0 })),
+    batB: home.map(() => ({ hrSims: 0, h: 0, hr: 0, rbi: 0, r: 0 })),
+    samples: [],
+  };
+  for (let i = 0; i < SIM_N; i++) {
+    const g = simOneGame(away, home, rA, rB);
+    if (g.ra > g.rb) agg.winA++; else agg.winB++;
+    agg.runsA += g.ra; agg.runsB += g.rb;
+    g.boxA.forEach((b, j) => { const t = agg.batA[j]; if (b.hr > 0) t.hrSims++; t.h += b.h; t.hr += b.hr; t.rbi += b.rbi; t.r += b.r; });
+    g.boxB.forEach((b, j) => { const t = agg.batB[j]; if (b.hr > 0) t.hrSims++; t.h += b.h; t.hr += b.hr; t.rbi += b.rbi; t.r += b.r; });
+    if (agg.samples.length < 24 && i % Math.floor(SIM_N / 24) === 0) agg.samples.push({ ra: g.ra, rb: g.rb, boxA: g.boxA, boxB: g.boxB, lineA: g.lineA, lineB: g.lineB });
+  }
+  return agg;
+}
+app.get("/api/sim", async (req, res) => {
+  try {
+    const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
+    const pk = String(req.query.gamePk || "");
+    const b = BOARDS[day];
+    if (!b || !(b.players || []).length) return res.json({ warming: true });
+    const game = (b.games || []).find((g) => String(g.gamePk) === pk);
+    if (!game) return res.status(404).json({ error: "game not found" });
+    const out = await cached(`sim:${day}:${pk}`, 1 * H, async () => {
+      const inGame = b.players.filter((p) => String(p.gamePk) === pk);
+      const mk = (abbr) => inGame.filter((p) => p.teamAbbr === abbr)
+        .sort((x, y) => (x.slot || 9) - (y.slot || 9)).slice(0, 9);
+      let away = mk(game.away), home = mk(game.home);
+      if (away.length < 6 || home.length < 6) return { thin: true, away: game.away, home: game.home };
+      const agg = runGameSims(away, home);
+      const shape = (list, aggBats) => list.map((p, i) => ({
+        id: p.id, name: p.name, slot: p.slot, hrPct: p.hrPct,
+        hrSim: +((aggBats[i].hrSims / agg.n) * 100).toFixed(1),
+        h: +(aggBats[i].h / agg.n).toFixed(2), hr: +(aggBats[i].hr / agg.n).toFixed(2),
+        rbi: +(aggBats[i].rbi / agg.n).toFixed(2), r: +(aggBats[i].r / agg.n).toFixed(2),
+      }));
+      return {
+        gamePk: pk, ran: agg.n, park: game.park,
+        away: { abbr: game.away, win: +((agg.winA / agg.n) * 100).toFixed(1), runs: +(agg.runsA / agg.n).toFixed(2), bats: shape(away, agg.batA) },
+        home: { abbr: game.home, win: +((agg.winB / agg.n) * 100).toFixed(1), runs: +(agg.runsB / agg.n).toFixed(2), bats: shape(home, agg.batB) },
+        samples: agg.samples.map((s) => ({
+          ra: s.ra, rb: s.rb, lineA: s.lineA, lineB: s.lineB,
+          boxA: s.boxA.map((x, i) => ({ name: away[i] ? away[i].name : "?", id: away[i] ? away[i].id : 0, ...x })),
+          boxB: s.boxB.map((x, i) => ({ name: home[i] ? home[i].name : "?", id: home[i] ? home[i].id : 0, ...x })),
+        })),
+      };
+    });
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /* Hand-split selection: prefer the batter's zone profile vs TONIGHT'S
    pitcher's hand (his actual platoon slice — decisive for switch-hitters);
    fall back to the pooled profile when the split is too thin to trust. */
