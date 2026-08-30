@@ -289,6 +289,7 @@ const seasonPitching = (id) => cached(`sp2:${id}`, 6 * H, async () => {
   return {
     ip: +ip.toFixed(1), hr: +(s.homeRuns || 0), era: s.era || "\u2014",
     hr9: ip > 0 ? +((+(s.homeRuns || 0) * 9) / ip).toFixed(2) : null,
+    bb9: ip > 0 ? +((+(s.baseOnBalls || 0) * 9) / ip).toFixed(2) : null,
   };
 });
 const seasonHitting = (id) => cached(`sh:${id}`, 6 * H, async () => {
@@ -1674,7 +1675,7 @@ const pitcherSlotSplits = (id) => cached(`pslot:${id}`, 6 * H, async () => {
     const bf = +(x.battersFaced || x.plateAppearances || 0);
     const opsN = x.ops && x.ops !== "-.--" ? parseFloat(x.ops) : null;
     out.push({
-      slot: +m[1], bf, hr: +(x.homeRuns || 0),
+      slot: +m[1], bf, hr: +(x.homeRuns || 0), bb: +(x.baseOnBalls || 0),
       ops: x.ops || "\u2014",
       weak: !!(bf >= 15 && opsN != null && opsN >= 0.8),
     });
@@ -1989,9 +1990,30 @@ function expertRateFor(date, gamePk) {
   const wk = cachePeek(`weak:${date}`, 24 * H);
   const wkList = Array.isArray(wk) ? wk : (wk && (wk.pitchers || wk.list)) || [];
   const cover = { zoned: 0, mixed: 0, weak: 0 };
+  const walkArms = {};
   const fn = (p) => {
     const r = simRates(p);
-    let dmg = 1, kAdj = 1, hitAdj = 1;
+    let dmg = 1, kAdj = 1, hitAdj = 1, bbAdj = 1;
+    if (p.sp && p.sp.id) {
+      const sea = cachePeek(`sp2:${p.sp.id}`, 12 * H);
+      let fOverall = 1;
+      if (sea && sea.bb9 != null) { fOverall = Math.max(0.55, Math.min(1.7, sea.bb9 / 3.1)); walkArms[p.sp.id] = 1; }
+      let fSlot = 1;
+      const slots = cachePeek(`pslot:${p.sp.id}`, 12 * H);
+      if (Array.isArray(slots)) {
+        const withBb = slots.filter((s) => s.bb != null && s.bf >= 10);
+        if (withBb.length >= 5) {
+          const totBb = withBb.reduce((t, s) => t + s.bb, 0), totBf = withBb.reduce((t, s) => t + s.bf, 0);
+          const mySl = withBb.find((s) => +s.slot === +p.slot);
+          if (mySl && totBf > 0 && totBb > 0) {
+            const overall = totBb / totBf, mine = mySl.bb / mySl.bf;
+            fSlot = Math.max(0.6, Math.min(1.8, mine / overall));
+            walkArms[p.sp.id] = 1;
+          }
+        }
+      }
+      bbAdj = 1 + (fOverall * fSlot - 1) * 0.6;
+    }
     const zs = zoneMap[p.id];
     if (zs != null) { cover.zoned++; dmg *= 1 + ((zs - 50) / 50) * 0.22; kAdj *= 1 - ((zs - 50) / 50) * 0.08; }
     const pack = cachePeek(`bpk:${p.id}`, 12 * H);
@@ -2032,6 +2054,8 @@ function expertRateFor(date, gamePk) {
     r.b3 = Math.min(0.03, r.b3 * (1 + (dmg - 1) * 0.6));
     r.k = Math.min(0.45, Math.max(0.05, r.k * kAdj));
     r.b1 = Math.min(0.3, r.b1 * hitAdj);
+    r.bb = Math.min(0.28, Math.max(0.02, r.bb * bbAdj));
+    cover.walkArms = Object.keys(walkArms).length;
     return r;
   };
   fn.cover = cover;

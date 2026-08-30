@@ -1814,7 +1814,7 @@ function loadSim(pk) {
 }
 function simView() {
   var banner = '<div class="fn-banner" style="border-color:rgba(244,114,182,0.5)"><div class="fn-title" style="color:#f472b6">SIMULATOR \u00b7 THE SLATE, PLAYED IN ADVANCE</div>' +
-    '<div class="fn-sub">Every game simulated 1,500 times \u2014 each plate appearance samples K, walk, single, double, triple, homer, or out from the bat\u2019s real season rates, with his HR chance drawn from OUR park-, weather-, and brain-adjusted model \u00b7 tap a game for win odds, projected runs, who homers most often, and one full simulated box score you can re-deal \u00b7 three intelligence tiers: EXPERT shades every bat by his Zone Score vs tonight\u2019s arm, his windowed SLG + whiff/K vs the pitcher\u2019s actual mix, and the pitcher\u2019s weak lineup slots \u00b7 AVERAGE runs our brain-adjusted model \u00b7 BEGINNER is the naive season-rates sim \u00b7 bullpens averaged \u2014 a lens from our model\u2019s worldview, not a picks service</div></div>';
+    '<div class="fn-sub">Every game simulated 1,500 times \u2014 each plate appearance samples K, walk, single, double, triple, homer, or out from the bat\u2019s real season rates, with his HR chance drawn from OUR park-, weather-, and brain-adjusted model \u00b7 tap a game for win odds, projected runs, who homers most often, and one full simulated box score you can re-deal \u00b7 three intelligence tiers: EXPERT shades every bat by his Zone Score vs tonight\u2019s arm, his windowed SLG + whiff/K vs the pitcher\u2019s actual mix, the pitcher\u2019s weak lineup slots, and the arm\u2019s walk map \u2014 how generous he is overall and which lineup spots he walks most \u00b7 AVERAGE runs our brain-adjusted model \u00b7 BEGINNER is the naive season-rates sim \u00b7 bullpens averaged \u2014 a lens from our model\u2019s worldview, not a picks service</div></div>';
   var games = (state.data && state.data.games) || [];
   if (!games.length) return banner + '<div class="loading">Waiting on the slate\u2026</div>';
   if (state.simOpen == null) {
@@ -1850,9 +1850,9 @@ function simView() {
   var s = d.samples[state.simIdx % d.samples.length];
   function boxTable(abbr, rows, runs) {
     return '<div class="adv-count" style="margin:10px 0 5px">' + esc(abbr) + ' \u00b7 ' + runs + ' RUNS \u00b7 SIMULATED GAME #' + ((state.simIdx % d.samples.length) + 1) + '</div>' +
-      '<div class="table-wrap sim-box"><table><thead><tr><th>Batter</th><th>AB</th><th>R</th><th>H</th><th>HR</th><th>RBI</th></tr></thead><tbody>' +
+      '<div class="table-wrap sim-box"><table><thead><tr><th>Batter</th><th>AB</th><th>R</th><th>H</th><th>HR</th><th>RBI</th><th title="Walks">BB</th></tr></thead><tbody>' +
       rows.map(function (b) {
-        return '<tr class="row' + (b.hr > 0 ? " odds-edge" : "") + '" data-row="' + b.id + '"><td>' + esc(b.name) + '</td><td>' + b.ab + '</td><td>' + b.r + '</td><td>' + b.h + '</td><td' + (b.hr > 0 ? ' style="color:#f472b6;font-weight:800"' : "") + '>' + b.hr + '</td><td>' + b.rbi + '</td></tr>';
+        return '<tr class="row' + (b.hr > 0 ? " odds-edge" : "") + '" data-row="' + b.id + '"><td>' + esc(b.name) + '</td><td>' + b.ab + '</td><td>' + b.r + '</td><td>' + b.h + '</td><td' + (b.hr > 0 ? ' style="color:#f472b6;font-weight:800"' : "") + '>' + b.hr + '</td><td>' + b.rbi + '</td><td' + (b.bb > 0 ? ' style="color:#93c5fd;font-weight:700"' : "") + '>' + (b.bb || 0) + '</td></tr>';
       }).join("") + '</tbody></table></div>';
   }
   var lvls = [["expert","EXPERT","Sharpest \u2014 base rates shaded by Zone Score vs tonight\u2019s arm, windowed SLG + whiff/K vs his actual mix, and the pitcher\u2019s weak lineup slots. Tap again to deal another game."],["average","AVERAGE","The standard engine \u2014 season rates with our park/weather/brain-adjusted HR%. Tap again to deal another game."],["beginner","BEGINNER","The naive sim \u2014 raw season rates only, no model. Tap again to deal another game."]];
@@ -1860,7 +1860,7 @@ function simView() {
     return '<button class="sim-lvl' + (state.simLevel === L[0] ? " on" : "") + '" data-simlvl="' + L[0] + '" title="' + L[2] + '">' + L[1] + '</button>';
   }).join("") + '</div>' +
   '<div class="mix-caption" style="padding:2px 4px 8px">\ud83c\udfb2 Tap your tier to deal a fresh simulated game \u00b7 switch tiers to feel how much the intelligence matters' +
-  (d.level === "expert" && d.cover ? ' \u00b7 <span style="color:#f472b6">expert signals live: ' + d.cover.zoned + ' bats zone-scored \u00b7 ' + d.cover.mixed + ' mix-scouted \u00b7 ' + d.cover.weak + ' in weak spots</span>' : "") + '</div>';
+  (d.level === "expert" && d.cover ? ' \u00b7 <span style="color:#f472b6">expert signals live: ' + d.cover.zoned + ' bats zone-scored \u00b7 ' + d.cover.mixed + ' mix-scouted \u00b7 ' + d.cover.weak + ' in weak spots' + (d.cover.walkArms ? ' \u00b7 ' + d.cover.walkArms + ' arm' + (d.cover.walkArms > 1 ? "s" : "") + ' walk-mapped' : "") + '</span>' : "") + '</div>';
   return banner + head + hrs + deal + boxTable(A.abbr, s.boxA, s.ra) + boxTable(B.abbr, s.boxB, s.rb);
 }
 /* TRUE ODDS — our weather/park-adjusted HR% as a fair American line
