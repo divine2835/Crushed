@@ -1955,8 +1955,9 @@ function simHalfTrack(lineup, rates, startIdx, box) {
   }
   return { runs, next: idx };
 }
-function runGameSims(away, home) {
-  const rA = away.map(simRates), rB = home.map(simRates);
+function runGameSims(away, home, rateFor) {
+  const rf = rateFor || simRates;
+  const rA = away.map(rf), rB = home.map(rf);
   const agg = {
     n: SIM_N, winA: 0, winB: 0, runsA: 0, runsB: 0,
     batA: away.map(() => ({ hrSims: 0, h: 0, hr: 0, rbi: 0, r: 0 })),
@@ -1973,21 +1974,89 @@ function runGameSims(away, home) {
   }
   return agg;
 }
+/* Expert tier: the sim drinks from every deep well the terminal has.
+   Each batter's base rates get shaded by (a) his Zone Score vs tonight's
+   arm — how squarely the pitcher's locations sit in his damage zones,
+   (b) his windowed SLG vs the pitcher's actual mix (L5 → L3 → season)
+   and his whiff/K profile vs that mix, and (c) whether his lineup slot
+   is one of the pitcher's proven weak spots. All reads come from caches
+   already warmed by the zone and weak builds — the sim never triggers
+   fetch storms, and unscouted bats stay neutral. */
+function expertRateFor(date, gamePk) {
+  const zl = ((ZONEB[date] || {}).list || []);
+  const zoneMap = {};
+  zl.forEach((z) => { if (z && z.id != null) zoneMap[z.id] = z.zs; });
+  const wk = cachePeek(`weak:${date}`, 0.5 * H);
+  const wkList = (wk && wk.list) || [];
+  const cover = { zoned: 0, mixed: 0, weak: 0 };
+  const fn = (p) => {
+    const r = simRates(p);
+    let dmg = 1, kAdj = 1, hitAdj = 1;
+    const zs = zoneMap[p.id];
+    if (zs != null) { cover.zoned++; dmg *= 1 + ((zs - 50) / 50) * 0.22; kAdj *= 1 - ((zs - 50) / 50) * 0.08; }
+    const pack = cachePeek(`bpk:${p.id}`, 12 * H);
+    const mix = p.sp && p.sp.mix ? p.sp.mix : [];
+    if (pack && mix.length) {
+      let wS = 0, sW = 0, wK = 0, kW = 0, wWh = 0, whW = 0;
+      mix.forEach((m) => {
+        const u = m.pct || 0;
+        if (!u) return;
+        const e5 = pack.vsPitchL5 && pack.vsPitchL5[m.pt], e3 = pack.vsPitchL3 && pack.vsPitchL3[m.pt];
+        let s = e5 && e5.slg != null ? e5.slg : e3 && e3.slg != null ? e3.slg : pack.vsPitch ? pack.vsPitch[m.pt] : null;
+        if (s != null) { wS += s * u; sW += u; }
+        let k = e5 && e5.k != null ? e5.k : e3 && e3.k != null ? e3.k : pack.vsPitchK ? pack.vsPitchK[m.pt] : null;
+        if (k != null) { wK += k * u; kW += u; }
+        let wh = e5 && e5.whiff != null ? e5.whiff : e3 && e3.whiff != null ? e3.whiff : pack.vsPitchWhiff ? pack.vsPitchWhiff[m.pt] : null;
+        if (wh != null) { wWh += wh * u; whW += u; }
+      });
+      if (sW || kW || whW) cover.mixed++;
+      if (sW) { const f = Math.max(0.6, Math.min(1.7, wS / sW / 0.40)); dmg *= 1 + (f - 1) * 0.5; }
+      if (kW) { const f = Math.max(0.65, Math.min(1.45, wK / kW / 22)); kAdj *= 1 + (f - 1) * 0.6; }
+      if (whW) { hitAdj *= Math.max(0.9, Math.min(1.12, 1 + ((25 - wWh / whW) / 25) * 0.08)); }
+    }
+    const wkSp = wkList.find((e) => String(e.gamePk) === String(gamePk) && e.opp === p.teamAbbr);
+    if (wkSp && Array.isArray(wkSp.slots)) {
+      const sl = wkSp.slots.find((s) => +s.slot === +p.slot);
+      if (sl && (sl.weak || sl.isWeak || parseFloat(sl.ops) >= 0.85)) { cover.weak++; dmg *= 1.12; }
+    }
+    r.hrPa = Math.min(0.18, r.hrPa * dmg);
+    r.b2 = Math.min(0.12, r.b2 * (1 + (dmg - 1) * 0.6));
+    r.b3 = Math.min(0.03, r.b3 * (1 + (dmg - 1) * 0.6));
+    r.k = Math.min(0.45, Math.max(0.05, r.k * kAdj));
+    r.b1 = Math.min(0.3, r.b1 * hitAdj);
+    return r;
+  };
+  fn.cover = cover;
+  return fn;
+}
+function beginnerRates(p) {
+  // the naive sim: raw season rates only, no model adjustment
+  const r = simRates(p);
+  const s = p.season || {};
+  const pa = +s.pa || 0;
+  r.hrPa = pa >= 50 ? Math.max(0.002, Math.min(0.18, (+s.hr || 0) / pa)) : SIM_AVG.hrPa;
+  return r;
+}
 app.get("/api/sim", async (req, res) => {
   try {
     const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
     const pk = String(req.query.gamePk || "");
+    const level = ["expert", "average", "beginner"].indexOf(req.query.level) !== -1 ? req.query.level : "average";
     const b = BOARDS[day];
     if (!b || !(b.players || []).length) return res.json({ warming: true });
     const game = (b.games || []).find((g) => String(g.gamePk) === pk);
     if (!game) return res.status(404).json({ error: "game not found" });
-    const out = await cached(`sim:${day}:${pk}`, 1 * H, async () => {
+    const out = await cached(`sim:${day}:${pk}:${level}`, 1 * H, async () => {
       const inGame = b.players.filter((p) => String(p.gamePk) === pk);
       const mk = (abbr) => inGame.filter((p) => p.teamAbbr === abbr)
         .sort((x, y) => (x.slot || 9) - (y.slot || 9)).slice(0, 9);
       let away = mk(game.away), home = mk(game.home);
       if (away.length < 6 || home.length < 6) return { thin: true, away: game.away, home: game.home };
-      const agg = runGameSims(away, home);
+      let rateFor = simRates, cover = null;
+      if (level === "expert") { rateFor = expertRateFor(dayDate(day), pk); }
+      else if (level === "beginner") { rateFor = beginnerRates; }
+      const agg = runGameSims(away, home, rateFor);
+      if (rateFor.cover) cover = rateFor.cover;
       const shape = (list, aggBats) => list.map((p, i) => ({
         id: p.id, name: p.name, slot: p.slot, hrPct: p.hrPct,
         hrSim: +((aggBats[i].hrSims / agg.n) * 100).toFixed(1),
@@ -1995,7 +2064,7 @@ app.get("/api/sim", async (req, res) => {
         rbi: +(aggBats[i].rbi / agg.n).toFixed(2), r: +(aggBats[i].r / agg.n).toFixed(2),
       }));
       return {
-        gamePk: pk, ran: agg.n, park: game.park,
+        gamePk: pk, ran: agg.n, park: game.park, level: level, cover: cover,
         away: { abbr: game.away, win: +((agg.winA / agg.n) * 100).toFixed(1), runs: +(agg.runsA / agg.n).toFixed(2), bats: shape(away, agg.batA) },
         home: { abbr: game.home, win: +((agg.winB / agg.n) * 100).toFixed(1), runs: +(agg.runsB / agg.n).toFixed(2), bats: shape(home, agg.batB) },
         samples: agg.samples.map((s) => ({

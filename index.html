@@ -130,6 +130,15 @@ body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-ins
 .sim-winbar > span { height: 100%; }
 .sim-box th, .sim-box td { font-size: 12px; padding: 6px 8px; }
 .sim-hrchip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(244,114,182,0.4); border-radius: 999px; padding: 4px 10px; margin: 3px 4px 3px 0; font-size: 11.5px; }
+.sim-lvls { display: flex; gap: 8px; margin: 8px 0 4px; }
+.sim-lvl { flex: 1; font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: 0.05em; padding: 10px 4px; border-radius: 12px; cursor: pointer; text-align: center;
+  color: #f472b6; border: 1px solid rgba(244,114,182,0.55); background: linear-gradient(180deg, rgba(244,114,182,0.10), rgba(244,114,182,0.03));
+  box-shadow: 0 3px 7px rgba(0,0,0,0.45), inset 0 1px 1px rgba(255,255,255,0.08);
+  transition: transform 0.12s ease, box-shadow 0.12s ease; -webkit-tap-highlight-color: transparent; }
+.sim-lvl:active { transform: translateY(2px); }
+.sim-lvl.on { color: #3d0f26; border-color: rgba(244,114,182,0.95);
+  background: linear-gradient(180deg, #f9a8d0, #f472b6 55%, #d4568f);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.5), 0 0 14px rgba(244,114,182,0.45), inset 0 1px 1px rgba(255,255,255,0.6), inset 0 -2px 4px rgba(120,20,70,0.35); }
 .saved-btn { border-color: rgba(147,197,253,0.55); color: #93c5fd; }
 .saved-on { color: var(--ink); border-color: #93c5fd; background: #93c5fd; box-shadow: 0 0 12px rgba(147,197,253,0.4); }
 .adv-btn { border-color: rgba(167,139,250,0.55); color: #a78bfa; }
@@ -789,7 +798,7 @@ var DEMO = {
 /* ---------- state ---------- */
 var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", oddsData:{}, oddsLoading:false, oddsBook:"best", oddsMenu:false,
   saved: (function () { try { return JSON.parse(localStorage.getItem("crushedSaved") || "[]").map(Number); } catch (e) { return []; } })(),
-  simData:{}, simOpen:null, simLoading:false, simIdx:0, advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
+  simData:{}, simOpen:null, simLoading:false, simIdx:0, simLevel:"expert", advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
   alerts: (function () { try { return JSON.parse(localStorage.getItem("crushedAlerts") || "[]"); } catch (e) { return []; } })(), profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", pitch:null, hrSort:"hrPct", hrDir:"desc", slgMode:false, slgWin:"szn", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
@@ -1792,18 +1801,20 @@ function savedView() {
   return banner + out;
 }
 /* SIMULATOR — the terminal plays every game before it happens. */
+function simKey(pk) { return state.day + ":" + pk + ":" + state.simLevel; }
 function loadSim(pk) {
   if (state.simLoading) return;
   state.simLoading = true;
-  fetch(apiBase + "/api/sim?day=" + state.day + "&gamePk=" + pk)
+  var key = simKey(pk);
+  fetch(apiBase + "/api/sim?day=" + state.day + "&gamePk=" + pk + "&level=" + state.simLevel)
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(function (j) { state.simData[state.day + ":" + pk] = j; })
-    .catch(function () { state.simData[state.day + ":" + pk] = { error: true }; })
+    .then(function (j) { state.simData[key] = j; })
+    .catch(function () { state.simData[key] = { error: true }; })
     .finally(function () { state.simLoading = false; render(); });
 }
 function simView() {
   var banner = '<div class="fn-banner" style="border-color:rgba(244,114,182,0.5)"><div class="fn-title" style="color:#f472b6">SIMULATOR \u00b7 THE SLATE, PLAYED IN ADVANCE</div>' +
-    '<div class="fn-sub">Every game simulated 1,500 times \u2014 each plate appearance samples K, walk, single, double, triple, homer, or out from the bat\u2019s real season rates, with his HR chance drawn from OUR park-, weather-, and brain-adjusted model \u00b7 tap a game for win odds, projected runs, who homers most often, and one full simulated box score you can re-deal \u00b7 batter rates only (bullpens averaged) \u2014 a lens from our model\u2019s worldview, not a picks service</div></div>';
+    '<div class="fn-sub">Every game simulated 1,500 times \u2014 each plate appearance samples K, walk, single, double, triple, homer, or out from the bat\u2019s real season rates, with his HR chance drawn from OUR park-, weather-, and brain-adjusted model \u00b7 tap a game for win odds, projected runs, who homers most often, and one full simulated box score you can re-deal \u00b7 three intelligence tiers: EXPERT shades every bat by his Zone Score vs tonight\u2019s arm, his windowed SLG + whiff/K vs the pitcher\u2019s actual mix, and the pitcher\u2019s weak lineup slots \u00b7 AVERAGE runs our brain-adjusted model \u00b7 BEGINNER is the naive season-rates sim \u00b7 bullpens averaged \u2014 a lens from our model\u2019s worldview, not a picks service</div></div>';
   var games = (state.data && state.data.games) || [];
   if (!games.length) return banner + '<div class="loading">Waiting on the slate\u2026</div>';
   if (state.simOpen == null) {
@@ -1819,7 +1830,7 @@ function simView() {
   var backBtn = '<button class="wk-toggle" data-simback="1" style="border-color:rgba(244,114,182,0.5);color:#f472b6;margin-bottom:11px">\u25c2 All games</button>';
   if (!g) { state.simOpen = null; return banner + '<div class="loading">Slate updated \u2014 pick a game again.</div>'; }
   if (state.demo) return banner + backBtn + '<div class="loading">The sim engine runs on the live server \u2014 demo mode can\u2019t deal games.</div>';
-  var d = state.simData[state.day + ":" + state.simOpen];
+  var d = state.simData[simKey(state.simOpen)];
   if (!d) { if (!state.simLoading) loadSim(state.simOpen); return banner + backBtn + '<div class="loading">Playing ' + esc(g.away) + ' @ ' + esc(g.home) + ' 1,500 times\u2026</div>'; }
   if (d.error) return banner + backBtn + '<div class="loading">The sim engine hiccuped \u2014 tap the game again.</div>';
   if (d.warming) return banner + backBtn + '<div class="loading">The board is still assembling \u2014 back shortly.</div>';
@@ -1844,7 +1855,12 @@ function simView() {
         return '<tr class="row' + (b.hr > 0 ? " odds-edge" : "") + '" data-row="' + b.id + '"><td>' + esc(b.name) + '</td><td>' + b.ab + '</td><td>' + b.r + '</td><td>' + b.h + '</td><td' + (b.hr > 0 ? ' style="color:#f472b6;font-weight:800"' : "") + '>' + b.hr + '</td><td>' + b.rbi + '</td></tr>';
       }).join("") + '</tbody></table></div>';
   }
-  var deal = '<button class="bk-btn" data-resim="1" style="margin:6px 0 4px;background:linear-gradient(180deg,#f9a8d0,#f472b6 55%,#d4568f);border-color:rgba(244,114,182,0.9);color:#3d0f26">\u1f3b2\ufe0e \ud83c\udfb2 Deal another simulated game</button>';
+  var lvls = [["expert","EXPERT","Sharpest \u2014 base rates shaded by Zone Score vs tonight\u2019s arm, windowed SLG + whiff/K vs his actual mix, and the pitcher\u2019s weak lineup slots. Tap again to deal another game."],["average","AVERAGE","The standard engine \u2014 season rates with our park/weather/brain-adjusted HR%. Tap again to deal another game."],["beginner","BEGINNER","The naive sim \u2014 raw season rates only, no model. Tap again to deal another game."]];
+  var deal = '<div class="sim-lvls">' + lvls.map(function (L) {
+    return '<button class="sim-lvl' + (state.simLevel === L[0] ? " on" : "") + '" data-simlvl="' + L[0] + '" title="' + L[2] + '">' + L[1] + '</button>';
+  }).join("") + '</div>' +
+  '<div class="mix-caption" style="padding:2px 4px 8px">\ud83c\udfb2 Tap your tier to deal a fresh simulated game \u00b7 switch tiers to feel how much the intelligence matters' +
+  (d.level === "expert" && d.cover ? ' \u00b7 <span style="color:#f472b6">expert signals live: ' + d.cover.zoned + ' bats zone-scored \u00b7 ' + d.cover.mixed + ' mix-scouted \u00b7 ' + d.cover.weak + ' in weak spots</span>' : "") + '</div>';
   return banner + head + hrs + deal + boxTable(A.abbr, s.boxA, s.ra) + boxTable(B.abbr, s.boxB, s.rb);
 }
 /* TRUE ODDS — our weather/park-adjusted HR% as a fair American line
@@ -3138,7 +3154,7 @@ document.addEventListener("change", function (e) {
   render();
 });
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-slg],[data-slgwin],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-bookmenu],[data-bookpick],[data-save],[data-savetab],[data-simtab],[data-simgame],[data-simback],[data-resim],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-slg],[data-slgwin],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-bookmenu],[data-bookpick],[data-save],[data-savetab],[data-simtab],[data-simgame],[data-simback],[data-simlvl],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -3224,8 +3240,13 @@ document.addEventListener("click", function (e) {
     state.simOpen = null; state.open = null;
     render(); return;
   }
-  if (el.dataset.resim) {
-    state.simIdx++;
+  if (el.dataset.simlvl) {
+    if (state.simLevel === el.dataset.simlvl) { state.simIdx++; } // same tier again = deal another game
+    else {
+      state.simLevel = el.dataset.simlvl;
+      state.simIdx = 0;
+      if (state.simOpen != null && !state.demo && !state.simData[simKey(state.simOpen)]) loadSim(state.simOpen);
+    }
     render(); return;
   }
   if (el.dataset.oddstab) {
