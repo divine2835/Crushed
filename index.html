@@ -852,7 +852,7 @@ var DEMO = {
 var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", oddsData:{}, oddsLoading:false, oddsBook:"best", oddsMenu:false,
   saved: (function () { try { return JSON.parse(localStorage.getItem("crushedSaved") || "[]").map(Number); } catch (e) { return []; } })(),
   simData:{}, simOpen:null, simLoading:false, simIdx:0, simLevel:"expert",
-  quantumData:{}, quantumLoading:false, destinyData:{}, destinyLoading:false, chatOpen:false, chat:[], chatBusy:false, advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
+  quantumData:{}, quantumLoading:false, destinyData:{}, destinyLoading:false, chatOpen:false, chat:[], chatBusy:false, chatBuilt:false, advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
   alerts: (function () { try { return JSON.parse(localStorage.getItem("crushedAlerts") || "[]"); } catch (e) { return []; } })(), profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", penArm:null, armZs:{}, armZsLoading:{}, pitch:null, hrSort:"hrPct", hrDir:"desc", slgMode:false, slgWin:"szn", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
@@ -1901,20 +1901,31 @@ function oracleAsk(q) {
     .catch(function () { state.chat.push({ role: "bot", text: "The Oracle stumbled \u2014 ask again.", star: false }); })
     .finally(function () { state.chatBusy = false; renderOracle(); });
 }
+function oracleMsgsHtml() {
+  var msgs = state.chat.map(function (m) {
+    return '<div class="ora-msg ' + m.role + '">' + (m.role === "bot" && m.star ? '<span class="star-num" title="Numerology-aligned: ' + esc(m.starTitle || "") + '">\u2605</span> ' : "") + esc(m.text) + '</div>';
+  }).join("");
+  if (!state.chat.length) msgs = '<div class="ora-msg bot">Ask me the terminal\u2019s numbers \u2014 \u201chow many times has Devers had 3 RBI in a game?\u201d \u00b7 \u201cSoto\u2019s homers vs lefties?\u201d \u00b7 \u201cJudge\u2019s hitting streak?\u201d \u00b7 answers one step from today\u2019s numbers earn the purple \u2605</div>';
+  if (state.chatBusy) msgs += '<div class="ora-msg bot dim">consulting the records\u2026</div>';
+  return msgs;
+}
 function renderOracle() {
   var host = document.getElementById("oracle-host");
   if (!host) return;
   var fab = '<button class="ora-fab" data-orafab="1" title="Ask the Oracle" aria-label="Ask the Oracle">\u2726</button>';
-  if (!state.chatOpen) { host.innerHTML = fab; return; }
-  var msgs = state.chat.map(function (m) {
-    return '<div class="ora-msg ' + m.role + '">' + (m.role === "bot" && m.star ? '<span class="star-num" title="Numerology-aligned: ' + esc(m.starTitle || "") + '">\u2605</span> ' : "") + esc(m.text) + '</div>';
-  }).join("");
-  if (!state.chat.length) msgs = '<div class="ora-msg bot">Ask me the terminal\u2019s numbers \u2014 \u201chow many times has Devers hit 2 home runs in a game?\u201d \u00b7 \u201cwhen did Alvarez last homer?\u201d \u00b7 \u201cwho leads HR% tonight?\u201d \u00b7 answers aligned with today\u2019s numbers earn the purple \u2605</div>';
-  if (state.chatBusy) msgs += '<div class="ora-msg bot dim">consulting the records\u2026</div>';
+  if (!state.chatOpen) { state.chatBuilt = false; host.innerHTML = fab; return; }
+  if (state.chatBuilt) {
+    // drawer is standing: touch ONLY the messages, never the input \u2014
+    // background renders can no longer eat what the person is typing
+    var box0 = document.getElementById("ora-msgs");
+    if (box0) { box0.innerHTML = oracleMsgsHtml(); if (box0.scrollTo) box0.scrollTo(0, 999999); }
+    return;
+  }
   host.innerHTML = fab +
     '<div class="ora-drawer"><div class="ora-head">\u2726 THE ORACLE <span class="dim" style="margin-left:auto;font-weight:600;letter-spacing:0">answers from our engines</span></div>' +
-    '<div class="ora-msgs" id="ora-msgs">' + msgs + '</div>' +
-    '<div class="ora-inrow"><input class="ora-in" id="ora-in" placeholder="Ask about any player\u2026" maxlength="200"><button class="ora-send" data-orasend="1">ASK</button></div></div>';
+    '<div class="ora-msgs" id="ora-msgs">' + oracleMsgsHtml() + '</div>' +
+    '<div class="ora-inrow"><input class="ora-in" id="ora-in" placeholder="Ask about any player\u2026" maxlength="200" autocomplete="off"><button class="ora-send" data-orasend="1">ASK</button></div></div>';
+  state.chatBuilt = true;
   var box = document.getElementById("ora-msgs");
   if (box && box.scrollTo) box.scrollTo(0, 999999);
 }
