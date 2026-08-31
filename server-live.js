@@ -2580,6 +2580,93 @@ app.get("/api/armzs", async (req, res) => {
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
+/* ---------------- DESTINY ----------------
+   Winner/loser prophecy per game: does a team's NEXT win land their
+   season (or home/away) win total on one of the day's numbers? Does
+   their next loss complete a destined loss total? Those alignments
+   (both teams, both directions) sway the expert sim's win odds into
+   a verdict. Numbers meet the machine. */
+const teamAbbrMap = () => cached("teamAbbrs", 24 * H, async () => {
+  const j = await getJson(`${STATS}/teams?sportId=1&season=${SEASON}`);
+  const m = {};
+  (j.teams || []).forEach((t) => { m[t.abbreviation] = t.id; });
+  return m;
+});
+const standingsMap = () => cached("standings", 3 * H, async () => {
+  const j = await getJson(`${STATS}/standings?leagueId=103,104&season=${SEASON}&standingsTypes=regularSeason`);
+  const m = {};
+  (j.records || []).forEach((div) => (div.teamRecords || []).forEach((tr) => {
+    const rec = { w: +tr.wins || 0, l: +tr.losses || 0, homeW: null, homeL: null, awayW: null, awayL: null };
+    ((tr.records && tr.records.splitRecords) || []).forEach((s) => {
+      if (s.type === "home") { rec.homeW = +s.wins; rec.homeL = +s.losses; }
+      if (s.type === "away") { rec.awayW = +s.wins; rec.awayL = +s.losses; }
+    });
+    m[tr.team.id] = rec;
+  }));
+  return m;
+});
+function destinyAligns(rec, isHome, set) {
+  const out = { win: [], lose: [], pts: 0 };
+  const probe = (val, label, ptsIfHit, bucket) => {
+    if (val == null) return;
+    const target = val + 1;
+    const red = reduceNum(target);
+    if (set.indexOf(red) !== -1) { out[bucket].push(label + " #" + target + " \u2192 " + red + " \u2726"); out.pts += bucket === "win" ? ptsIfHit : -ptsIfHit; }
+  };
+  probe(rec.w, "season W", 8, "win");
+  probe(isHome ? rec.homeW : rec.awayW, (isHome ? "home" : "road") + " W", 6, "win");
+  probe(rec.l, "season L", 8, "lose");
+  probe(isHome ? rec.homeL : rec.awayL, (isHome ? "home" : "road") + " L", 6, "lose");
+  return out;
+}
+function destinyVerdict(simAwayWin, alignA, alignB) {
+  // positive pts = pulled toward winning; a rival's lose-pull boosts you
+  const destA = alignA.pts - alignB.pts; // net numeric wind behind the away side
+  const data = simAwayWin != null ? simAwayWin : 50;
+  const finalA = Math.max(2, Math.min(98, data + destA * 0.75));
+  return { finalA: +finalA.toFixed(1), finalB: +(100 - finalA).toFixed(1), destA: destA };
+}
+app.get("/api/destiny", async (req, res) => {
+  try {
+    const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
+    const b = BOARDS[day];
+    if (!b || !(b.players || []).length) return res.json({ warming: true });
+    const set = (b.numerology && b.numerology.set) || [];
+    const out = await cached(`destiny:${day}`, 1 * H, async () => {
+      const [abbrs, standings] = await Promise.all([teamAbbrMap(), standingsMap()]);
+      const games = [];
+      for (const g of b.games || []) {
+        try {
+          const aId = abbrs[g.away], hId = abbrs[g.home];
+          const recA = (aId && standings[aId]) || null, recH = (hId && standings[hId]) || null;
+          if (!recA || !recH) continue;
+          let simWin = null, basis = "records";
+          try {
+            const sim = await buildSimFor(day, String(g.gamePk), "expert");
+            if (sim && !sim.thin && sim.away) { simWin = sim.away.win; basis = "expert sim"; }
+          } catch { /* sim optional */ }
+          if (simWin == null) {
+            const pA = recA.w / Math.max(1, recA.w + recA.l), pH = recH.w / Math.max(1, recH.w + recH.l);
+            simWin = +((pA / (pA + pH)) * 100).toFixed(1);
+          }
+          const alignA = destinyAligns(recA, false, set), alignH = destinyAligns(recH, true, set);
+          const v = destinyVerdict(simWin, alignA, alignH);
+          games.push({
+            gamePk: g.gamePk, park: g.park, basis,
+            away: { abbr: g.away, w: recA.w, l: recA.l, sw: recA.awayW, sl: recA.awayL, simWin: simWin, wins: alignA.win, loses: alignA.lose, final: v.finalA },
+            home: { abbr: g.home, w: recH.w, l: recH.l, sw: recH.homeW, sl: recH.homeL, simWin: +(100 - simWin).toFixed(1), wins: alignH.win, loses: alignH.lose, final: v.finalB },
+            pick: v.finalA >= 50 ? g.away : g.home,
+            conf: Math.max(v.finalA, v.finalB) >= 65 ? "STRONG" : Math.max(v.finalA, v.finalB) >= 55 ? "LEAN" : "COIN FLIP",
+            destSway: v.destA,
+          });
+        } catch { /* one game can't sink the slate */ }
+      }
+      return { day, set, games };
+    });
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get("/api/health", (_, res) => res.json({ ok: true, today: !!BOARDS.today, tomorrow: !!BOARDS.tomorrow, generatedAt: BOARDS.today?.generatedAt || null }));
 
 /* ---------------- warm loop (replaces cron) ---------------- */
