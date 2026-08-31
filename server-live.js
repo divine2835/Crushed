@@ -2682,18 +2682,30 @@ function parseOracle(q) {
   if (/\b(?:vs\.?|versus|against)\s*(?:a )?(?:left(?:y|ies)?(?:[- ]?hand(?:ed)?)?(?: pitch(?:ers?|ing))?|lhp|southpaws?)\b|\blhp\b|\bleft[- ]?hand(?:ed)?(?: pitch(?:ers?|ing))?\b|\bleft(?:y|ies)\b/.test(masked)) hand = "vl";
   if (/\b(?:vs\.?|versus|against)\s*(?:a )?(?:right(?:y|ies)?(?:[- ]?hand(?:ed)?)?(?: pitch(?:ers?|ing))?|rhp)\b|\brhp\b|\bright[- ]?hand(?:ed)?(?: pitch(?:ers?|ing))?\b|\bright(?:y|ies)\b/.test(masked)) hand = "vr";
   // strip the qualifier phrases so name capture stays clean
-  s = s.replace(/\bat home\b|\bin home games?\b|\bhome games?(?! runs)\b/g, " ")
-       .replace(/\bon the road\b|\broad games?\b|\baway games?\b|\bwhen away\b|\baway\b/g, " ")
+  s = s.replace(/\bat home\b/g, " ")
+       .replace(/\b(?:in )?home games?\b(?! runs)/g, " games ")
+       .replace(/\bon the road\b|\bwhen away\b/g, " ")
+       .replace(/\b(?:road|away) games?\b/g, " games ")
+       .replace(/\baway\b/g, " ")
        .replace(/\b(?:vs\.?|versus|against)\s*(?:a )?(?:left(?:y|ies)?|right(?:y|ies)?|lhp|rhp|southpaws?)(?:[- ]?hand(?:ed)?)?(?: pitch(?:ers?|ing))?\b/g, " ")
        .replace(/\b(?:lhp|rhp)\b/g, " ")
        .replace(/\b(?:left|right)[- ]?hand(?:ed)?(?: pitch(?:ers?|ing))?\b/g, " ")
        .replace(/\s+/g, " ").trim();
   const withQual = (o) => { o.loc = loc; o.hand = hand; return o; };
-  const num = (w) => ({ one:1, two:2, three:3, four:4, five:5 }[w] || parseInt(w, 10) || null);
+  const num = (w) => ({ a:1, an:1, one:1, two:2, three:3, four:4, five:5 }[w] || parseInt(w, 10) || null);
   const statKey = (w) => ORACLE_STATS.keys[(w || "").replace(/ +/g, " ").trim()] || null;
   let m;
-  if ((m = s.match(new RegExp("(?:how many times|times|how many games) (?:has|did|have|does)?\\s*(.+?)\\s*(?:hit|had|have|driven in|drove in|recorded|got(?:ten)?|scored?|with|gone?)\\s*(\\d+|two|three|four|five)[+\\s-]*" + STATWORD)))) {
-    return withQual({ intent: "multiStat", name: m[1], n: num(m[2]) || 2, stat: statKey(m[3]) || "hr" });
+  if ((m = s.match(/(?:how many )?consecutive games (?:has |have |did )?(.+?)\s+(homered|homer|hit safely|hit|walked|scored|driven in|stolen)/))) {
+    const vmap = { homered: "hr", homer: "hr", "hit safely": "h", hit: "h", walked: "bb", scored: "r", "driven in": "rbi", stolen: "sb" };
+    return withQual({ intent: "streak", name: m[1], stat: vmap[m[2]] || "h" });
+  }
+  if ((m = s.match(new RegExp("(?:how many times|times|how many games) (?:has|did|have|does)?\\s*(.+?)\\s*(?:hit|had|have|driven in|drove in|recorded|got(?:ten)?|scored?|with|gone?)\\s*(\\d+|an?|one|two|three|four|five)[+\\s-]*" + STATWORD)))) {
+    const n1 = num(m[2]) || 2;
+    if (n1 === 1 && !/\bgames?\b/.test(s)) return withQual({ intent: "seasonStat", stat: ({ hr:"hr", rbi:"rbi", h:"hits", bb:"bb", so:"so", d:"doubles", t:"triples", sb:"sb" })[statKey(m[3])] || "hr", name: m[1] });
+    return withQual({ intent: "multiStat", name: m[1], n: n1, stat: statKey(m[3]) || "hr" });
+  }
+  if ((m = s.match(new RegExp("how many games (?:this season )?(?:does|has|did|do) (.+?) (?:have|had|hit|homer(?:ed)?)(?: with)?\\s*(\\d+|an?|one|two|three)?[+\\s-]*" + STATWORD)))) {
+    return withQual({ intent: "multiStat", name: m[1], n: num(m[2]) || 1, stat: statKey(m[3]) || "hr" });
   }
   if ((m = s.match(new RegExp("(.+?)\\s*(?:hit|had|with|drove in)\\s*(\\d+|two|three|four)[+\\s-]*" + STATWORD + " (?:in a game|in games|games?)")))) {
     return withQual({ intent: "multiStat", name: m[1].replace(/^how many times (has|did|have)\s*/, ""), n: num(m[2]) || 2, stat: statKey(m[3]) || "hr" });
@@ -2766,6 +2778,16 @@ const ORACLE_STATS = {
   labels: { hr:"home runs", rbi:"RBI", h:"hits", bb:"walks", so:"strikeouts", d:"doubles", t:"triples", r:"runs", sb:"stolen bases", tb:"total bases" },
 };
 const STATWORD = "(hr|homers?|home ?runs?|rbis?|hits?|walks?|strikeouts?|ks?|doubles?|triples?|runs?|stolen bases?|steals?|total bases?)";
+function oracleInitials(players, frag) {
+  const f = (frag || "").replace(/[^a-z]/g, "");
+  if (f.length < 2 || f.length > 4) return null;
+  return (players || []).find((p) => p.name.toLowerCase().split(/[\s-]+/).map((w) => w[0]).join("") === f) || null;
+}
+function seasonVal(sh, field) {
+  if (!sh) return null;
+  const v = sh[field];
+  return v == null ? null : +v;
+}
 const oracleSplits = (id) => cached(`osplit:${id}`, 6 * H, async () => {
   const j = await getJson(`${STATS}/people/${id}/stats?stats=statSplits&group=hitting&season=${SEASON}&sitCodes=vl,vr,h,a`);
   const m = {};
@@ -2790,9 +2812,9 @@ app.get("/api/oracle", async (req, res) => {
     const out = await cached(key, 0.5 * H, async () => {
       const findP = async () => {
         if (!parsed.name) return null;
-        const frag = parsed.name.replace(/\b(has|did|have|what|is|the)\b/g, "").trim();
+        const frag = parsed.name.replace(/\b(has|did|have|does|do|what|is|the|this|season|during|of|many|how)\b/g, "").replace(/\s+/g, " ").trim();
         if (b) {
-          const hit = (b.players || []).find((p) => p.name.toLowerCase().indexOf(frag) !== -1);
+          const hit = (b.players || []).find((p) => p.name.toLowerCase().indexOf(frag) !== -1) || oracleInitials(b.players, frag);
           if (hit) return { id: hit.id, name: hit.name, board: hit };
         }
         return await oracleFind(frag);
@@ -2837,11 +2859,13 @@ app.get("/api/oracle", async (req, res) => {
         if (!per) return { answer: "I couldn\u2019t place that name \u2014 try the full last name.", numbers: [], aligned: false };
         let log = (await oracleGameLog(per.id)).filter((g) => g.ab > 0);
         if (parsed.loc) log = log.filter((g) => g.isHome === (parsed.loc === "h"));
+        const sk = parsed.stat || "h";
         let cur = 0, longest = 0, run = 0;
-        log.forEach((g) => { if (g.h > 0) { run++; if (run > longest) longest = run; } else run = 0; });
-        for (let i = log.length - 1; i >= 0 && log[i].h > 0; i--) cur++;
+        log.forEach((g) => { if ((g[sk] || 0) > 0) { run++; if (run > longest) longest = run; } else run = 0; });
+        for (let i = log.length - 1; i >= 0 && (log[i][sk] || 0) > 0; i--) cur++;
         const st = starNumbers([cur, longest], set);
-        return { answer: per.name + " is riding a " + cur + "-game hitting streak" + (cur !== longest ? " \u2014 his longest this season is " + longest : " \u2014 his season best") + "." + st.suffix, ...st };
+        const what = sk === "h" ? "hitting streak" : "streak of games with a " + ORACLE_STATS.labels[sk].replace(/s$/, "");
+        return { answer: per.name + " is riding a " + cur + "-game " + what + (cur !== longest ? " \u2014 his longest this season is " + longest : (cur > 0 ? " \u2014 his season best" : "")) + "." + st.suffix, ...st };
       }
       if (parsed.intent === "lastHr") {
         const per = await findP();
@@ -2856,9 +2880,12 @@ app.get("/api/oracle", async (req, res) => {
       if (parsed.intent === "seasonStat") {
         const per = await findP();
         if (!per) return { answer: "I couldn\u2019t place that name \u2014 try the full last name.", numbers: [], aligned: false };
-        const sh = per.board && per.board.season ? per.board.season : await seasonHitting(per.id);
+        let sh = per.board && per.board.season ? per.board.season : await seasonHitting(per.id);
         if (!sh) return { answer: "No season line found for " + per.name + ".", numbers: [], aligned: false };
-        const map = { hr: ["home runs", sh.homeRuns != null ? sh.homeRuns : sh.hr], rbi: ["RBI", sh.rbi], hits: ["hits", sh.hits], bb: ["walks", sh.baseOnBalls != null ? sh.baseOnBalls : sh.bb], so: ["strikeouts", sh.strikeOuts != null ? sh.strikeOuts : sh.so], doubles: ["doubles", sh.doubles], triples: ["triples", sh.triples], sb: ["stolen bases", sh.stolenBases != null ? sh.stolenBases : 0] };
+        const mkMap = (x) => ({ hr: ["home runs", x.homeRuns != null ? x.homeRuns : x.hr], rbi: ["RBI", x.rbi], hits: ["hits", x.hits], bb: ["walks", x.baseOnBalls != null ? x.baseOnBalls : x.bb], so: ["strikeouts", x.strikeOuts != null ? x.strikeOuts : x.so], doubles: ["doubles", x.doubles], triples: ["triples", x.triples], sb: ["stolen bases", x.stolenBases] });
+        let map = mkMap(sh);
+        if ((map[parsed.stat] || map.hr)[1] == null) { const full = await seasonHitting(per.id); if (full) { sh = full; map = mkMap(full); } }
+        map.sb[1] = map.sb[1] == null ? 0 : map.sb[1];
         const qual = parsed.hand || parsed.loc;
         if (qual) {
           const spl = (await oracleSplits(per.id))[qual] || {};
