@@ -1852,20 +1852,23 @@ function savedView() {
 }
 /* ALL IN 1 — every system in the terminal casts a vote; convergence wins. */
 var A1_SYS = [
-  { key:"hr",    lab:"HR BOARD", color:"#f6c453", w:0.24 },
-  { key:"q",     lab:"QUANTOM",  color:"#67e8f9", w:0.22 },
-  { key:"weak",  lab:"WEAK",     color:"#fb923c", w:0.14 },
-  { key:"num",   lab:"NUMER",    color:"#c084fc", w:0.10 },
-  { key:"chart", lab:"CHART",    color:"#a78bfa", w:0.08 },
-  { key:"ltr",   lab:"LETTER",   color:"#e8a2c9", w:0.08 },
-  { key:"astro", lab:"ASTRO",    color:"#5eead4", w:0.07 },
-  { key:"park",  lab:"PARK",     color:"#93c5fd", w:0.07 },
+  { key:"hr",    lab:"HR BOARD", color:"#f6c453", w:0.22 },
+  { key:"q",     lab:"QUANTOM",  color:"#67e8f9", w:0.20 },
+  { key:"weak",  lab:"WEAK",     color:"#fb923c", w:0.13 },
+  { key:"mix",   lab:"MIX",      color:"#f0a15f", w:0.10 },
+  { key:"num",   lab:"NUMER",    color:"#c084fc", w:0.09 },
+  { key:"chart", lab:"CHART",    color:"#a78bfa", w:0.07 },
+  { key:"ltr",   lab:"LETTER",   color:"#e8a2c9", w:0.07 },
+  { key:"astro", lab:"ASTRO",    color:"#5eead4", w:0.06 },
+  { key:"park",  lab:"PARK",     color:"#93c5fd", w:0.06 },
 ];
 function a1Compute(p, ctx) {
   var s = {};
   s.hr = Math.max(0, Math.min(100, crushedScore(p)));
   if (ctx.qRank) s.q = ctx.qRank[p.id] != null ? ctx.qRank[p.id] : 20;
   if (ctx.weakBy) { var wm = ctx.weakBy[p.id] || 0; s.weak = wm >= 2 ? 100 : wm === 1 ? 75 : 15; }
+  var ge = genEdge(p); // his windowed (L5 -> L3 -> season) SLG + whiff/K vs tonight's actual arsenal
+  s.mix = Math.round(0.55 * ge.slgScore + 0.45 * ge.contact);
   var nh = (p.numerHits || []).length + (crossAligned(p) ? 1 : 0);
   s.num = nh >= 3 ? 100 : nh === 2 ? 80 : nh === 1 ? 55 : 10;
   var ca = 0;
@@ -1892,7 +1895,7 @@ function a1Compute(p, ctx) {
 function allInView() {
   var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
   var banner = '<div class="fn-banner" style="border-color:rgba(248,250,252,0.4)"><div class="fn-title" style="color:#f8fafc">ALL IN 1 \u00b7 WHERE EVERY SYSTEM AGREES</div>' +
-    '<div class="fn-sub">The slate\u2019s best picks by TOTAL CONVERGENCE \u2014 all eight systems cast a normalized vote: the HR board\u2019s Crushed Score, the QUANTOM rating, weak-spot placement, numerology alignments, the full LP/PY/PM chart, letterology, eastern astrology, and stadium name energy. Weighted blend, re-balanced when a system is still warming \u00b7 lit chips = that system fired (60+) for him \u00b7 tap any card for the full dossier</div></div>';
+    '<div class="fn-sub">The slate\u2019s best picks by TOTAL CONVERGENCE \u2014 all nine systems cast a normalized vote: the HR board\u2019s Crushed Score, the QUANTOM rating, weak-spot placement, his windowed SLG + whiff/K vs tonight\u2019s actual pitch mix (L5 \u2192 L3 \u2192 season; unscouted bats sit neutral), numerology alignments, the full LP/PY/PM chart, letterology, eastern astrology, and stadium name energy. Weighted blend, re-balanced when a system is still warming \u00b7 lit chips = that system fired (60+) for him \u00b7 tap any card for the full dossier</div></div>';
   var players = ((state.data && state.data.players) || []).filter(function (p) { return state.game === "all" || String(p.gamePk) === String(state.game); });
   if (!players.length) return banner + '<div class="loading">Waiting on the board\u2026</div>';
   var ctx = { daySet: daySet, parkAl: {}, qRank: null, weakBy: null };
@@ -1917,7 +1920,7 @@ function allInView() {
   var status = [];
   if (!ctx.qRank) status.push(state.demo ? "QUANTOM votes on the live server" : "QUANTOM still collapsing \u2014 scores refine when it lands");
   if (!ctx.weakBy) status.push(state.demo ? "weak-spot votes on the live server" : (wd && wd.warming ? "weak spots warming" : "weak spots loading"));
-  var meta = '<div class="adv-count" style="margin-bottom:10px">' + (8 - (ctx.qRank ? 0 : 1) - (ctx.weakBy ? 0 : 1)) + ' of 8 systems voting' + (status.length ? ' \u00b7 ' + status.join(' \u00b7 ') : ' \u00b7 full convergence live') + '</div>';
+  var meta = '<div class="adv-count" style="margin-bottom:10px">' + (9 - (ctx.qRank ? 0 : 1) - (ctx.weakBy ? 0 : 1)) + ' of 9 systems voting' + (status.length ? ' \u00b7 ' + status.join(' \u00b7 ') : ' \u00b7 full convergence live') + '</div>';
   players.forEach(function (p) { p._a1 = a1Compute(p, ctx); });
   var pool = players.slice().sort(function (a, b) { return (b._a1.score - a._a1.score) || ((b.hrPct || 0) - (a.hrPct || 0)); }).slice(0, 25);
   return banner + meta + pool.map(function (p, i) {
