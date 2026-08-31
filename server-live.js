@@ -2673,7 +2673,9 @@ app.get("/api/destiny", async (req, res) => {
    leaders, last-N lines. Every answer's key numbers get reduced against
    the day's set \u2014 alignment earns the purple star. */
 function parseOracle(q) {
-  let s = (q || "").toLowerCase().replace(/[?!.]/g, " ").replace(/\s+/g, " ").trim();
+  let s = (q || "").toLowerCase().replace(/\u2019/g, "'").replace(/[?!.]/g, " ")
+    .replace(/\b(?:on|during|for|of) the season\b/g, " ").replace(/\bthis season\b/g, " ").replace(/\bso far\b/g, " ")
+    .replace(/\s+/g, " ").trim();
   // qualifiers first \u2014 masked so "home runs" never reads as a location
   const masked = s.replace(/home ?runs?/g, "HOMERUNTOKEN");
   let loc = null, hand = null;
@@ -2720,7 +2722,7 @@ function parseOracle(q) {
   if ((m = s.match(/when (?:did|was) (.+?)(?:'s)?\s*(?:last )?(?:hit (?:a |his )?)?(?:homer|home ?run|hr)|(.+?) last (?:homer|home ?run|hr)/))) {
     return { intent: "lastHr", name: (m[1] || m[2] || "").trim() };
   }
-  if ((m = s.match(/(?:how many|total) (hr|homers?|home ?runs?|rbis?|hits?|walks?|strikeouts?|doubles?|triples?|steals?|stolen bases?) (?:does|has|for|did)?\s*(.+?)\s*(?:have|hit|this season|$)/))) {
+  if ((m = s.match(/(?:how many|total) (hr|homers?|home ?runs?|rbis?|hits?|walks?|strikeouts?|doubles?|triples?|steals?|stolen bases?)(?:'s)?\s+(?:does|has|for|did)?\s*(.+?)\s*(?:have|hit|this season|$)/))) {
     const map = { hr:"hr", homer:"hr", homers:"hr", homerun:"hr", homeruns:"hr", "home run":"hr", "home runs":"hr", rbi:"rbi", rbis:"rbi", hit:"hits", hits:"hits", walk:"bb", walks:"bb", strikeout:"so", strikeouts:"so", double:"doubles", doubles:"doubles", triple:"triples", triples:"triples", steal:"sb", steals:"sb", "stolen base":"sb", "stolen bases":"sb" };
     return withQual({ intent: "seasonStat", stat: map[m[1].replace(/ +/g, " ")] || "hr", name: m[2] });
   }
@@ -2812,7 +2814,7 @@ app.get("/api/oracle", async (req, res) => {
     const out = await cached(key, 0.5 * H, async () => {
       const findP = async () => {
         if (!parsed.name) return null;
-        const frag = parsed.name.replace(/\b(has|did|have|does|do|what|is|the|this|season|during|of|many|how)\b/g, "").replace(/\s+/g, " ").trim();
+        const frag = parsed.name.replace(/\b(has|did|have|does|do|what|is|the|this|season|during|of|many|how|on|in|for|a|an)\b/g, "").replace(/[']/g, "").replace(/\s+/g, " ").trim();
         if (b) {
           const hit = (b.players || []).find((p) => p.name.toLowerCase().indexOf(frag) !== -1) || oracleInitials(b.players, frag);
           if (hit) return { id: hit.id, name: hit.name, board: hit };
