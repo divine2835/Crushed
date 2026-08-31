@@ -120,6 +120,16 @@ body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-ins
 .cs-hot { color: #3ddc84; text-shadow: 0 0 9px rgba(61,220,132,0.45); }
 .cs-mid { color: #b8e0c8; }
 .cs-cold { color: #6b7f74; }
+.a1-btn { border-color: rgba(248,250,252,0.55); color: #f8fafc; }
+.a1-on { color: var(--ink); border-color: #f8fafc; background: linear-gradient(135deg, #f8fafc, #e2e8f0); box-shadow: 0 0 14px rgba(248,250,252,0.35); }
+.a1-card { border: 1px solid rgba(248,250,252,0.22); border-radius: 13px; padding: 12px 14px; margin-bottom: 9px; cursor: pointer;
+  background: linear-gradient(135deg, rgba(248,250,252,0.05), rgba(0,0,0,0.14) 60%, rgba(103,232,249,0.04));
+  box-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 10px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.07); }
+.a1-card:active { transform: scale(0.99); }
+.a1-score { margin-left: auto; font-family: 'Nunito', sans-serif; font-weight: 900; font-size: 17px; color: #f8fafc; text-shadow: 0 0 11px rgba(248,250,252,0.45); }
+.a1-sys { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.a1-chip { font-size: 9.5px; font-weight: 800; letter-spacing: 0.05em; border-radius: 999px; padding: 3px 8px; border: 1px solid; opacity: 0.28; }
+.a1-chip.lit { opacity: 1; box-shadow: 0 0 8px currentColor; }
 .qm-btn { border-color: rgba(103,232,249,0.55); color: #67e8f9; }
 .qm-on { color: var(--ink); border-color: #67e8f9; background: #67e8f9; box-shadow: 0 0 12px rgba(103,232,249,0.45); }
 .qm-card { border: 1px solid rgba(103,232,249,0.3); border-radius: 13px; padding: 12px 14px; margin-bottom: 9px; cursor: pointer;
@@ -1807,7 +1817,7 @@ function loadWeak() {
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(function (j) { state.weak[state.day] = j.warming ? { warming: true } : { pitchers: j.pitchers || [] }; })
     .catch(function () { state.weak[state.day] = { error: true }; })
-    .finally(function () { state.weakLoading = false; if (state.tab === "weak") render(); });
+    .finally(function () { state.weakLoading = false; if (state.tab === "weak" || state.tab === "allin1") render(); });
 }
 /* ADVANCED — a metrics console for the slate: a dropdown of toggle
    pills chooses which advanced metrics render on every player card.
@@ -1839,6 +1849,94 @@ function savedView() {
   }).join("");
   if (ghosts > 0) out += '<div class="dim" style="font-size:11.5px;margin-top:10px">' + ghosts + ' saved bat' + (ghosts > 1 ? "s aren\u2019t" : " isn\u2019t") + ' on this slate \u2014 they\u2019ll reappear when their teams play.</div>';
   return banner + out;
+}
+/* ALL IN 1 — every system in the terminal casts a vote; convergence wins. */
+var A1_SYS = [
+  { key:"hr",    lab:"HR BOARD", color:"#f6c453", w:0.24 },
+  { key:"q",     lab:"QUANTOM",  color:"#67e8f9", w:0.22 },
+  { key:"weak",  lab:"WEAK",     color:"#fb923c", w:0.14 },
+  { key:"num",   lab:"NUMER",    color:"#c084fc", w:0.10 },
+  { key:"chart", lab:"CHART",    color:"#a78bfa", w:0.08 },
+  { key:"ltr",   lab:"LETTER",   color:"#e8a2c9", w:0.08 },
+  { key:"astro", lab:"ASTRO",    color:"#5eead4", w:0.07 },
+  { key:"park",  lab:"PARK",     color:"#93c5fd", w:0.07 },
+];
+function a1Compute(p, ctx) {
+  var s = {};
+  s.hr = Math.max(0, Math.min(100, crushedScore(p)));
+  if (ctx.qRank) s.q = ctx.qRank[p.id] != null ? ctx.qRank[p.id] : 20;
+  if (ctx.weakBy) { var wm = ctx.weakBy[p.id] || 0; s.weak = wm >= 2 ? 100 : wm === 1 ? 75 : 15; }
+  var nh = (p.numerHits || []).length + (crossAligned(p) ? 1 : 0);
+  s.num = nh >= 3 ? 100 : nh === 2 ? 80 : nh === 1 ? 55 : 10;
+  var ca = 0;
+  if (p.chart) ca = [p.chart.lp, p.chart.py, p.chart.pm].filter(function (x) { return x && ctx.daySet.indexOf(x.v) !== -1; }).length;
+  s.chart = ca >= 3 ? 100 : ca === 2 ? 85 : ca === 1 ? 60 : 10;
+  if (p._lt === undefined) p._lt = letterFor(p.name);
+  var la = !p._lt ? 0 : [p._lt.fin, p._lt.fl.v, p._lt.fv && p._lt.fv.v, p._lt.vs.v, p._lt.red.v, p._lt.raw.v]
+    .filter(function (v) { return v != null && ctx.daySet.indexOf(v) !== -1; }).length;
+  s.ltr = la === 0 ? 10 : Math.min(100, 30 + la * 14);
+  var t = p.zodiac ? p.zodiac.tier : null;
+  s.astro = t == null ? 20 : t <= 1 ? 100 : t === 2 ? 70 : t === 3 ? 45 : 20;
+  var pa = ctx.parkAl[p.gamePk] || 0;
+  s.park = pa >= 3 ? 95 : pa === 2 ? 70 : pa === 1 ? 45 : 15;
+  var tot = 0, wsum = 0, lit = 0, avail = 0;
+  A1_SYS.forEach(function (sys) {
+    if (s[sys.key] == null) return;
+    avail++;
+    tot += s[sys.key] * sys.w;
+    wsum += sys.w;
+    if (s[sys.key] >= 60) lit++;
+  });
+  return { score: wsum ? Math.round(tot / wsum) : 0, sub: s, lit: lit, avail: avail };
+}
+function allInView() {
+  var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
+  var banner = '<div class="fn-banner" style="border-color:rgba(248,250,252,0.4)"><div class="fn-title" style="color:#f8fafc">ALL IN 1 \u00b7 WHERE EVERY SYSTEM AGREES</div>' +
+    '<div class="fn-sub">The slate\u2019s best picks by TOTAL CONVERGENCE \u2014 all eight systems cast a normalized vote: the HR board\u2019s Crushed Score, the QUANTOM rating, weak-spot placement, numerology alignments, the full LP/PY/PM chart, letterology, eastern astrology, and stadium name energy. Weighted blend, re-balanced when a system is still warming \u00b7 lit chips = that system fired (60+) for him \u00b7 tap any card for the full dossier</div></div>';
+  var players = ((state.data && state.data.players) || []).filter(function (p) { return state.game === "all" || String(p.gamePk) === String(state.game); });
+  if (!players.length) return banner + '<div class="loading">Waiting on the board\u2026</div>';
+  var ctx = { daySet: daySet, parkAl: {}, qRank: null, weakBy: null };
+  ((state.data && state.data.games) || []).forEach(function (g) {
+    var L = letterFor(g.park || "");
+    ctx.parkAl[g.gamePk] = !L ? 0 : [L.fin, L.fl.v, L.fv && L.fv.v, L.vs.v, L.red.v, L.raw.v]
+      .filter(function (v) { return v != null && daySet.indexOf(v) !== -1; }).length;
+  });
+  var qd = state.quantumData[state.day];
+  if (qd && qd.rows && qd.rows.length) {
+    ctx.qRank = {};
+    var n = qd.rows.length;
+    qd.rows.forEach(function (r, i) { ctx.qRank[r.id] = Math.round(100 - (i / Math.max(1, n - 1)) * 65); });
+  }
+  var wd = state.weak[state.day];
+  if (wd && wd.pitchers) {
+    ctx.weakBy = {};
+    wd.pitchers.forEach(function (e) {
+      (e.lineup || []).forEach(function (le) { if (le && le.matches && le.matches.length) ctx.weakBy[le.id] = le.matches.length; });
+    });
+  }
+  var status = [];
+  if (!ctx.qRank) status.push(state.demo ? "QUANTOM votes on the live server" : "QUANTOM still collapsing \u2014 scores refine when it lands");
+  if (!ctx.weakBy) status.push(state.demo ? "weak-spot votes on the live server" : (wd && wd.warming ? "weak spots warming" : "weak spots loading"));
+  var meta = '<div class="adv-count" style="margin-bottom:10px">' + (8 - (ctx.qRank ? 0 : 1) - (ctx.weakBy ? 0 : 1)) + ' of 8 systems voting' + (status.length ? ' \u00b7 ' + status.join(' \u00b7 ') : ' \u00b7 full convergence live') + '</div>';
+  players.forEach(function (p) { p._a1 = a1Compute(p, ctx); });
+  var pool = players.slice().sort(function (a, b) { return (b._a1.score - a._a1.score) || ((b.hrPct || 0) - (a.hrPct || 0)); }).slice(0, 25);
+  return banner + meta + pool.map(function (p, i) {
+    var a = p._a1;
+    var chips = A1_SYS.map(function (sys) {
+      var v = a.sub[sys.key];
+      if (v == null) return '<span class="a1-chip" style="border-color:' + sys.color + ';color:' + sys.color + '" title="' + sys.lab + ': waiting on data">' + sys.lab + '</span>';
+      return '<span class="a1-chip' + (v >= 60 ? " lit" : "") + '" style="border-color:' + sys.color + ';color:' + sys.color + '" title="' + sys.lab + ' vote: ' + v + '/100">' + sys.lab + '</span>';
+    }).join("");
+    var out = '<div class="a1-card" data-row="' + p.id + '">' +
+      '<div class="qm-top"><span class="qm-rank" style="color:#f8fafc">' + (i + 1) + '</span>' + faceImg(p.id) +
+      '<span class="player-name">' + esc(p.name) + '</span>' + batTag(p) +
+      '<span class="mono dim" style="font-size:10.5px">' + esc(p.teamAbbr) + ' #' + p.slot + (p.sp ? ' vs ' + esc(lastName(p.sp.name)) : '') + '</span>' +
+      '<span class="fn-al" title="Systems voting 60+ for him">' + a.lit + '/' + a.avail + ' lit</span>' +
+      '<span class="a1-score" title="Weighted convergence across all voting systems">' + a.score + '</span></div>' +
+      '<div class="a1-sys">' + chips + '</div></div>';
+    if (String(state.open) === String(p.id)) out += '<div class="gen-scout">' + scoutCard(p) + '</div>';
+    return out;
+  }).join("");
 }
 /* QUANTOM — the slate collapsed into one ranked wave of expected lines. */
 function loadQuantum() {
@@ -2719,7 +2817,8 @@ function renderDaybar() {
     '<button class="god-btn odds-btn' + (state.tab === "oddsx" ? " odds-on" : "") + '" data-oddstab="1" aria-pressed="' + (state.tab === "oddsx") + '">TRUE ODDS</button>' +
     '<button class="god-btn saved-btn' + (state.tab === "savedx" ? " saved-on" : "") + '" data-savetab="1" aria-pressed="' + (state.tab === "savedx") + '">SAVED' + (state.saved.length ? " \u00b7 " + state.saved.length : "") + '</button>' +
     '<button class="god-btn sim-btn' + (state.tab === "simx" ? " sim-on" : "") + '" data-simtab="1" aria-pressed="' + (state.tab === "simx") + '">SIMULATOR</button>' +
-    '<button class="god-btn qm-btn' + (state.tab === "quantum" ? " qm-on" : "") + '" data-qmtab="1" aria-pressed="' + (state.tab === "quantum") + '">QUANTOM</button>';
+    '<button class="god-btn qm-btn' + (state.tab === "quantum" ? " qm-on" : "") + '" data-qmtab="1" aria-pressed="' + (state.tab === "quantum") + '">QUANTOM</button>' +
+    '<button class="god-btn a1-btn' + (state.tab === "allin1" ? " a1-on" : "") + '" data-alltab="1" aria-pressed="' + (state.tab === "allin1") + '">ALL IN 1</button>';
 }
 function render() {
   renderDaybar();
@@ -2754,6 +2853,11 @@ function render() {
   if (state.god) {
     intro.innerHTML = 'GOD mode overrides the tabs while it\u2019s lit \u2014 tap the gold button again to return. Names still open their full scouting cards.';
     board.innerHTML = godView();
+    return;
+  }
+  if (state.tab === "allin1") {
+    intro.innerHTML = 'One list, every lens \u2014 the slate ranked by how many of the terminal\u2019s systems converge on each bat, from the Crushed Score and QUANTOM down to the letters in his name.';
+    board.innerHTML = allInView();
     return;
   }
   if (state.tab === "quantum") {
@@ -3245,7 +3349,7 @@ document.addEventListener("change", function (e) {
   render();
 });
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-slg],[data-slgwin],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-bookmenu],[data-bookpick],[data-save],[data-savetab],[data-simtab],[data-simgame],[data-simback],[data-simlvl],[data-qmtab],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-penarm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-slg],[data-slgwin],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-bookmenu],[data-bookpick],[data-save],[data-savetab],[data-simtab],[data-simgame],[data-simback],[data-simlvl],[data-qmtab],[data-alltab],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-penarm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -3315,6 +3419,13 @@ document.addEventListener("click", function (e) {
     state.slgWin = el.dataset.slgwin;
     render(); return;
   }
+  if (el.dataset.alltab) {
+    state.tab = state.tab === "allin1" ? "hr" : "allin1";
+    state.god = false; state.ops = false; state.zoneMode = false; state.slgMode = false; state.open = null;
+    render();
+    if (state.tab === "allin1" && !state.demo) { loadQuantum(); loadWeak(); }
+    return;
+  }
   if (el.dataset.qmtab) {
     state.tab = state.tab === "quantum" ? "hr" : "quantum";
     state.god = false; state.ops = false; state.zoneMode = false; state.slgMode = false; state.open = null;
@@ -3358,7 +3469,12 @@ document.addEventListener("click", function (e) {
     state.tab = state.tab === "advanced" ? "hr" : "advanced";
     state.god = false; state.ops = false; state.slgMode = false; state.zoneMode = false; state.open = null; state.advMenu = false;
     render();
-    if (state.tab === "quantum") {
+    if (state.tab === "allin1") {
+    intro.innerHTML = 'One list, every lens \u2014 the slate ranked by how many of the terminal\u2019s systems converge on each bat, from the Crushed Score and QUANTOM down to the letters in his name.';
+    board.innerHTML = allInView();
+    return;
+  }
+  if (state.tab === "quantum") {
     intro.innerHTML = 'The whole slate, played 1,500 times per game at expert intelligence, collapsed into one ranked list of expected stat lines. Q is the production score; every card opens a full scouting dossier.';
     board.innerHTML = quantumView();
     return;
