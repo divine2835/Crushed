@@ -1881,6 +1881,7 @@ function savedView() {
   return banner + out;
 }
 /* THE ORACLE — ask the terminal; aligned answers earn the purple star. */
+var oraCtx = null; // the last player the Oracle answered about — "he" points here
 function oracleAsk(q) {
   if (!q || state.chatBusy) return;
   state.chat.push({ role: "you", text: q });
@@ -1890,12 +1891,13 @@ function oracleAsk(q) {
   }
   state.chatBusy = true;
   renderOracle();
-  fetch(apiBase + "/api/oracle?day=" + state.day + "&q=" + encodeURIComponent(q))
+  fetch(apiBase + "/api/oracle?day=" + state.day + "&q=" + encodeURIComponent(q) + (oraCtx ? "&ctx=" + encodeURIComponent(oraCtx) : ""))
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(function (j) {
       var starTitle = (j.numbers || []).filter(function (x) { return x.nextHit; }).map(function (x) {
         return x.v + " \u2192 next is #" + x.nextV + " \u2192 " + x.nextRed + " \u2726";
       }).join(" \u00b7 ");
+      if (j.player) oraCtx = j.player;
       state.chat.push({ role: "bot", text: j.answer || "The Oracle is silent.", star: !!j.aligned, starTitle: starTitle });
     })
     .catch(function () { state.chat.push({ role: "bot", text: "The Oracle stumbled \u2014 ask again.", star: false }); })
