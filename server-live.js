@@ -314,10 +314,31 @@ const recentHitting = (id) => cached(`rh:${id}`, 6 * H, async () => {
   return s ? { slg: s.slg != null ? +s.slg : null, pa: +s.plateAppearances || 0 } : null;
 });
 
-const bvp = (batterId, pitcherId) => cached(`bvp:${batterId}:${pitcherId}`, 24 * H, async () => {
-  const j = await getJson(`${STATS}/people/${batterId}/stats?stats=vsPlayer&opposingPlayerId=${pitcherId}&group=hitting`);
-  const s = j.stats?.find((x) => x.type?.displayName === "vsPlayerTotal")?.splits?.[0]?.stat;
-  return s ? { ab: s.atBats, h: s.hits, hr: s.homeRuns, bb: s.baseOnBalls, so: s.strikeOuts, avg: s.avg, slg: s.slg } : null;
+/* career head-to-head. vsPlayerTotal is requested BY NAME (fishing it out of
+   a bare vsPlayer response let the API scope it wrong and silently drop
+   current-season damage \u2014 e.g. a 2-for-2, 2-HR season vanished from
+   "career"). The per-season splits ride along as a cross-check: a career
+   total can never be smaller than one season, so if it is, we self-heal by
+   folding the season back in and recomputing avg/slg from counting stats. */
+const bvp = (batterId, pitcherId) => cached(`bvp2:${batterId}:${pitcherId}`, 3 * H, async () => {
+  const j = await getJson(`${STATS}/people/${batterId}/stats?stats=vsPlayerTotal,vsPlayer&opposingPlayerId=${pitcherId}&group=hitting&season=${SEASON}`);
+  const num = (v) => (v == null ? 0 : +v || 0);
+  const pick = (s) => ({ ab: num(s.atBats), h: num(s.hits), hr: num(s.homeRuns), bb: num(s.baseOnBalls), so: num(s.strikeOuts), tb: num(s.totalBases) });
+  const totRaw = j.stats?.find((x) => x.type?.displayName === "vsPlayerTotal")?.splits?.[0]?.stat || null;
+  const seas = (j.stats?.filter((x) => x.type?.displayName === "vsPlayer") || [])
+    .flatMap((x) => x.splits || []).map((sp) => sp.stat).filter(Boolean).map(pick)
+    .reduce((a, s) => ({ ab: a.ab + s.ab, h: a.h + s.h, hr: a.hr + s.hr, bb: a.bb + s.bb, so: a.so + s.so, tb: a.tb + s.tb }), { ab: 0, h: 0, hr: 0, bb: 0, so: 0, tb: 0 });
+  if (!totRaw && !seas.ab) return null;
+  let t = totRaw ? pick(totRaw) : seas;
+  let avg = totRaw ? totRaw.avg : null, slg = totRaw ? totRaw.slg : null;
+  if (totRaw && seas.ab > 0 && (t.ab < seas.ab || t.h < seas.h || t.hr < seas.hr)) {
+    // total provably excludes the current season \u2014 fold it in
+    t = { ab: t.ab + seas.ab, h: t.h + seas.h, hr: t.hr + seas.hr, bb: t.bb + seas.bb, so: t.so + seas.so, tb: t.tb + seas.tb };
+    avg = null; slg = null;
+  }
+  if (avg == null) avg = t.ab ? (t.h / t.ab).toFixed(3).replace(/^0\./, ".") : ".000";
+  if (slg == null) slg = t.ab ? (t.tb / t.ab).toFixed(3).replace(/^0\./, ".") : ".000";
+  return { ab: t.ab, h: t.h, hr: t.hr, bb: t.bb, so: t.so, avg, slg };
 });
 
 /* ---------------- statcast aggregation ---------------- */
