@@ -255,7 +255,7 @@ function pitcherDamage(rows) {
   return { vsPitchAllowed: vs, hrByPtAllowed: hrpt, hrAllowed: hr };
 }
 
-const batterPack = (id) => cached(`bpk:${id}`, 12 * H, async () =>
+const batterPack = (id) => cached(`bpk2:${id}`, 12 * H, async () =>
   batterAggregates(await savantRowsRaw(id, "batter")));
 function pitcherZoneUsage(rows) {
   const zc = {};
@@ -393,7 +393,7 @@ function batterAggregates(rows) {
   const ZSHAPE = () => ({ ab: 0, tb: 0, bbe: 0, brl: 0, hh: 0, hr: 0, sw: 0, wf: 0 });
   let swAll = 0, wfAll = 0;
   const spray = [];
-  let bbe = 0, hard = 0, pulled = 0;
+  let bbe = 0, hard = 0, pulled = 0, pullAir = 0;
   let evSum = 0, evN = 0, laSum = 0, laN = 0, gb = 0, fb = 0, brlAll = 0;
   const bp = {}; // barrels / batted balls by pitch type
   const hrp = {}; // season HR count by pitch type
@@ -441,7 +441,11 @@ function batterAggregates(rows) {
       const dx = (+r.hc_x) - 125.42, dz = 198.27 - (+r.hc_y);
       if (dz > 0) {
         const ang = Math.atan2(dx, dz) * 180 / Math.PI; // negative = LF side, positive = RF side
-        if ((r.stand === "R" && ang <= -15) || (r.stand === "L" && ang >= 15)) pulled++;
+        if ((r.stand === "R" && ang <= -15) || (r.stand === "L" && ang >= 15)) {
+          pulled++;
+          // pulled AND elevated: the batted-ball shape homers are made of
+          if (Number.isFinite(la) && la >= 20) pullAir++;
+        }
       }
       if (Number.isFinite(lsp)) { evSum += lsp; evN++; }
       if (Number.isFinite(la)) {
@@ -533,6 +537,7 @@ function batterAggregates(rows) {
     spray: spray.slice(0, 120).map(({ x, y, pt, ev }) => ({ x, y, pt, ev })),
     hardHitPct: bbe >= 20 ? Math.round((hard / bbe) * 100) : null,
     pullPct: bbe >= 20 ? Math.round((pulled / bbe) * 100) : null,
+    pullAirPct: bbe >= 20 ? +((pullAir / bbe) * 100).toFixed(1) : null,
     avgEV: evN >= 20 ? +(evSum / evN).toFixed(1) : null,
     avgLA: laN >= 20 ? +(laSum / laN).toFixed(1) : null,
     gbPct: laN >= 20 ? Math.round((gb / laN) * 100) : null,
@@ -557,6 +562,47 @@ const PARK_HR = {
   "Petco Park": 0.95, "loanDepot park": 0.85, "Comerica Park": 0.92, "Progressive Field": 0.98,
   "T-Mobile Park": 0.86, "Oracle Park": 0.82, "George M. Steinbrenner Field": 1.15, "Sutter Health Park": 1.05,
 };
+/* ---------------- pull-side porch geometry (approx, static) ----
+   1-10 per foul-pole side: how friendly each park is to a PULLED fly
+   ball (distance + wall height folded into one tunable number).
+   High walls (Monster, Clemente, Oracle RF) score low even when the
+   line is short \u2014 a pulled liner into a 21-foot wall is a double. */
+const PORCH = {
+  "Yankee Stadium": { lf: 5, rf: 9 }, "George M. Steinbrenner Field": { lf: 5, rf: 9 },
+  "Fenway Park": { lf: 5, rf: 6 }, "Great American Ball Park": { lf: 8, rf: 8 },
+  "Coors Field": { lf: 5, rf: 5 }, "Oracle Park": { lf: 5, rf: 2 },
+  "Petco Park": { lf: 5, rf: 4 }, "Citizens Bank Park": { lf: 8, rf: 7 },
+  "Dodger Stadium": { lf: 7, rf: 7 }, "Wrigley Field": { lf: 6, rf: 6 },
+  "Citi Field": { lf: 6, rf: 5 }, "Truist Park": { lf: 6, rf: 6 },
+  "Angel Stadium": { lf: 6, rf: 6 }, "American Family Field": { lf: 7, rf: 7 },
+  "Rogers Centre": { lf: 7, rf: 7 }, "Minute Maid Park": { lf: 9, rf: 5 }, "Daikin Park": { lf: 9, rf: 5 },
+  "Camden Yards": { lf: 5, rf: 7 }, "Oriole Park at Camden Yards": { lf: 5, rf: 7 },
+  "Guaranteed Rate Field": { lf: 7, rf: 7 }, "Rate Field": { lf: 7, rf: 7 },
+  "Chase Field": { lf: 6, rf: 6 }, "Nationals Park": { lf: 6, rf: 6 },
+  "Target Field": { lf: 6, rf: 6 }, "PNC Park": { lf: 4, rf: 4 },
+  "Busch Stadium": { lf: 4, rf: 4 }, "Kauffman Stadium": { lf: 3, rf: 3 },
+  "loanDepot park": { lf: 3, rf: 4 }, "Comerica Park": { lf: 5, rf: 5 },
+  "Progressive Field": { lf: 4, rf: 7 }, "T-Mobile Park": { lf: 4, rf: 4 },
+  "Globe Life Field": { lf: 5, rf: 5 }, "Sutter Health Park": { lf: 6, rf: 6 },
+};
+/* VECTOR = trajectory meets geometry meets atmosphere:
+   his pull-air rate (pulled + elevated batted balls) aimed at tonight's
+   pull-side porch, riding tonight's carry. Switch hitters aim at the
+   porch of whichever side they'll bat from vs the starter's hand.
+   Transparent blend, 0-100; tune the weights freely. */
+function vectorScore(p, park) {
+  if (p.pullAirPct == null) return null;
+  const porch = PORCH[park] || { lf: 5, rf: 5 };
+  let side;
+  if (p.bats === "L") side = porch.rf;
+  else if (p.bats === "R") side = porch.lf;
+  else side = (p.sp && p.sp.hand === "L") ? porch.lf : porch.rf; // switch: opposite the arm
+  const carry = p.carry != null ? p.carry : 1;
+  const skill = Math.min(100, (p.pullAirPct / 28) * 100);         // ~28%+ pull-air = elite
+  const geo = side * 10;                                           // porch 1-10 -> 10-100
+  const air = Math.max(0, Math.min(100, ((carry - 0.8) / 0.6) * 100)); // carry 0.8-1.4 -> 0-100
+  return Math.round(Math.max(0, Math.min(100, skill * 0.55 + geo * 0.25 + air * 0.20)));
+}
 const RUNNERS_PA = { 1: 0.31, 2: 0.36, 3: 0.43, 4: 0.47, 5: 0.45, 6: 0.42, 7: 0.40, 8: 0.38, 9: 0.36 };
 
 /* ============================================================
@@ -1326,7 +1372,7 @@ async function enrichDayInner(day, b) {
       try {
         const agg = await batterPack(p.id);
         p.vsPitch = agg.vsPitch; p.vsPitchK = agg.vsPitchK; p.vsPitchWhiff = agg.vsPitchWhiff; p.vsPitchL3 = agg.vsPitchL3; p.vsPitchL5 = agg.vsPitchL5; p.zones = agg.zones; p.spray = agg.spray;
-        p.hardHitPct = agg.hardHitPct; p.pullPct = agg.pullPct;
+        p.hardHitPct = agg.hardHitPct; p.pullPct = agg.pullPct; p.pullAirPct = agg.pullAirPct;
         p.barrelsByPt = agg.barrelsByPt; p.hrByPt = agg.hrByPt; p.vsHand = agg.vsHand;
         p.avgEV = agg.avgEV; p.avgLA = agg.avgLA; p.gbPct = agg.gbPct; p.fbPct = agg.fbPct; p.brlPct = agg.brlPct; p.whiffPct = agg.whiffPct;
         p.detail = true;
@@ -1394,6 +1440,10 @@ app.get("/api/board", (req, res) => {
   const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
   const b = BOARDS[day];
   if (b && b.date === dayDate(day)) {
+    // VECTOR is stamped fresh on every serve so weather backfills flow in
+    const parkByPk = {};
+    (b.games || []).forEach((g) => { parkByPk[g.gamePk] = g.park; });
+    (b.players || []).forEach((p) => { p.vector = vectorScore(p, parkByPk[p.gamePk]); });
     res.json(b);
     if (Date.now() - Date.parse(b.generatedAt) > 0.5 * H) warmDay(day); // refresh in background
     return;
