@@ -320,18 +320,25 @@ const recentHitting = (id) => cached(`rh:${id}`, 6 * H, async () => {
    "career"). The per-season splits ride along as a cross-check: a career
    total can never be smaller than one season, so if it is, we self-heal by
    folding the season back in and recomputing avg/slg from counting stats. */
-const bvp = (batterId, pitcherId) => cached(`bvp2:${batterId}:${pitcherId}`, 3 * H, async () => {
+const bvp = (batterId, pitcherId) => cached(`bvp3:${batterId}:${pitcherId}`, 3 * H, async () => {
   const j = await getJson(`${STATS}/people/${batterId}/stats?stats=vsPlayerTotal,vsPlayer&opposingPlayerId=${pitcherId}&group=hitting&season=${SEASON}`);
   const num = (v) => (v == null ? 0 : +v || 0);
   const pick = (s) => ({ ab: num(s.atBats), h: num(s.hits), hr: num(s.homeRuns), bb: num(s.baseOnBalls), so: num(s.strikeOuts), tb: num(s.totalBases) });
-  const totRaw = j.stats?.find((x) => x.type?.displayName === "vsPlayerTotal")?.splits?.[0]?.stat || null;
-  const seas = (j.stats?.filter((x) => x.type?.displayName === "vsPlayer") || [])
-    .flatMap((x) => x.splits || []).map((sp) => sp.stat).filter(Boolean).map(pick)
-    .reduce((a, s) => ({ ab: a.ab + s.ab, h: a.h + s.h, hr: a.hr + s.hr, bb: a.bb + s.bb, so: a.so + s.so, tb: a.tb + s.tb }), { ab: 0, h: 0, hr: 0, bb: 0, so: 0, tb: 0 });
-  if (!totRaw && !seas.ab) return null;
-  let t = totRaw ? pick(totRaw) : seas;
+  const Z = { ab: 0, h: 0, hr: 0, bb: 0, so: 0, tb: 0 };
+  const sumUp = (arr) => arr.reduce((a, s) => ({ ab: a.ab + s.ab, h: a.h + s.h, hr: a.hr + s.hr, bb: a.bb + s.bb, so: a.so + s.so, tb: a.tb + s.tb }), Z);
+  // vsPlayerTotal can come back FRAGMENTED into multiple splits (one per team
+  // the pitcher has thrown for) \u2014 reading splits[0] alone silently dropped
+  // every other stint (Diaz vs three-team Manaea showed only one chunk).
+  // Sum EVERY split on both blocks.
+  const totSplits = (j.stats?.filter((x) => x.type?.displayName === "vsPlayerTotal") || [])
+    .flatMap((x) => x.splits || []).map((sp) => sp.stat).filter(Boolean);
+  const seas = sumUp((j.stats?.filter((x) => x.type?.displayName === "vsPlayer") || [])
+    .flatMap((x) => x.splits || []).map((sp) => sp.stat).filter(Boolean).map(pick));
+  if (!totSplits.length && !seas.ab) return null;
+  const totRaw = totSplits.length === 1 ? totSplits[0] : null; // avg/slg reusable only if unfragmented
+  let t = totSplits.length ? sumUp(totSplits.map(pick)) : seas;
   let avg = totRaw ? totRaw.avg : null, slg = totRaw ? totRaw.slg : null;
-  if (totRaw && seas.ab > 0 && (t.ab < seas.ab || t.h < seas.h || t.hr < seas.hr)) {
+  if (totSplits.length && seas.ab > 0 && (t.ab < seas.ab || t.h < seas.h || t.hr < seas.hr)) {
     // total provably excludes the current season \u2014 fold it in
     t = { ab: t.ab + seas.ab, h: t.h + seas.h, hr: t.hr + seas.hr, bb: t.bb + seas.bb, so: t.so + seas.so, tb: t.tb + seas.tb };
     avg = null; slg = null;
