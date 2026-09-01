@@ -314,37 +314,42 @@ const recentHitting = (id) => cached(`rh:${id}`, 6 * H, async () => {
   return s ? { slg: s.slg != null ? +s.slg : null, pa: +s.plateAppearances || 0 } : null;
 });
 
-/* career head-to-head. vsPlayerTotal is requested BY NAME (fishing it out of
-   a bare vsPlayer response let the API scope it wrong and silently drop
-   current-season damage \u2014 e.g. a 2-for-2, 2-HR season vanished from
-   "career"). The per-season splits ride along as a cross-check: a career
-   total can never be smaller than one season, so if it is, we self-heal by
-   folding the season back in and recomputing avg/slg from counting stats. */
-const bvp = (batterId, pitcherId) => cached(`bvp3:${batterId}:${pitcherId}`, 3 * H, async () => {
-  const j = await getJson(`${STATS}/people/${batterId}/stats?stats=vsPlayerTotal,vsPlayer&opposingPlayerId=${pitcherId}&group=hitting&season=${SEASON}`);
+/* career head-to-head, hardened against every observed API quirk:
+   \u2014 vsPlayerTotal splits can be overlapping DUPLICATES (summing them
+     double-counted 6+6 into 0-for-12): the largest split IS the total.
+   \u2014 a season line can exceed a broken total: component-wise max repairs it
+     without ever double counting.
+   \u2014 MLB defaults to REGULAR SEASON; ESPN "career" includes playoffs
+     (Diaz took Manaea deep twice in the 2019 Wild Card). A second guarded
+     request pulls postseason and adds it only when it is real, distinct data. */
+const bvp = (batterId, pitcherId) => cached(`bvp4:${batterId}:${pitcherId}`, 3 * H, async () => {
   const num = (v) => (v == null ? 0 : +v || 0);
   const pick = (s) => ({ ab: num(s.atBats), h: num(s.hits), hr: num(s.homeRuns), bb: num(s.baseOnBalls), so: num(s.strikeOuts), tb: num(s.totalBases) });
-  const Z = { ab: 0, h: 0, hr: 0, bb: 0, so: 0, tb: 0 };
-  const sumUp = (arr) => arr.reduce((a, s) => ({ ab: a.ab + s.ab, h: a.h + s.h, hr: a.hr + s.hr, bb: a.bb + s.bb, so: a.so + s.so, tb: a.tb + s.tb }), Z);
-  // vsPlayerTotal can come back FRAGMENTED into multiple splits (one per team
-  // the pitcher has thrown for) \u2014 reading splits[0] alone silently dropped
-  // every other stint (Diaz vs three-team Manaea showed only one chunk).
-  // Sum EVERY split on both blocks.
-  const totSplits = (j.stats?.filter((x) => x.type?.displayName === "vsPlayerTotal") || [])
-    .flatMap((x) => x.splits || []).map((sp) => sp.stat).filter(Boolean);
-  const seas = sumUp((j.stats?.filter((x) => x.type?.displayName === "vsPlayer") || [])
-    .flatMap((x) => x.splits || []).map((sp) => sp.stat).filter(Boolean).map(pick));
-  if (!totSplits.length && !seas.ab) return null;
-  const totRaw = totSplits.length === 1 ? totSplits[0] : null; // avg/slg reusable only if unfragmented
-  let t = totSplits.length ? sumUp(totSplits.map(pick)) : seas;
-  let avg = totRaw ? totRaw.avg : null, slg = totRaw ? totRaw.slg : null;
-  if (totSplits.length && seas.ab > 0 && (t.ab < seas.ab || t.h < seas.h || t.hr < seas.hr)) {
-    // total provably excludes the current season \u2014 fold it in
-    t = { ab: t.ab + seas.ab, h: t.h + seas.h, hr: t.hr + seas.hr, bb: t.bb + seas.bb, so: t.so + seas.so, tb: t.tb + seas.tb };
-    avg = null; slg = null;
-  }
-  if (avg == null) avg = t.ab ? (t.h / t.ab).toFixed(3).replace(/^0\./, ".") : ".000";
-  if (slg == null) slg = t.ab ? (t.tb / t.ab).toFixed(3).replace(/^0\./, ".") : ".000";
+  const biggest = (arr) => (arr.length ? arr.reduce((a, s) => (s.ab > a.ab ? s : a)) : null);
+  const pull = async (extra) => {
+    const j = await getJson(`${STATS}/people/${batterId}/stats?stats=vsPlayerTotal,vsPlayer&opposingPlayerId=${pitcherId}&group=hitting&season=${SEASON}${extra}`);
+    const tots = (j.stats?.filter((x) => x.type?.displayName === "vsPlayerTotal") || [])
+      .flatMap((x) => x.splits || []).map((sp) => sp.stat).filter(Boolean).map(pick);
+    const seas = biggest((j.stats?.filter((x) => x.type?.displayName === "vsPlayer") || [])
+      .flatMap((x) => x.splits || []).map((sp) => sp.stat).filter(Boolean).map(pick));
+    let t = biggest(tots) || seas;
+    if (!t) return null;
+    if (seas) { // career can never trail one season \u2014 repair by component-wise max
+      for (const k of ["ab", "h", "hr", "bb", "so", "tb"]) t[k] = Math.max(t[k], seas[k]);
+    }
+    return t;
+  };
+  const reg = await pull("").catch(() => null);
+  let post = null;
+  try { post = await pull("&gameType=P"); } catch (e) { post = null; }
+  // an ignored gameType param would echo the regular numbers back \u2014 only
+  // merge postseason when it is present AND distinct
+  const same = reg && post && ["ab", "h", "hr", "bb", "so", "tb"].every((k) => reg[k] === post[k]);
+  let t = reg || post;
+  if (!t) return null;
+  if (reg && post && !same) t = { ab: reg.ab + post.ab, h: reg.h + post.h, hr: reg.hr + post.hr, bb: reg.bb + post.bb, so: reg.so + post.so, tb: reg.tb + post.tb };
+  const avg = t.ab ? (t.h / t.ab).toFixed(3).replace(/^0\./, ".") : ".000";
+  const slg = t.ab ? (t.tb / t.ab).toFixed(3).replace(/^0\./, ".") : ".000";
   return { ab: t.ab, h: t.h, hr: t.hr, bb: t.bb, so: t.so, avg, slg };
 });
 
