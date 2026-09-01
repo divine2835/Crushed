@@ -3159,7 +3159,7 @@ function loadBoard() {
   }
   attempt(0);
 }
-var DEFAULT_THRESH = { crushSlg:0.60, ownageSlg:0.60, ownageAb:8, parkHr:1.15, settersObp:0.350, hrPct:20, hotSlg:0.550, hotPa:25, platoonSlg:0.550, platoonAb:30, hardHit:45, pullPct:45, spSwstr:10, barrelMix:13, barrelMixBbe:25, zoneHotSlg:0.550, spZonePct:10, zoneOverlap:3, carry:1.15 };
+var DEFAULT_THRESH = { crushSlg:0.60, ownageSlg:0.60, ownageAb:8, parkHr:1.15, settersObp:0.350, hrPct:20, hotSlg:0.550, hotPa:25, platoonSlg:0.550, platoonAb:30, hardHit:45, pullPct:45, pullAirPct:17, spSwstr:10, barrelMix:13, barrelMixBbe:25, zoneHotSlg:0.550, spZonePct:10, zoneOverlap:3, carry:1.15 };
 /* recompute ALL signal chips in the browser once a player's Statcast
    detail arrives — mirrors the server's tagsFor with the same
    thresholds (shipped in the board payload) */
@@ -3176,6 +3176,7 @@ function recomputeTags(p) {
   if (p.hot != null && p.hot >= TH.hotSlg) t.push("Hot bat");
   if (p.hardHitPct != null && p.hardHitPct >= TH.hardHit) t.push("Hard contact");
   if (p.pullPct != null && p.pullPct >= TH.pullPct) t.push("Pull-heavy");
+  if (p.pullAirPct != null && p.pullAirPct >= TH.pullAirPct) t.push("Sky-puller");
   if (p.sp && p.sp.swstr != null && p.sp.swstr < TH.spSwstr) t.push("Hittable arm");
   if (p.barrelsByPt && p.sp && p.sp.mix && p.sp.mix.length) {
     var mb = 0, mbbe = 0;
@@ -3220,6 +3221,7 @@ function loadDetail(p) {
       p.spray = j.spray || null;
       p.hardHitPct = j.hardHitPct != null ? j.hardHitPct : null;
       p.pullPct = j.pullPct != null ? j.pullPct : null;
+      p.pullAirPct = j.pullAirPct != null ? j.pullAirPct : null;
       p.barrelsByPt = j.barrelsByPt || null;
       p.hrByPt = j.hrByPt || null;
       p.avgEV = j.avgEV != null ? j.avgEV : null; p.avgLA = j.avgLA != null ? j.avgLA : null;
@@ -3287,6 +3289,7 @@ function profilePanel(p) {
     profTile("Exit Velo", p.avgEV != null ? p.avgEV + " mph" : "\u2014", p.avgEV >= 90 ? "good" : "") +
     profTile("Launch Ang", p.avgLA != null ? p.avgLA + "\u00b0" : "\u2014", p.avgLA != null && p.avgLA >= 12 && p.avgLA <= 25 ? "good" : "") +
     profTile("Pull%", pc(p.pullPct), p.pullPct >= 45 ? "good" : "") +
+    profTile("Pull-Air%", p.pullAirPct != null ? p.pullAirPct + "%" : "\u2014", p.pullAirPct != null && p.pullAirPct >= 17 ? "good" : "") +
     profTile("GB%", pc(p.gbPct), p.gbPct == null ? "" : p.gbPct >= 50 ? "bad" : p.gbPct <= 42 ? "good" : "") +
     profTile("FB%", pc(p.fbPct), p.fbPct >= 38 ? "good" : "") +
     profTile("Weather", envPct == null ? "\u2014" : (envPct >= 0 ? "+" : "") + envPct + "% HR Env", envPct == null ? "" : envPct > 0 ? "good" : envPct < 0 ? "bad" : "") +

@@ -624,6 +624,7 @@ const THRESH = {
   hardHit: 45,        // "Hard contact": % of batted balls 95+ mph EV
   carry: 1.15,        // "Carry night": weather ball-flight factor
   pullPct: 45,        // "Pull-heavy": pct of batted balls pulled - no number given, tune me
+  pullAirPct: 17,     // "Sky-puller": pct of batted balls pulled AND elevated (20\u00b0+) \u2014 the HR shape
   spSwstr: 10,        // "Hittable arm": SP swinging-strike pct BELOW this
   barrelMix: 13,      // "Barrels the mix": batter barrel pct on the SP's pitch types, at/above...
   barrelMixBbe: 25,   //   ...with at least this many batted balls vs those pitches
@@ -1033,6 +1034,7 @@ function tagsFor(p) {
   if (p.hot != null && p.hot >= THRESH.hotSlg) t.push("Hot bat");
   if (p.hardHitPct != null && p.hardHitPct >= THRESH.hardHit) t.push("Hard contact");
   if (p.pullPct != null && p.pullPct >= THRESH.pullPct) t.push("Pull-heavy");
+  if (p.pullAirPct != null && p.pullAirPct >= THRESH.pullAirPct) t.push("Sky-puller");
   if (p.sp && p.sp.swstr != null && p.sp.swstr < THRESH.spSwstr) t.push("Hittable arm");
   if (p.barrelsByPt && p.sp && p.sp.mix && p.sp.mix.length) {
     let mb = 0, mbbe = 0;
