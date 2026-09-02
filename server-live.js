@@ -3015,24 +3015,31 @@ function consecStretches(log, stat, n) {
   const longest = runs.reduce((m, r) => Math.max(m, r.length), 0);
   return { qual, longest, last: qual.length ? qual[qual.length - 1] : null };
 }
-function consecAnswer(per, log, parsed, set) {
+function consecAnswer(per, log, parsed, set, era) {
+  era = era || "this season";
   const stat = parsed.stat || "hr", n = parsed.n || 2;
   const lab = ORACLE_STATS.labels[stat] ? ORACLE_STATS.labels[stat].replace(/s$/, "") : stat;
   const what = (n === 2 ? "back-to-back games" : n + " straight games") + " with a " + lab;
   const r = consecStretches(log, stat, n);
   const span = (run) => { const tail = run.slice(-n); return tail[0].date + " \u2192 " + tail[tail.length - 1].date + (tail[tail.length - 1].opp ? " (last vs " + tail[tail.length - 1].opp + ")" : ""); };
   if (parsed.mode === "last") {
-    if (!r.last) { const st = starNumbers([0, r.longest], set); return { answer: per.name + " hasn\u2019t had " + what + " this season" + (r.longest ? " \u2014 his longest run is " + r.longest + " straight." : ".") + st.suffix, ...st, player: per.name }; }
+    if (!r.last) { const st = starNumbers([0, r.longest], set); return { answer: per.name + " hasn\u2019t had " + what + " " + era + "" + (r.longest ? " \u2014 his longest run is " + r.longest + " straight." : ".") + st.suffix, ...st, player: per.name }; }
     const st = starNumbers([r.last.length, r.qual.length], set);
-    return { answer: per.name + " last had " + what + " on " + span(r.last) + (r.last.length > n ? " \u2014 part of a " + r.last.length + "-game run" : "") + ". He\u2019s done it " + r.qual.length + " time" + (r.qual.length === 1 ? "" : "s") + " this season." + st.suffix, ...st, player: per.name };
+    return { answer: per.name + " last had " + what + " on " + span(r.last) + (r.last.length > n ? " \u2014 part of a " + r.last.length + "-game run" : "") + ". He\u2019s done it " + r.qual.length + " time" + (r.qual.length === 1 ? "" : "s") + " " + era + "." + st.suffix, ...st, player: per.name };
   }
   const st = starNumbers([r.qual.length, r.longest], set);
-  return { answer: per.name + " has had " + what + " " + r.qual.length + " time" + (r.qual.length === 1 ? "" : "s") + " this season (each stretch counted once)" + (r.last ? " \u2014 most recently " + span(r.last) : "") + (r.longest >= n ? "; longest run " + r.longest + " straight." : ".") + st.suffix, ...st, player: per.name };
+  return { answer: per.name + " has had " + what + " " + r.qual.length + " time" + (r.qual.length === 1 ? "" : "s") + " " + era + " (each stretch counted once)" + (r.last ? " \u2014 most recently " + span(r.last) : "") + (r.longest >= n ? "; longest run " + r.longest + " straight." : ".") + st.suffix, ...st, player: per.name };
 }
 function parseOracle(q) {
   let s = (q || "").toLowerCase().replace(/\u2019/g, "'").replace(/[?!.]/g, " ")
     .replace(/\b(?:on|during|for|of) the season\b/g, " ").replace(/\bthis season\b/g, " ").replace(/\bso far\b/g, " ")
     .replace(/\s+/g, " ").trim();
+  // SCOPE \u2014 "in his career", "all-time", "lifetime", "ever" widen a question
+  // from this season to the whole career; the phrase is stripped so every
+  // existing pattern matches exactly as it does for season questions.
+  let scope = null;
+  const careerRx = /\b(?:(?:in|over|for|during|across|throughout|of)\s+)?(?:his|her|their)?\s*(?:whole |entire |mlb |major league |big league )?career\b|\ball[ -]time\b|\blifetime\b|\bever\b/;
+  if (careerRx.test(s)) { scope = "career"; s = s.replace(careerRx, " ").replace(/\s+/g, " ").trim(); }
   // FORECAST \u2014 questions about tonight's wave, not the past. Detected first
   // so "will he homer tonight" never falls into a season-stat pattern.
   if (s === "__opening__") return { intent: "opening" };
@@ -3071,7 +3078,7 @@ function parseOracle(q) {
        .replace(/\b(?:left|right)[- ]?hand(?:ed)?(?: pitch(?:ers?|ing))?\b/g, " ")
        .replace(/\s+/g, " ").trim();
   s = mk.replace(/HOMERUNTOKEN/g, "home runs");
-  const withQual = (o) => { o.loc = loc; o.hand = hand; return o; };
+  const withQual = (o) => { o.loc = loc; o.hand = hand; o.scope = scope; if (o.name) o.name = o.name.replace(/^(?:has|have|had|did|does|do)\s+/, "").trim() || o.name; return o; };
   const num = (w) => ({ a:1, an:1, one:1, two:2, three:3, four:4, five:5 }[w] || parseInt(w, 10) || null);
   const statKey = (w) => ORACLE_STATS.keys[(w || "").replace(/ +/g, " ").trim()] || null;
   let m;
@@ -3217,6 +3224,44 @@ function seasonVal(sh, field) {
   const v = sh[field];
   return v == null ? null : +v;
 }
+/* CAREER game log: every season from the player's actual MLB debut to now.
+   Past seasons are immutable, so they cache for a week; the current season
+   rides the 3h season log. Same row shape as oracleGameLog. */
+const oracleSeasonLog = (id, year) => cached(`oglogY:${id}:${year}`, 168 * H, async () => {
+  const j = await getJson(`${STATS}/people/${id}/stats?stats=gameLog&group=hitting&season=${year}`);
+  return (j.stats?.[0]?.splits || []).map((sp) => {
+    const st = sp.stat || {};
+    return { date: sp.date, season: year, isHome: !!sp.isHome, gamePk: sp.game?.gamePk || null, opp: sp.opponent?.abbreviation || sp.opponent?.name || "",
+      hr: +(st.homeRuns || 0), h: +(st.hits || 0), rbi: +(st.rbi || 0), ab: +(st.atBats || 0),
+      bb: +(st.baseOnBalls || 0), so: +(st.strikeOuts || 0), doubles: +(st.doubles || 0), triples: +(st.triples || 0),
+      r: +(st.runs || 0), sb: +(st.stolenBases || 0), tb: +(st.totalBases || 0) };
+  });
+});
+const oracleCareerLog = (id) => cached(`ocareer:${id}`, 3 * H, async () => {
+  let floor = SEASON - 25;
+  try { const p = await person(id); if (p && p.mlbDebutDate) floor = +String(p.mlbDebutDate).slice(0, 4); } catch { /* wide window */ }
+  const years = []; for (let y = Math.max(floor, SEASON - 30); y < SEASON; y++) years.push(y);
+  const past = [];
+  for (let i = 0; i < years.length; i += 4) {
+    const chunk = await Promise.all(years.slice(i, i + 4).map((y) => oracleSeasonLog(id, y).catch(() => [])));
+    chunk.forEach((rows) => past.push(...rows));
+  }
+  const cur = (await oracleGameLog(id).catch(() => [])).map((g) => ({ ...g, season: SEASON }));
+  return past.concat(cur);
+});
+/* CAREER totals + career splits (vs L/R, home/away) in one call */
+const oracleCareer = (id) => cached(`ocartot:${id}`, 6 * H, async () => {
+  const j = await getJson(`${STATS}/people/${id}/stats?stats=career,careerStatSplits&group=hitting&sitCodes=vl,vr,h,a`);
+  const out = { tot: null };
+  (j.stats || []).forEach((blk) => {
+    const t = blk.type?.displayName;
+    (blk.splits || []).forEach((sp) => {
+      if (t === "career") { if (!out.tot || (+sp.stat?.atBats || 0) > (+out.tot.atBats || 0)) out.tot = sp.stat || {}; }
+      else if (sp.split && sp.split.code) out[sp.split.code] = sp.stat || {};
+    });
+  });
+  return out;
+});
 const oracleSplits = (id) => cached(`osplit:${id}`, 6 * H, async () => {
   const j = await getJson(`${STATS}/people/${id}/stats?stats=statSplits&group=hitting&season=${SEASON}&sitCodes=vl,vr,h,a`);
   const m = {};
@@ -3245,8 +3290,10 @@ app.get("/api/oracle", async (req, res) => {
       if (ctx) parsed.name = ctx;
       else return res.json({ answer: "Who do you mean? Ask once with the player\u2019s name \u2014 after that, \u201che\u201d works.", numbers: [], aligned: false, set });
     }
-    const key = "oracle:" + day + ":" + parsed.intent + ":" + JSON.stringify([parsed.name, parsed.n, parsed.stat, parsed.key, parsed.loc, parsed.hand, parsed.why || null, parsed.mode || null]).toLowerCase();
+    const key = "oracle:" + day + ":" + parsed.intent + ":" + JSON.stringify([parsed.name, parsed.n, parsed.stat, parsed.key, parsed.loc, parsed.hand, parsed.why || null, parsed.mode || null, parsed.scope || null]).toLowerCase();
     const out = await cached(key, 0.5 * H, async () => {
+      const era = parsed.scope === "career" ? "in his career" : "this season";
+      const logFor = (id) => (parsed.scope === "career" ? oracleCareerLog(id) : oracleGameLog(id));
       const findP = async () => {
         if (!parsed.name) return null;
         const frag = parsed.name.replace(/\b(has|did|have|does|do|what|is|the|this|season|during|of|many|how|on|in|for|a|an)\b/g, "").replace(/[']/g, "").replace(/\s+/g, " ").trim();
@@ -3292,28 +3339,28 @@ app.get("/api/oracle", async (req, res) => {
           const spl = (await oracleSplits(per.id))[parsed.hand] || {};
           const val = +(spl[SPLIT_FIELD[sk]] || 0);
           const st2 = starNumbers([val], set);
-          return { answer: "Game-by-game hand ledgers aren\u2019t kept \u2014 but " + per.name + " " + SPLIT_LABELS[parsed.hand] + " this season: " + val + " " + ORACLE_STATS.labels[sk] + "." + st2.suffix, ...st2, player: per.name };
+          return { answer: "Game-by-game hand ledgers aren\u2019t kept \u2014 but " + per.name + " " + SPLIT_LABELS[parsed.hand] + " " + era + ": " + val + " " + ORACLE_STATS.labels[sk] + "." + st2.suffix, ...st2, player: per.name };
         }
-        let log = await oracleGameLog(per.id);
+        let log = await logFor(per.id);
         if (parsed.loc) log = log.filter((g) => g.isHome === (parsed.loc === "h"));
         const games = log.filter((g) => (g[sk] || 0) >= n);
         const st = starNumbers([games.length], set);
         const where = parsed.loc ? " " + SPLIT_LABELS[parsed.loc] : "";
-        return { answer: per.name + " has " + games.length + " game" + (games.length === 1 ? "" : "s") + " with " + n + "+ " + ORACLE_STATS.labels[sk] + where + " this season" + (games.length ? " \u2014 most recently " + games[games.length - 1].date + " vs " + games[games.length - 1].opp : "") + "." + st.suffix, ...st, player: per.name };
+        return { answer: per.name + " has " + games.length + " game" + (games.length === 1 ? "" : "s") + " with " + n + "+ " + ORACLE_STATS.labels[sk] + where + " " + era + "" + (games.length ? " \u2014 most recently " + games[games.length - 1].date + " vs " + games[games.length - 1].opp : "") + "." + st.suffix, ...st, player: per.name };
       }
       if (parsed.intent === "gameHigh") {
         const per = await findP();
         if (!per) return { answer: "I couldn\u2019t place that name \u2014 try the full last name.", numbers: [], aligned: false };
-        let log = await oracleGameLog(per.id);
+        let log = await logFor(per.id);
         const sk = parsed.stat || "rbi";
         if (parsed.hand) {
           const spl = (await oracleSplits(per.id))[parsed.hand] || {};
           const val = +(spl[SPLIT_FIELD[sk]] || 0);
           const sth = starNumbers([val], set);
-          return { answer: "Single-game hand ledgers aren\u2019t kept \u2014 " + per.name + " " + SPLIT_LABELS[parsed.hand] + " this season: " + val + " " + ORACLE_STATS.labels[sk] + "." + sth.suffix, ...sth, player: per.name };
+          return { answer: "Single-game hand ledgers aren\u2019t kept \u2014 " + per.name + " " + SPLIT_LABELS[parsed.hand] + " " + era + ": " + val + " " + ORACLE_STATS.labels[sk] + "." + sth.suffix, ...sth, player: per.name };
         }
         if (parsed.loc) log = log.filter((g) => g.isHome === (parsed.loc === "h"));
-        if (!log.length) return { answer: "No games logged for " + per.name + " this season.", numbers: [], aligned: false, player: per.name };
+        if (!log.length) return { answer: "No games logged for " + per.name + " " + era + ".", numbers: [], aligned: false, player: per.name };
         let best = log[0];
         log.forEach((g) => { if ((g[sk] || 0) > (best[sk] || 0)) best = g; });
         const st = starNumbers([best[sk] || 0], set);
@@ -3322,14 +3369,14 @@ app.get("/api/oracle", async (req, res) => {
       if (parsed.intent === "consec") {
         const per = await findP();
         if (!per) return { answer: "I couldn\u2019t place that name \u2014 try the full last name.", numbers: [], aligned: false };
-        let log = (await oracleGameLog(per.id)).filter((g) => g.ab > 0);
+        let log = (await logFor(per.id)).filter((g) => g.ab > 0);
         if (parsed.loc) log = log.filter((g) => g.isHome === (parsed.loc === "h"));
-        return consecAnswer(per, log, parsed, set);
+        return consecAnswer(per, log, parsed, set, era);
       }
       if (parsed.intent === "streak") {
         const per = await findP();
         if (!per) return { answer: "I couldn\u2019t place that name \u2014 try the full last name.", numbers: [], aligned: false };
-        let log = (await oracleGameLog(per.id)).filter((g) => g.ab > 0);
+        let log = (await logFor(per.id)).filter((g) => g.ab > 0);
         if (parsed.loc) log = log.filter((g) => g.isHome === (parsed.loc === "h"));
         const sk = parsed.stat || "h";
         let cur = 0, longest = 0, run = 0;
@@ -3337,14 +3384,14 @@ app.get("/api/oracle", async (req, res) => {
         for (let i = log.length - 1; i >= 0 && (log[i][sk] || 0) > 0; i--) cur++;
         const st = starNumbers([cur, longest], set);
         const what = sk === "h" ? "hitting streak" : "streak of games with a " + ORACLE_STATS.labels[sk].replace(/s$/, "");
-        return { answer: per.name + " is riding a " + cur + "-game " + what + (cur !== longest ? " \u2014 his longest this season is " + longest : (cur > 0 ? " \u2014 his season best" : "")) + "." + st.suffix, ...st, player: per.name };
+        return { answer: per.name + " is riding a " + cur + "-game " + what + (cur !== longest ? " \u2014 his longest " + era + " is " + longest : (cur > 0 ? " \u2014 his season best" : "")) + "." + st.suffix, ...st, player: per.name };
       }
       if (parsed.intent === "lastHr") {
         const per = await findP();
         if (!per) return { answer: "I couldn\u2019t place that name \u2014 try the full last name.", numbers: [], aligned: false };
-        const log = await oracleGameLog(per.id);
+        const log = await logFor(per.id);
         const hrG = log.filter((g) => g.hr > 0);
-        if (!hrG.length) return { answer: per.name + " hasn\u2019t homered this season.", numbers: [], aligned: false, player: per.name };
+        if (!hrG.length) return { answer: per.name + " hasn\u2019t homered " + era + ".", numbers: [], aligned: false, player: per.name };
         const last = hrG[hrG.length - 1];
         const st = starNumbers([{ v: +last.date.slice(-2), next: false }, hrG.length], set);
         return { answer: per.name + " last homered on " + last.date + " vs " + last.opp + " \u2014 HR game #" + hrG.length + " of his season." + st.suffix, ...st, player: per.name };
@@ -3356,6 +3403,15 @@ app.get("/api/oracle", async (req, res) => {
         if (!sh) return { answer: "No season line found for " + per.name + ".", numbers: [], aligned: false, player: per.name };
         const mkMap = (x) => ({ hr: ["home runs", x.homeRuns != null ? x.homeRuns : x.hr], rbi: ["RBI", x.rbi], hits: ["hits", x.hits], bb: ["walks", x.baseOnBalls != null ? x.baseOnBalls : x.bb], so: ["strikeouts", x.strikeOuts != null ? x.strikeOuts : x.so], doubles: ["doubles", x.doubles], triples: ["triples", x.triples], sb: ["stolen bases", x.stolenBases], r: ["runs", x.runs], tb: ["total bases", x.totalBases] });
         let map = mkMap(sh);
+        if (parsed.scope === "career") {
+          const car = await oracleCareer(per.id).catch(() => null);
+          const q = parsed.hand || parsed.loc;
+          const srcStat = car ? (q ? car[q] : car.tot) : null;
+          if (!srcStat) return { answer: "No career line found for " + per.name + ".", numbers: [], aligned: false, player: per.name };
+          const mc = mkMap(srcStat); const pc = mc[parsed.stat] || mc.hr; const vc = +pc[1] || 0;
+          const stc = starNumbers([vc], set);
+          return { answer: per.name + " has " + vc + " " + pc[0] + (q ? " " + SPLIT_LABELS[q] : "") + " in his career." + stc.suffix, ...stc, player: per.name };
+        }
         if ((map[parsed.stat] || map.hr)[1] == null) { const full = await seasonHitting(per.id); if (full) { sh = full; map = mkMap(full); } }
         map.sb[1] = map.sb[1] == null ? 0 : map.sb[1];
         const qual = parsed.hand || parsed.loc;
@@ -3374,7 +3430,7 @@ app.get("/api/oracle", async (req, res) => {
       if (parsed.intent === "lastN") {
         const per = await findP();
         if (!per) return { answer: "I couldn\u2019t place that name \u2014 try the full last name.", numbers: [], aligned: false };
-        const log = await oracleGameLog(per.id);
+        const log = await logFor(per.id);
         const win = log.slice(-parsed.n);
         const hr = win.reduce((t, g) => t + g.hr, 0), h = win.reduce((t, g) => t + g.h, 0), rbi = win.reduce((t, g) => t + g.rbi, 0), ab = win.reduce((t, g) => t + g.ab, 0);
         const st = starNumbers([hr, h, rbi], set);
@@ -3440,7 +3496,7 @@ app.get("/api/oracle", async (req, res) => {
         }
         return { answer: "He\u2019s not on tonight\u2019s board \u2014 season questions work for any player.", numbers: [], aligned: false };
       }
-      return { answer: "Ask me things like: \u201chow many times has Devers had 3 RBI in a game\u201d \u00b7 \u201chow many games with 2+ homers\u201d \u00b7 \u201cmost hits Judge has in a game\u201d \u00b7 \u201cSoto\u2019s hitting streak\u201d \u00b7 \u201chow many walks does Harper have\u201d \u00b7 \u201cwhen did Alvarez last homer\u201d \u00b7 \u201cJudge\u2019s last 10 games\u201d \u00b7 \u201cwho leads HR% tonight\u201d \u00b7 \u201cAbrams\u2019 leadoff homers\u201d \u00b7 and about tonight: \u201cwho\u2019s most likely to homer tonight\u201d \u00b7 \u201cwill Judge homer tonight\u201d \u00b7 \u201cwho\u2019s the best bet for 2 RBI\u201d \u00b7 \u201cSoto\u2019s expected line\u201d \u00b7 \u201chow many times has Lowe homered in back to back games\u201d \u00b7 \u201cif Judge homers who else goes deep\u201d \u00b7 \u201chow accurate were you this week\u201d \u2014 any counting stat works: HR, RBI, hits, walks, Ks, doubles, triples, runs, steals, total bases \u2014 and you can add \u2018at home\u2019, \u2018on the road\u2019, \u2018vs lefties\u2019, or \u2018vs righties\u2019 to any of them. Follow-ups work \u2014 after any answer, \u2018he\u2019 means that player.", numbers: [], aligned: false };
+      return { answer: "Ask me things like: \u201chow many times has Devers had 3 RBI in a game\u201d \u00b7 \u201chow many games with 2+ homers\u201d \u00b7 \u201cmost hits Judge has in a game\u201d \u00b7 \u201cSoto\u2019s hitting streak\u201d \u00b7 \u201chow many walks does Harper have\u201d \u00b7 \u201cwhen did Alvarez last homer\u201d \u00b7 \u201cJudge\u2019s last 10 games\u201d \u00b7 \u201cwho leads HR% tonight\u201d \u00b7 \u201cAbrams\u2019 leadoff homers\u201d \u00b7 and about tonight: \u201cwho\u2019s most likely to homer tonight\u201d \u00b7 \u201cwill Judge homer tonight\u201d \u00b7 \u201cwho\u2019s the best bet for 2 RBI\u201d \u00b7 \u201cSoto\u2019s expected line\u201d \u00b7 \u201chow many times has Lowe homered in back to back games\u201d \u00b7 add \u2018in his career\u2019 to any of them \u00b7 \u201cif Judge homers who else goes deep\u201d \u00b7 \u201chow accurate were you this week\u201d \u2014 any counting stat works: HR, RBI, hits, walks, Ks, doubles, triples, runs, steals, total bases \u2014 and you can add \u2018at home\u2019, \u2018on the road\u2019, \u2018vs lefties\u2019, or \u2018vs righties\u2019 to any of them. Follow-ups work \u2014 after any answer, \u2018he\u2019 means that player.", numbers: [], aligned: false };
     });
     res.json({ ...out, set });
   } catch (e) { res.status(500).json({ error: e.message }); }
