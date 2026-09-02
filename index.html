@@ -57,6 +57,13 @@ button { font-family: inherit; }
 .chip-hot { color: var(--ink); background: var(--hot); border-color: var(--hot); }
 .chip-cold { color: var(--cold); border-color: var(--cold); }
 
+.ora-msg.opening { border-color: rgba(192,132,252,0.55); background: linear-gradient(135deg, rgba(192,132,252,0.10), rgba(103,232,249,0.06)); }
+.ora-first { font-size: 9.5px; letter-spacing: 0.12em; font-weight: 800; color: #c084fc; text-transform: uppercase; }
+.a1-bases { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 7px; padding-top: 7px; border-top: 1px dashed rgba(148,163,184,0.18); }
+.a1-basis { font-size: 9.5px; letter-spacing: 0.08em; font-weight: 700; padding: 2px 7px; border: 1px solid; border-radius: 999px; opacity: 0.38; }
+.a1-basis.lit { opacity: 1; box-shadow: 0 0 8px rgba(255,255,255,0.08) inset; }
+.a1-bcount { font-size: 10px; color: #94a3b8; margin-left: auto; font-family: "JetBrains Mono", monospace; }
+.a1-orth { font-size: 9.5px; letter-spacing: 0.1em; font-weight: 800; color: #67e8f9; border: 1px solid rgba(103,232,249,0.5); border-radius: 999px; padding: 2px 8px; background: rgba(103,232,249,0.08); }
 .tabs { display: flex; gap: 8px; margin: 18px 0 10px; overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
 .tabs > * { flex: none; }
@@ -1903,12 +1910,29 @@ function oracleAsk(q) {
     .catch(function () { state.chat.push({ role: "bot", text: "The Oracle stumbled \u2014 ask again.", star: false }); })
     .finally(function () { state.chatBusy = false; renderOracle(); });
 }
+/* The Oracle speaks first: when the drawer opens empty, it volunteers the
+   sharpest thing it sees tonight (once per slate). Same fetch path, same
+   messages-only re-render \u2014 the input is never touched. */
+function oracleOpen() {
+  if (state.demo || state.chatBusy || state.chat.length || state.chatOpenedDay === state.day) return;
+  state.chatOpenedDay = state.day;
+  state.chatBusy = true;
+  renderOracle();
+  fetch(apiBase + "/api/oracle?day=" + state.day + "&q=__opening__")
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (j) {
+      if (j.player) oraCtx = j.player;
+      if (j.answer) state.chat.push({ role: "bot", text: j.answer, star: !!j.aligned, opening: true });
+    })
+    .catch(function () { /* stay silent; the intro line remains */ })
+    .finally(function () { state.chatBusy = false; renderOracle(); });
+}
 function oracleMsgsHtml() {
   var msgs = state.chat.map(function (m) {
-    return '<div class="ora-msg ' + m.role + '">' + (m.role === "bot" && m.star ? '<span class="star-num" title="Numerology-aligned: ' + esc(m.starTitle || "") + '">\u2605</span> ' : "") + esc(m.text) + '</div>';
+    return '<div class="ora-msg ' + m.role + (m.opening ? " opening" : "") + '">' + (m.opening ? '<span class="ora-first">\u2726 first word</span> ' : "") + (m.role === "bot" && m.star ? '<span class="star-num" title="Numerology-aligned: ' + esc(m.starTitle || "") + '">\u2605</span> ' : "") + esc(m.text) + '</div>';
   }).join("");
-  if (!state.chat.length) msgs = '<div class="ora-msg bot">Ask me the terminal\u2019s numbers \u2014 \u201chow many times has Devers had 3 RBI in a game?\u201d \u00b7 \u201cSoto\u2019s homers vs lefties?\u201d \u00b7 \u201cJudge\u2019s hitting streak?\u201d \u00b7 answers one step from today\u2019s numbers earn the purple \u2605</div>';
-  if (state.chatBusy) msgs += '<div class="ora-msg bot dim">consulting the records\u2026</div>';
+  if (!state.chat.length) msgs = '<div class="ora-msg bot">Ask me about tonight or the record books \u2014 \u201cwho\u2019s most likely to homer tonight?\u201d \u00b7 \u201chow many times has Devers had 3 RBI in a game?\u201d \u00b7 \u201cSoto\u2019s homers vs lefties?\u201d \u00b7 \u201cJudge\u2019s hitting streak?\u201d \u00b7 answers one step from today\u2019s numbers earn the purple \u2605</div>';
+  if (state.chatBusy) msgs += '<div class="ora-msg bot dim">' + (state.chat.length ? "consulting the records\u2026" : "reading tonight\u2019s wave\u2026") + '</div>';
   return msgs;
 }
 function renderOracle() {
@@ -1928,6 +1952,7 @@ function renderOracle() {
     '<div class="ora-msgs" id="ora-msgs">' + oracleMsgsHtml() + '</div>' +
     '<div class="ora-inrow"><input class="ora-in" id="ora-in" placeholder="Ask about any player\u2026" maxlength="200" autocomplete="off"><button class="ora-send" data-orasend="1">ASK</button></div></div>';
   state.chatBuilt = true;
+  oracleOpen();
   var box = document.getElementById("ora-msgs");
   if (box && box.scrollTo) box.scrollTo(0, 999999);
 }
@@ -2012,6 +2037,31 @@ function a1Compute(p, ctx) {
   });
   return { score: wsum ? Math.round(tot / wsum) : 0, sub: s, lit: lit, avail: avail };
 }
+/* MEASUREMENT BASES \u2014 the ten systems are not ten independent observations.
+   HR BOARD, QUANTOM, VECTOR and MIX all drink from the same Statcast well, so
+   six lit chips can be one strong signal interfering constructively with
+   itself. Grouping the systems into the four bases they actually measure in
+   (skill, matchup, environment, esoteric) and counting agreement ACROSS bases
+   rewards orthogonal confirmation over amplified redundancy. Read-only layer:
+   it never touches the score, weights, star, or ordering. */
+var A1_BASES = [
+  { key:"skill", lab:"SKILL",   color:"#f6c453", sys:["hr","q"] },
+  { key:"match", lab:"MATCHUP", color:"#fb923c", sys:["weak","mix"] },
+  { key:"env",   lab:"ENVIRON", color:"#93c5fd", sys:["park","vector"] },
+  { key:"eso",   lab:"ESOTERIC", color:"#c084fc", sys:["num","chart","ltr","astro"] },
+];
+function a1Bases(a) {
+  var out = [], aligned = 0, avail = 0;
+  A1_BASES.forEach(function (b) {
+    var vals = b.sys.map(function (k) { return a.sub[k]; }).filter(function (v) { return v != null; });
+    if (!vals.length) { out.push({ key: b.key, lab: b.lab, color: b.color, val: null, lit: false }); return; }
+    var mean = Math.round(vals.reduce(function (x, y) { return x + y; }, 0) / vals.length);
+    var lit = mean >= 60;
+    avail++; if (lit) aligned++;
+    out.push({ key: b.key, lab: b.lab, color: b.color, val: mean, lit: lit, n: vals.length });
+  });
+  return { bases: out, aligned: aligned, avail: avail };
+}
 function allInView() {
   var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
   var banner = '<div class="fn-banner" style="border-color:rgba(248,250,252,0.4)"><div class="fn-title" style="color:#f8fafc">ALL IN 1 \u00b7 WHERE EVERY SYSTEM AGREES</div>' +
@@ -2056,7 +2106,15 @@ function allInView() {
       '<span class="mono dim" style="font-size:10.5px">' + esc(p.teamAbbr) + ' #' + p.slot + (p.sp ? ' vs ' + esc(lastName(p.sp.name)) : '') + '</span>' +
       '<span class="fn-al" title="Systems voting 60+ for him">' + a.lit + '/' + a.avail + ' lit</span>' +
       '<span class="a1-score" title="Weighted convergence across all voting systems">' + a.score + '</span></div>' +
-      '<div class="a1-sys">' + chips + '</div></div>';
+      '<div class="a1-sys">' + chips + '</div>' + (function () {
+        var bz = a1Bases(a);
+        var pills = bz.bases.map(function (b) {
+          if (b.val == null) return '<span class="a1-basis" style="border-color:' + b.color + ';color:' + b.color + '" title="' + b.lab + ': waiting on data">' + b.lab + '</span>';
+          return '<span class="a1-basis' + (b.lit ? " lit" : "") + '" style="border-color:' + b.color + ';color:' + b.color + '" title="' + b.lab + ' basis: mean ' + b.val + '/100 across ' + b.n + ' system' + (b.n === 1 ? "" : "s") + '">' + b.lab + '</span>';
+        }).join("");
+        var tag = bz.aligned >= 3 ? '<span class="a1-orth" title="Three or more independent measurement bases agree \u2014 confirmation from unrelated signals, not one signal amplified">\u25c6 ORTHOGONAL</span>' : '';
+        return '<div class="a1-bases">' + pills + '<span class="a1-bcount" title="Independent bases aligned (mean 60+)">' + bz.aligned + ' of ' + bz.avail + ' bases</span>' + tag + '</div>';
+      })() + '</div>';
     if (String(state.open) === String(p.id)) out += '<div class="gen-scout">' + scoutCard(p) + '</div>';
     return out;
   }).join("");
@@ -3097,7 +3155,7 @@ function setBanner(kind, msg) {
   var b = document.getElementById("banner");
   b.className = "banner show " + (kind === "live" ? "banner-live" : "banner-demo");
   b.innerHTML = msg;
-  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b89";
+  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b92";
 }
 
 /* ---------- data loading ---------- */

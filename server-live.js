@@ -2057,6 +2057,7 @@ function runGameSims(away, home, rateFor) {
     batA: away.map(() => ({ hrSims: 0, h: 0, hr: 0, rbi: 0, r: 0, tb: 0 })),
     batB: home.map(() => ({ hrSims: 0, h: 0, hr: 0, rbi: 0, r: 0, tb: 0 })),
     samples: [],
+    hrRuns: [], // per run: indices of batters who homered (away 0..n-1, home n..) \u2014 the joint structure, kept for entanglement questions
   };
   for (let i = 0; i < SIM_N; i++) {
     const g = simOneGame(away, home, rA, rB);
@@ -2065,6 +2066,10 @@ function runGameSims(away, home, rateFor) {
     g.boxA.forEach((b, j) => { const t = agg.batA[j]; if (b.hr > 0) t.hrSims++; t.h += b.h; t.hr += b.hr; t.rbi += b.rbi; t.r += b.r; t.tb += b.tb; });
     g.boxB.forEach((b, j) => { const t = agg.batB[j]; if (b.hr > 0) t.hrSims++; t.h += b.h; t.hr += b.hr; t.rbi += b.rbi; t.r += b.r; t.tb += b.tb; });
     if (agg.samples.length < 24 && i % Math.floor(SIM_N / 24) === 0) agg.samples.push({ ra: g.ra, rb: g.rb, boxA: g.boxA, boxB: g.boxB, lineA: g.lineA, lineB: g.lineB });
+    const hrs = [];
+    g.boxA.forEach((b, j) => { if (b.hr > 0) hrs.push(j); });
+    g.boxB.forEach((b, j) => { if (b.hr > 0) hrs.push(away.length + j); });
+    agg.hrRuns.push(hrs);
   }
   return agg;
 }
@@ -2193,6 +2198,7 @@ function buildSimFor(day, pk, level) {
           boxA: s.boxA.map((x, i) => ({ name: away[i] ? away[i].name : "?", id: away[i] ? away[i].id : 0, ...x })),
           boxB: s.boxB.map((x, i) => ({ name: home[i] ? home[i].name : "?", id: home[i] ? home[i].id : 0, ...x })),
         })),
+        joint: { ids: away.concat(home).map((p) => p.id), names: away.concat(home).map((p) => p.name), runs: agg.hrRuns },
       };
     }
   });
@@ -2216,13 +2222,16 @@ app.get("/api/sim", async (req, res) => {
    hits, homers, RBI, total bases, runs \u2014 and ranked by Q, the expected
    production line (TB + RBI + R + half-credit hits). Shares the per-game
    sim caches, so QUANTOM and the SIMULATOR feed each other. */
-app.get("/api/quantum", async (req, res) => {
-  try {
-    const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
-    const b = BOARDS[day];
-    if (!b || !(b.players || []).length) return res.json({ warming: true });
-    const out = await cached(`quantum:${day}`, 1 * H, async () => {
+/* The QUANTOM wave: every game simulated at EXPERT, every batter's expected
+   line extracted. One builder, one cache key \u2014 the tab and The Oracle read
+   the same collapsed wave, never two different simulations. Full rows are
+   cached so the Oracle can see any batter; the tab shows the top 30. */
+async function quantumWave(day) {
+  const b = BOARDS[day];
+  if (!b || !(b.players || []).length) return null;
+  return cached(`quantum:${day}`, 1 * H, async () => {
       const rows = [];
+      const joint = {};
       let simmed = 0, thin = 0;
       for (const g of b.games || []) {
         try {
@@ -2240,12 +2249,20 @@ app.get("/api/quantum", async (req, res) => {
           });
           take(sim.away, sim.home.abbr, sim.away.win);
           take(sim.home, sim.away.abbr, sim.home.win);
+          if (sim.joint) joint[g.gamePk] = sim.joint;
         } catch { /* one game must not sink the wave */ }
       }
       rows.sort((a, z) => z.q - a.q);
-      return { day, built: Date.now(), games: simmed, thin, ran: simmed * SIM_N, rows: rows.slice(0, 30) };
-    });
-    res.json(out);
+      return { day, built: Date.now(), games: simmed, thin, ran: simmed * SIM_N, rows, joint };
+  });
+}
+app.get("/api/quantum", async (req, res) => {
+  try {
+    const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
+    const out = await quantumWave(day);
+    if (!out) return res.json({ warming: true });
+    const { joint, ...pub } = out;
+    res.json({ ...pub, rows: out.rows.slice(0, 30) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2757,10 +2774,259 @@ app.get("/api/destiny", async (req, res) => {
    multi-HR game counts, last-homer dates, tonight's board reads, slate
    leaders, last-N lines. Every answer's key numbers get reduced against
    the day's set \u2014 alignment earns the purple star. */
+const FC_STAT = "(?:homers?|home ?runs?|hrs?|bombs?|dingers?|long ?balls?|deep|yard|rbis?|ribbies|ribby|hits?|total bases?|tb|bases?|runs?|score)";
+function fcStat(w) {
+  w = (w || "").replace(/s$/, "");
+  if (/^(homer|home ?run|hr|bomb|dinger|long ?ball|deep|yard)$/.test(w)) return "hr";
+  if (/^(rbi|ribbie|ribby)$/.test(w)) return "rbi";
+  if (/^hit$/.test(w)) return "h";
+  if (/^(total base|tb|base)$/.test(w)) return "tb";
+  if (/^(run|score)$/.test(w)) return "r";
+  return "hr";
+}
+function parseForecast(s) {
+  // existing leader intent ("who leads HR% tonight") keeps its territory
+  if (/\bleads?\b|hr ?%|hr percent|crushed|quantom|\bops\b|\bcs\b/.test(s)) return null;
+  const future = /\b(tonight|today|this evening|going to|gonna|will|most likely|likeliest|best bet|favou?rite|top pick|best pick|do you think|you think|do you like|should i|chances?|odds|expected line|projection|projected|forecast|outlook)\b/.test(s);
+  if (!future) return null;
+  let m;
+  const cnt = (str) => { const c = str.match(/\b(\d)\s*\+?\s*(?:or more\s*)?(?=(?:homer|home ?run|hr|bomb|dinger|rbi|ribb|hit|total base|tb|base|run)s?\b)/); return c ? +c[1] : null; };
+  const stat = (str) => {
+    const all = str.match(new RegExp("\\b" + FC_STAT + "\\b", "g")) || [];
+    const real = all.find((w) => !/^hits?$/.test(w));
+    return fcStat(real || all[0] || null);
+  };
+  // slate-level: "who do you think is most likely to homer tonight", "who's going deep tonight", "who's the best bet for 2 rbi"
+  if ((m = s.match(/^(?:who|whos|which (?:player|hitter|batter|guy|bat))\b(.*)$/))) {
+    return { intent: "forecastLeader", stat: stat(m[1]), n: cnt(m[1]) };
+  }
+  // expected line: "judge's expected line tonight", "what's his projection", "what are soto's odds tonight"
+  if ((m = s.match(/^(?:what(?:'s| is| are|s)?\s+)?(?:is |are )?(.+?)(?:'s|s')?\s+(?:expected line|projected line|line|projection|forecast|odds|chances|outlook)\b/))) {
+    const name = m[1].replace(/^(?:what|is|are|the)\s+/, "").trim();
+    if (name && !/^(the|tonight|today)$/.test(name)) return { intent: "forecast", name, stat: stat(s), n: cnt(s), line: true };
+  }
+  // player-level: "will judge homer tonight", "is he going to hit 2 rbi", "do you think ohtani goes deep today", "should i play soto tonight"
+  if ((m = s.match(/^(?:will|is|does|do you think|you think|do you like|should i (?:play|bet|take|start|roster|use)|can|could|would|whats? the chances?|what are the chances|what are the odds)\s+(?:that\s+)?(.+?)\s+(?:going to|gonna|likely to|to|hit|have|get|go|goes|homer|homers|smash|crush|launch|drive|knock|score|record|rack|collect|tonight|today|deep|yard)\b/))) {
+    const name = m[1].replace(/\b(?:is|going|gonna|likely)\b/g, " ").replace(/\s+/g, " ").trim();
+    if (name) return { intent: "forecast", name, stat: stat(s), n: cnt(s), line: false };
+  }
+  // "why is judge starred / lit / a play tonight"
+  if ((m = s.match(/^why\s+(?:is|are)\s+(.+?)\s+(?:starred|a star|lit|a play|suggested|on the board|orthogonal|hot|a good play|good)\b/))) {
+    return { intent: "forecast", name: m[1].trim(), stat: "hr", n: null, line: true, why: true };
+  }
+  return null;
+}
+/* Poisson tail: P(X >= n) for a count with expected value lam. Expected lines
+   from the wave are means; this turns a mean into a threshold probability. */
+function poissonAtLeast(lam, n) {
+  if (lam == null || lam <= 0) return 0;
+  let p = Math.exp(-lam), cum = 0;
+  for (let k = 0; k < n; k++) { cum += p; p = p * lam / (k + 1); }
+  return Math.max(0, Math.min(1, 1 - cum));
+}
+const FC_LABEL = { hr: "homer", rbi: "RBI", h: "hit", tb: "total base", r: "run" };
+const FC_MEAN = { hr: "hr", rbi: "rbi", h: "h", tb: "tb", r: "r" };
+/* Probability a batter reaches n of a stat tonight, straight from his wave row:
+   a single homer uses the sim hit-rate directly; everything else is a Poisson
+   tail on the expected line. */
+function fcProb(row, stat, n) {
+  const need = n || 1;
+  if (stat === "hr" && need === 1 && row.hrSim != null) return row.hrSim / 100;
+  return poissonAtLeast(row[FC_MEAN[stat]], need);
+}
+function fcLine(row) {
+  return (+row.h).toFixed(1) + " H \u00b7 " + (+row.hr).toFixed(2) + " HR \u00b7 " + (+row.rbi).toFixed(1) + " RBI \u00b7 " + (+row.tb).toFixed(1) + " TB \u00b7 " + (+row.r).toFixed(1) + " R (Q " + (+row.q).toFixed(1) + ")";
+}
+function forecastAnswer(per, row, bp, parsed, set, ran) {
+  const stat = parsed.stat || "hr", n = parsed.n || 1;
+  const vs = bp && bp.sp ? " vs " + bp.sp.name : "";
+  const tags = bp && bp.tags && bp.tags.length ? " Tags: " + bp.tags.slice(0, 4).join(", ") + "." : "";
+  const vec = bp && bp.vector != null ? " VECTOR " + Math.round(bp.vector) + "/100." : "";
+  const boardHr = bp && bp.hrPct != null ? " Board HR% " + (+bp.hrPct).toFixed(1) + "." : "";
+  if (!row) {
+    if (!bp) return { answer: per.name + " isn\u2019t on tonight\u2019s slate \u2014 season questions still work for him.", numbers: [], aligned: false, player: per.name };
+    const st = starNumbers([{ v: Math.round(bp.hrPct || 0), next: false }], set);
+    return { answer: per.name + " tonight" + vs + ": the sims are still collapsing \u2014 from the board, " + (+bp.hrPct || 0).toFixed(1) + "% HR chance." + vec + tags + " Ask again in a minute for his full expected line.", ...st, player: per.name };
+  }
+  const p = fcProb(row, stat, n);
+  const pct = Math.round(p * 100);
+  const what = n > 1 ? n + "+ " + FC_LABEL[stat] + (stat === "rbi" ? "" : "s") : (stat === "hr" ? "a homer" : stat === "h" ? "a hit" : stat === "tb" ? "a total base" : stat === "r" ? "a run" : "an RBI");
+  const how = stat === "hr" && n === 1 ? "goes deep in " + pct + "% of " + (ran || SIM_N) + " expert sims" : "reaches " + what + " in about " + pct + "% of tonight\u2019s realities (Poisson on his expected " + (+row[FC_MEAN[stat]]).toFixed(2) + ")";
+  const st = starNumbers([{ v: pct, next: false }], set);
+  const why = parsed.why ? " Why he\u2019s a play:" + boardHr + vec + tags : boardHr + vec + tags;
+  return { answer: per.name + " tonight" + vs + ": " + how + ". Expected line " + fcLine(row) + "." + why, ...st, player: per.name };
+}
+function forecastLeaderAnswer(rows, parsed, set, ran) {
+  const stat = parsed.stat || "hr", n = parsed.n || 1;
+  const ranked = rows.map((r) => ({ r, p: fcProb(r, stat, n) })).sort((a, z) => z.p - a.p).slice(0, 3);
+  if (!ranked.length) return { answer: "The wave is still collapsing \u2014 ask again in a minute.", numbers: [], aligned: false };
+  const what = n > 1 ? n + "+ " + FC_LABEL[stat] + (stat === "rbi" ? "" : "s") : (stat === "hr" ? "to homer" : "to " + (stat === "h" ? "get a hit" : stat === "tb" ? "get a total base" : stat === "r" ? "score" : "drive in a run"));
+  const lead = ranked[0];
+  const st = starNumbers([{ v: Math.round(lead.p * 100), next: false }], set);
+  const list = ranked.map((x, i) => (i + 1) + ") " + x.r.name + " " + Math.round(x.p * 100) + "%" + (i === 0 && x.r.opp ? " vs " + x.r.opp : "")).join(" \u00b7 ");
+  const basis = stat === "hr" && n === 1 ? ran + " expert sims per game" : "Poisson on expected " + FC_LABEL[stat] + (stat === "rbi" ? "" : "s") + " from " + ran + " sims";
+  return { answer: "Most likely " + what + " tonight: " + list + " \u2014 " + basis + ". Say a name for his full line, or \u2018he\u2019 for the leader.", ...st, player: lead.r.name };
+}
+/* ---------------- THE ORACLE'S LEDGER \u2014 it keeps score on itself ----------------
+   Every forecast it gives is written down (date, player, stat, threshold,
+   probability). The next day, each call is graded against the box score.
+   Separate file from the learning brain; the brain is never touched. */
+const LEDGER_FILE = "oracle-ledger.json";
+let LEDGER = null, LEDGER_DIRTY = false, LEDGER_TIMER = null;
+async function ghFile(method, path, content) {
+  const token = process.env.GITHUB_TOKEN, repo = process.env.GITHUB_REPO;
+  if (!token || !repo) return null;
+  const url = `https://api.github.com/repos/${repo}/contents/${path}`;
+  const headers = { Authorization: `Bearer ${token}`, "User-Agent": "crushed", Accept: "application/vnd.github+json" };
+  if (method === "GET") {
+    const r = await fetch(url, { headers });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return { sha: j.sha, text: Buffer.from(j.content || "", "base64").toString("utf8") };
+  }
+  const cur = await ghFile("GET", path).catch(() => null);
+  const body = { message: "oracle-ledger update [skip render]", content: Buffer.from(content).toString("base64") };
+  if (cur && cur.sha) body.sha = cur.sha;
+  const r = await fetch(url, { method: "PUT", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  return r.ok;
+}
+async function ledgerLoad() {
+  if (LEDGER) return LEDGER;
+  try { LEDGER = JSON.parse(fs.readFileSync(LEDGER_FILE, "utf8")); } catch { LEDGER = null; }
+  if (!LEDGER) {
+    try { const g = await ghFile("GET", process.env.GITHUB_LEDGER_PATH || LEDGER_FILE); if (g && g.text) LEDGER = JSON.parse(g.text); } catch { /* fresh */ }
+  }
+  if (!LEDGER || !Array.isArray(LEDGER.calls)) LEDGER = { calls: [] };
+  return LEDGER;
+}
+function ledgerSave() {
+  LEDGER_DIRTY = true;
+  if (LEDGER_TIMER) return;
+  LEDGER_TIMER = setTimeout(async () => {
+    LEDGER_TIMER = null; LEDGER_DIRTY = false;
+    const text = JSON.stringify(LEDGER);
+    try { fs.writeFileSync(LEDGER_FILE, text); } catch { /* read-only disk is fine */ }
+    try { await ghFile("PUT", process.env.GITHUB_LEDGER_PATH || LEDGER_FILE, text); } catch { /* best effort */ }
+  }, 8000);
+}
+function ledgerRecord(date, id, name, stat, n, p) {
+  if (!LEDGER || !date || !id || p == null) return;
+  const key = date + ":" + id + ":" + stat + ":" + (n || 1);
+  const hit = LEDGER.calls.find((c) => c.key === key);
+  if (hit) { hit.p = p; return; }
+  LEDGER.calls.push({ key, date, id, name, stat, n: n || 1, p, ts: Date.now(), hit: null });
+  if (LEDGER.calls.length > 4000) LEDGER.calls = LEDGER.calls.slice(-4000);
+  ledgerSave();
+}
+/* grade every call whose game day has passed, from the player's game log */
+async function ledgerGrade(todayDate) {
+  await ledgerLoad();
+  const due = LEDGER.calls.filter((c) => c.hit == null && !c.void && c.date < todayDate);
+  if (!due.length) return 0;
+  let graded = 0;
+  const byId = {};
+  due.forEach((c) => { (byId[c.id] = byId[c.id] || []).push(c); });
+  for (const id of Object.keys(byId).slice(0, 40)) {
+    let log = null;
+    try { log = await oracleGameLog(+id); } catch { continue; }
+    if (!Array.isArray(log)) continue;
+    byId[id].forEach((c) => {
+      const g = log.filter((r) => r.date === c.date);
+      if (!g.length) { if (Date.now() - c.ts > 3 * 864e5) c.void = true; return; }
+      const val = g.reduce((s, r) => s + (+r[FC_MEAN[c.stat]] || 0), 0);
+      c.hit = val >= c.n ? 1 : 0; c.actual = val; graded++;
+    });
+  }
+  if (graded) ledgerSave();
+  return graded;
+}
+function ledgerReport(stat, days) {
+  const since = days ? Date.now() - days * 864e5 : 0;
+  const rows = (LEDGER ? LEDGER.calls : []).filter((c) => c.hit != null && c.ts >= since && (!stat || c.stat === stat));
+  if (!rows.length) return null;
+  const n = rows.length, hits = rows.reduce((s, c) => s + c.hit, 0);
+  const avgP = rows.reduce((s, c) => s + c.p, 0) / n;
+  const brier = rows.reduce((s, c) => s + Math.pow(c.p / 100 - c.hit, 2), 0) / n;
+  return { n, hitPct: Math.round((hits / n) * 100), avgP: Math.round(avgP), brier: +brier.toFixed(3), pending: (LEDGER.calls || []).filter((c) => c.hit == null && !c.void).length };
+}
+function accuracyAnswer(rep, stat, days, set) {
+  const scope = (stat ? FC_LABEL[stat] + " calls" : "forecasts") + (days ? (days === 7 ? " this week" : days === 30 ? " this month" : " in the last " + days + " days") : "");
+  if (!rep) return { answer: "No graded " + scope + " yet \u2014 ask me about tonight (\u201cwill Judge homer tonight\u201d, \u201cwho\u2019s most likely to homer\u201d) and I grade every call against the box score the next day.", numbers: [], aligned: false };
+  const gap = rep.hitPct - rep.avgP;
+  const verdict = Math.abs(gap) <= 4 ? "well calibrated" : gap > 0 ? "running hot \u2014 reality is beating my numbers" : "running cold \u2014 I\u2019ve been too generous";
+  const st = starNumbers([{ v: rep.hitPct, next: false }], set);
+  return { answer: "My " + scope + ": " + rep.n + " graded \u00b7 I predicted " + rep.avgP + "% on average \u00b7 " + rep.hitPct + "% actually hit \u00b7 Brier " + rep.brier + " (0 is perfect, 0.25 is a coin flip). Verdict: " + verdict + "." + (rep.pending ? " " + rep.pending + " call" + (rep.pending === 1 ? "" : "s") + " still waiting on tonight." : ""), ...st };
+}
+/* ENTANGLEMENT \u2014 joint structure of the wave: given that X homers in a
+   realized game, how often does each other bat in that game homer too. */
+function entangleAnswer(per, joint, set) {
+  if (!joint) return { answer: per.name + " tonight: the wave hasn\u2019t collapsed for his game yet \u2014 ask again in a minute.", numbers: [], aligned: false, player: per.name };
+  const xi = joint.ids.findIndex((id) => String(id) === String(per.id));
+  if (xi < 0) return { answer: per.name + " isn\u2019t in the simulated lineup for his game.", numbers: [], aligned: false, player: per.name };
+  const N = joint.runs.length;
+  const withX = joint.runs.filter((r) => r.indexOf(xi) !== -1);
+  const nX = withX.length;
+  if (nX < 20) return { answer: per.name + " homers in only " + nX + " of " + N + " realities \u2014 too few to read who travels with him.", numbers: [], aligned: false, player: per.name };
+  const rows = joint.ids.map((id, yi) => {
+    if (yi === xi) return null;
+    const both = withX.filter((r) => r.indexOf(yi) !== -1).length;
+    const marg = joint.runs.filter((r) => r.indexOf(yi) !== -1).length;
+    const pc = both / nX, pm = marg / N;
+    return { name: joint.names[yi], pc, pm, lift: pm > 0 ? pc / pm : 0 };
+  }).filter((r) => r && r.pc > 0).sort((a, z) => z.pc - a.pc).slice(0, 3);
+  if (!rows.length) return { answer: "In the realities where " + per.name + " homers, nobody else in his game reliably joins him \u2014 his power is a solo act tonight.", numbers: [], aligned: false, player: per.name };
+  const st = starNumbers([{ v: Math.round((nX / N) * 100), next: false }], set);
+  return { answer: "If " + per.name + " homers (" + Math.round((nX / N) * 100) + "% of " + N + " realities), who else goes deep in those worlds: " + rows.map((r, i) => (i + 1) + ") " + r.name + " " + Math.round(r.pc * 100) + "% (" + Math.round(r.pm * 100) + "% overall, " + r.lift.toFixed(1) + "\u00d7)").join(" \u00b7 ") + ". Lift above 1.0 means their homers travel together \u2014 shared arm, shared air.", ...st, player: per.name };
+}
+/* THE OPENING \u2014 the Oracle speaks first: the sharpest thing it sees tonight. */
+function openingAnswer(b, wave, set, rep) {
+  const parts = [];
+  const rows = (wave && wave.rows) || [];
+  let leadName = null;
+  if (rows.length) {
+    const lead = rows.slice().sort((a, z) => (z.hrSim || 0) - (a.hrSim || 0))[0];
+    leadName = lead.name;
+    parts.push("Tonight the wave likes " + lead.name + " most \u2014 he goes deep in " + Math.round(lead.hrSim) + "% of " + wave.ran + " expert sims" + (lead.opp ? " vs " + lead.opp : "") + ".");
+    // biggest disagreement between the sims and the board
+    const dis = rows.filter((r) => r.name !== lead.name).map((r) => ({ r, d: (r.hrSim || 0) - (r.hrPct || 0) })).filter((x) => (x.r.hrPct || 0) >= 8 || (x.r.hrSim || 0) >= 12)
+      .sort((a, z) => Math.abs(z.d) - Math.abs(a.d))[0];
+    if (dis && Math.abs(dis.d) >= 6) {
+      parts.push("Biggest argument on the slate: " + dis.r.name + " \u2014 the sims say " + Math.round(dis.r.hrSim) + "%, the board says " + (+dis.r.hrPct).toFixed(1) + "%. " + (dis.d > 0 ? "The matchup math sees more than the profile does." : "The profile is louder than tonight\u2019s matchup."));
+    }
+  } else if (b && (b.players || []).length) {
+    const top = b.players.slice().sort((x, y) => (y.hrPct || 0) - (x.hrPct || 0))[0];
+    leadName = top.name;
+    parts.push("The sims are still collapsing tonight\u2019s slate. From the board, " + top.name + " leads at " + (+top.hrPct || 0).toFixed(1) + "% HR chance.");
+  } else {
+    parts.push("Tonight\u2019s board is still assembling.");
+  }
+  if (rep && rep.n >= 5) parts.push("My homer calls this month: " + rep.hitPct + "% hit vs " + rep.avgP + "% predicted.");
+  parts.push("Ask me anything \u2014 tonight or the record books.");
+  const st = starNumbers(leadName && rows.length ? [{ v: Math.round(rows.slice().sort((a, z) => (z.hrSim || 0) - (a.hrSim || 0))[0].hrSim), next: false }] : [], set);
+  return { answer: parts.join(" "), ...st, player: leadName || undefined, opening: true };
+}
 function parseOracle(q) {
   let s = (q || "").toLowerCase().replace(/\u2019/g, "'").replace(/[?!.]/g, " ")
     .replace(/\b(?:on|during|for|of) the season\b/g, " ").replace(/\bthis season\b/g, " ").replace(/\bso far\b/g, " ")
     .replace(/\s+/g, " ").trim();
+  // FORECAST \u2014 questions about tonight's wave, not the past. Detected first
+  // so "will he homer tonight" never falls into a season-stat pattern.
+  if (s === "__opening__") return { intent: "opening" };
+  if (/\b(how accurate|track record|grade yourself|your accuracy|how often are you right|are you any good|how good are you|how (?:have|are|were|did) you (?:been )?(?:doing|do|done)|your (?:\w+ )?(?:calls|picks|forecasts|predictions)|hit rate)\b/.test(s)) {
+    const sw = s.match(new RegExp("\\b" + FC_STAT + "\\b"));
+    const stat = sw ? fcStat(sw[0]) : null;
+    const days = /\b(this|last|past) week\b|\b7 days\b/.test(s) ? 7 : /\b(this|last|past) month\b|\b30 days\b/.test(s) ? 30 : /\b(today|yesterday|last night)\b/.test(s) ? 2 : null;
+    return { intent: "accuracy", stat, n: days };
+  }
+  let em;
+  if ((em = s.match(/^(?:if|when)\s+(.+?)\s+(?:homers|goes deep|hits a homer|hits one|hits one out|goes yard|bombs|takes one deep)\b/)) ||
+      (em = s.match(/^who(?:'s| is| else)?\s+(?:is |are )?(?:homers?|goes deep|entangled|correlated|linked|tied|travels|goes)\s+(?:with|to|alongside)\s+(.+?)$/)) ||
+      (em = s.match(/^(?:what(?:'s| is)\s+)?(.+?)(?:'s)?\s+(?:entanglement|entangled|correlations?|partners?|running mates?)\b/))) {
+    const name = em[1].replace(/\b(?:tonight|today|does|do)\b/g, " ").replace(/\s+/g, " ").trim();
+    if (name && !/^(who|what|which)$/.test(name)) return { intent: "entangle", name };
+  }
+  const fc = parseForecast(s);
+  if (fc) return fc;
   // qualifiers \u2014 detected AND stripped on a masked copy where "home run(s)"
   // is tokenized, so bare "road"/"home"/"away" prefixes ("road home runs",
   // "home hits") read as locations without ever eating the stat itself
@@ -2819,12 +3085,12 @@ function parseOracle(q) {
       (m = s.match(/(.+?)(?:'s?)?\s+lead[- ]?off (?:hr|homers?|home ?runs?)/))) {
     return { intent: "leadoff", name: m[1].replace(/^(?:how many|what(?: is| are| about)?|show me|tell me)\s*/, "") };
   }
-  if ((m = s.match(/(?:how many|total) (hr|homers?|home ?runs?|rbis?|hits?|walks?|strikeouts?|ks?|doubles?|triples?|steals?|stolen bases?|runs?|total bases?)(?:'s)?\s+(?:does|has|for|did)?\s*(.+?)\s*(?:have|hit|this season|$)/))) {
-    const map = { hr:"hr", homer:"hr", homers:"hr", homerun:"hr", homeruns:"hr", "home run":"hr", "home runs":"hr", rbi:"rbi", rbis:"rbi", hit:"hits", hits:"hits", walk:"bb", walks:"bb", strikeout:"so", strikeouts:"so", k:"so", ks:"so", double:"doubles", doubles:"doubles", triple:"triples", triples:"triples", steal:"sb", steals:"sb", "stolen base":"sb", "stolen bases":"sb", run:"r", runs:"r", "total base":"tb", "total bases":"tb" };
+  if ((m = s.match(/(?:how many|total) (hr|homers?|home ?runs?|rbis?|ribbies|ribby|hits?|walks?|strikeouts?|ks?|doubles?|triples?|steals?|stolen bases?|runs?|total bases?|bases?)(?:'s)?\s+(?:does|has|for|did)?\s*(.+?)\s*(?:have|hit|this season|$)/))) {
+    const map = { hr:"hr", homer:"hr", homers:"hr", homerun:"hr", homeruns:"hr", "home run":"hr", "home runs":"hr", rbi:"rbi", rbis:"rbi", hit:"hits", hits:"hits", walk:"bb", walks:"bb", strikeout:"so", strikeouts:"so", k:"so", ks:"so", double:"doubles", doubles:"doubles", triple:"triples", triples:"triples", steal:"sb", steals:"sb", "stolen base":"sb", "stolen bases":"sb", run:"r", runs:"r", "total base":"tb", "total bases":"tb", base:"tb", bases:"tb", ribby:"rbi", ribbies:"rbi" };
     return withQual({ intent: "seasonStat", stat: map[m[1].replace(/ +/g, " ")] || "hr", name: m[2] });
   }
-  if ((m = s.match(/^(.+?)(?:'s?)?\s+(hr|homers?|home ?runs?|rbis?|hits?|walks?|strikeouts?|ks?|doubles?|triples?|steals?|stolen bases?|runs?|total bases?)$/))) {
-    const bmap = { hr:"hr", homer:"hr", homers:"hr", homerun:"hr", homeruns:"hr", "home run":"hr", "home runs":"hr", rbi:"rbi", rbis:"rbi", hit:"hits", hits:"hits", walk:"bb", walks:"bb", strikeout:"so", strikeouts:"so", k:"so", ks:"so", double:"doubles", doubles:"doubles", triple:"triples", triples:"triples", steal:"sb", steals:"sb", "stolen base":"sb", "stolen bases":"sb", run:"r", runs:"r", "total base":"tb", "total bases":"tb" };
+  if ((m = s.match(/^(.+?)(?:'s?)?\s+(hr|homers?|home ?runs?|rbis?|ribbies|ribby|hits?|walks?|strikeouts?|ks?|doubles?|triples?|steals?|stolen bases?|runs?|total bases?|bases?)$/))) {
+    const bmap = { hr:"hr", homer:"hr", homers:"hr", homerun:"hr", homeruns:"hr", "home run":"hr", "home runs":"hr", rbi:"rbi", rbis:"rbi", hit:"hits", hits:"hits", walk:"bb", walks:"bb", strikeout:"so", strikeouts:"so", k:"so", ks:"so", double:"doubles", doubles:"doubles", triple:"triples", triples:"triples", steal:"sb", steals:"sb", "stolen base":"sb", "stolen bases":"sb", run:"r", runs:"r", "total base":"tb", "total bases":"tb", base:"tb", bases:"tb", ribby:"rbi", ribbies:"rbi" };
     return withQual({ intent: "seasonStat", stat: bmap[m[2].replace(/ +/g, " ")] || "hr", name: m[1].replace(/^(?:how many|what(?: is| are| about)?|show me|tell me)\s*/, "") });
   }
   if ((m = s.match(/(?:who leads|highest|best|top).*(hr%|hr percent|crushed|cs\b|q\b|quantom|ops)/))) {
@@ -2888,10 +3154,10 @@ const ORACLE_STATS = {
   keys: { hr:"hr", homer:"hr", homers:"hr", homerun:"hr", homeruns:"hr", "home run":"hr", "home runs":"hr",
     rbi:"rbi", rbis:"rbi", hit:"h", hits:"h", walk:"bb", walks:"bb", strikeout:"so", strikeouts:"so", k:"so", ks:"so",
     double:"d", doubles:"d", triple:"t", triples:"t", run:"r", runs:"r", steal:"sb", steals:"sb",
-    "stolen base":"sb", "stolen bases":"sb", "total base":"tb", "total bases":"tb" },
+    "stolen base":"sb", "stolen bases":"sb", "total base":"tb", "total bases":"tb", base:"tb", bases:"tb", ribby:"rbi", ribbies:"rbi" },
   labels: { hr:"home runs", rbi:"RBI", h:"hits", bb:"walks", so:"strikeouts", d:"doubles", t:"triples", r:"runs", sb:"stolen bases", tb:"total bases" },
 };
-const STATWORD = "(hr|homers?|home ?runs?|rbis?|hits?|walks?|strikeouts?|ks?|doubles?|triples?|runs?|stolen bases?|steals?|total bases?)";
+const STATWORD = "(hr|homers?|home ?runs?|rbis?|ribbies|ribby|hits?|walks?|strikeouts?|ks?|doubles?|triples?|runs?|stolen bases?|steals?|total bases?|bases?)";
 function oracleInitials(players, frag) {
   const f = (frag || "").replace(/[^a-z]/g, "");
   if (f.length < 2 || f.length > 4) return null;
@@ -2930,7 +3196,7 @@ app.get("/api/oracle", async (req, res) => {
       if (ctx) parsed.name = ctx;
       else return res.json({ answer: "Who do you mean? Ask once with the player\u2019s name \u2014 after that, \u201che\u201d works.", numbers: [], aligned: false, set });
     }
-    const key = "oracle:" + day + ":" + parsed.intent + ":" + JSON.stringify([parsed.name, parsed.n, parsed.stat, parsed.key, parsed.loc, parsed.hand]).toLowerCase();
+    const key = "oracle:" + day + ":" + parsed.intent + ":" + JSON.stringify([parsed.name, parsed.n, parsed.stat, parsed.key, parsed.loc, parsed.hand, parsed.why || null]).toLowerCase();
     const out = await cached(key, 0.5 * H, async () => {
       const findP = async () => {
         if (!parsed.name) return null;
@@ -3059,6 +3325,50 @@ app.get("/api/oracle", async (req, res) => {
         st.suffix = "";
         return { answer: per.name + " over his last " + win.length + " games: " + h + " hits, " + hr + " HR, " + rbi + " RBI" + (ab ? " (." + String(Math.round((h / ab) * 1000)).padStart(3, "0") + " avg)" : "") + ".", ...st, player: per.name };
       }
+      if (parsed.intent === "opening") {
+        const wave = cachePeek(`quantum:${day}`, 1 * H);
+        if (!wave && b && (b.players || []).length) { quantumWave(day).catch(() => {}); }
+        let rep = null;
+        try { await ledgerGrade(dayDate("today")); rep = ledgerReport("hr", 30); } catch { rep = null; }
+        return openingAnswer(b, wave, set, rep);
+      }
+      if (parsed.intent === "accuracy") {
+        try { await ledgerGrade(dayDate("today")); } catch { /* grade later */ }
+        return accuracyAnswer(ledgerReport(parsed.stat, parsed.n), parsed.stat, parsed.n, set);
+      }
+      if (parsed.intent === "entangle") {
+        if (!b || !(b.players || []).length) return { answer: "Tonight\u2019s board is still assembling \u2014 ask again shortly.", numbers: [], aligned: false };
+        const per = await findP();
+        if (!per) return { answer: "I couldn\u2019t find that player \u2014 try his last name.", numbers: [], aligned: false };
+        if (!per.board) return { answer: per.name + " isn\u2019t on tonight\u2019s slate, so there\u2019s no wave to entangle him with.", numbers: [], aligned: false, player: per.name };
+        const wave = cachePeek(`quantum:${day}`, 1 * H);
+        if (!wave) { quantumWave(day).catch(() => {}); }
+        const joint = wave && wave.joint ? wave.joint[per.board.gamePk] : null;
+        return entangleAnswer(per, joint, set);
+      }
+      if (parsed.intent === "forecast" || parsed.intent === "forecastLeader") {
+        if (!b || !(b.players || []).length) return { answer: "Tonight\u2019s board is still assembling \u2014 ask again shortly.", numbers: [], aligned: false };
+        // read the wave without blocking: if it isn't collapsed yet, start it
+        // in the background and answer from the board this time
+        let wave = cachePeek(`quantum:${day}`, 1 * H);
+        if (!wave) { quantumWave(day).catch(() => {}); }
+        const rows = (wave && wave.rows) || [];
+        if (parsed.intent === "forecastLeader") {
+          if (!rows.length) {
+            const pool = b.players.slice().sort((x, y) => (y.hrPct || 0) - (x.hrPct || 0)).slice(0, 3);
+            const st = starNumbers([{ v: Math.round(pool[0].hrPct || 0), next: false }], set);
+            return { answer: "The sims are still collapsing \u2014 from the board, tonight\u2019s HR% leaders: " + pool.map((p, i) => (i + 1) + ") " + p.name + " " + (p.hrPct || 0).toFixed(1) + "%").join(" \u00b7 ") + ". Ask again in a minute for the full wave.", ...st, player: pool[0].name };
+          }
+          const la = forecastLeaderAnswer(rows, parsed, set, wave.ran);
+          try { await ledgerLoad(); const lead = rows.map((r) => ({ r, p: fcProb(r, parsed.stat || "hr", parsed.n || 1) })).sort((a, z) => z.p - a.p)[0]; if (lead) ledgerRecord(dayDate(day), lead.r.id, lead.r.name, parsed.stat || "hr", parsed.n || 1, Math.round(lead.p * 100)); } catch { /* ledger is best effort */ }
+          return la;
+        }
+        const per = await findP();
+        if (!per) return { answer: "I couldn\u2019t find that player \u2014 try his last name.", numbers: [], aligned: false };
+        const row = rows.find((r) => String(r.id) === String(per.id)) || null;
+        if (row) { try { await ledgerLoad(); ledgerRecord(dayDate(day), per.id, per.name, parsed.stat || "hr", parsed.n || 1, Math.round(fcProb(row, parsed.stat || "hr", parsed.n || 1) * 100)); } catch { /* best effort */ } }
+        return forecastAnswer(per, row, per.board || null, parsed, set, wave && wave.ran);
+      }
       if (parsed.intent === "leader") {
         if (!b || !(b.players || []).length) return { answer: "The board is still assembling \u2014 ask again shortly.", numbers: [], aligned: false };
         const pool = b.players.slice().sort((x, y) => (y.hrPct || 0) - (x.hrPct || 0)).slice(0, 3);
@@ -3074,7 +3384,7 @@ app.get("/api/oracle", async (req, res) => {
         }
         return { answer: "He\u2019s not on tonight\u2019s board \u2014 season questions work for any player.", numbers: [], aligned: false };
       }
-      return { answer: "Ask me things like: \u201chow many times has Devers had 3 RBI in a game\u201d \u00b7 \u201chow many games with 2+ homers\u201d \u00b7 \u201cmost hits Judge has in a game\u201d \u00b7 \u201cSoto\u2019s hitting streak\u201d \u00b7 \u201chow many walks does Harper have\u201d \u00b7 \u201cwhen did Alvarez last homer\u201d \u00b7 \u201cJudge\u2019s last 10 games\u201d \u00b7 \u201cwho leads HR% tonight\u201d \u00b7 \u201cAbrams\u2019 leadoff homers\u201d \u2014 any counting stat works: HR, RBI, hits, walks, Ks, doubles, triples, runs, steals, total bases \u2014 and you can add \u2018at home\u2019, \u2018on the road\u2019, \u2018vs lefties\u2019, or \u2018vs righties\u2019 to any of them. Follow-ups work \u2014 after any answer, \u2018he\u2019 means that player.", numbers: [], aligned: false };
+      return { answer: "Ask me things like: \u201chow many times has Devers had 3 RBI in a game\u201d \u00b7 \u201chow many games with 2+ homers\u201d \u00b7 \u201cmost hits Judge has in a game\u201d \u00b7 \u201cSoto\u2019s hitting streak\u201d \u00b7 \u201chow many walks does Harper have\u201d \u00b7 \u201cwhen did Alvarez last homer\u201d \u00b7 \u201cJudge\u2019s last 10 games\u201d \u00b7 \u201cwho leads HR% tonight\u201d \u00b7 \u201cAbrams\u2019 leadoff homers\u201d \u00b7 and about tonight: \u201cwho\u2019s most likely to homer tonight\u201d \u00b7 \u201cwill Judge homer tonight\u201d \u00b7 \u201cwho\u2019s the best bet for 2 RBI\u201d \u00b7 \u201cSoto\u2019s expected line\u201d \u00b7 \u201cif Judge homers who else goes deep\u201d \u00b7 \u201chow accurate were you this week\u201d \u2014 any counting stat works: HR, RBI, hits, walks, Ks, doubles, triples, runs, steals, total bases \u2014 and you can add \u2018at home\u2019, \u2018on the road\u2019, \u2018vs lefties\u2019, or \u2018vs righties\u2019 to any of them. Follow-ups work \u2014 after any answer, \u2018he\u2019 means that player.", numbers: [], aligned: false };
     });
     res.json({ ...out, set });
   } catch (e) { res.status(500).json({ error: e.message }); }
