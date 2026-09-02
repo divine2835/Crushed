@@ -3005,6 +3005,30 @@ function openingAnswer(b, wave, set, rep) {
   const st = starNumbers(leadName && rows.length ? [{ v: Math.round(rows.slice().sort((a, z) => (z.hrSim || 0) - (a.hrSim || 0))[0].hrSim), next: false }] : [], set);
   return { answer: parts.join(" "), ...st, player: leadName || undefined, opening: true };
 }
+/* consecutive-games stretches: maximal runs of games (in order played) where
+   the stat landed every game. Each stretch counts once; longest is reported. */
+function consecStretches(log, stat, n) {
+  const runs = []; let cur = [];
+  log.forEach((g) => { if ((g[stat] || 0) > 0) cur.push(g); else { if (cur.length) runs.push(cur); cur = []; } });
+  if (cur.length) runs.push(cur);
+  const qual = runs.filter((r) => r.length >= n);
+  const longest = runs.reduce((m, r) => Math.max(m, r.length), 0);
+  return { qual, longest, last: qual.length ? qual[qual.length - 1] : null };
+}
+function consecAnswer(per, log, parsed, set) {
+  const stat = parsed.stat || "hr", n = parsed.n || 2;
+  const lab = ORACLE_STATS.labels[stat] ? ORACLE_STATS.labels[stat].replace(/s$/, "") : stat;
+  const what = (n === 2 ? "back-to-back games" : n + " straight games") + " with a " + lab;
+  const r = consecStretches(log, stat, n);
+  const span = (run) => { const tail = run.slice(-n); return tail[0].date + " \u2192 " + tail[tail.length - 1].date + (tail[tail.length - 1].opp ? " (last vs " + tail[tail.length - 1].opp + ")" : ""); };
+  if (parsed.mode === "last") {
+    if (!r.last) { const st = starNumbers([0, r.longest], set); return { answer: per.name + " hasn\u2019t had " + what + " this season" + (r.longest ? " \u2014 his longest run is " + r.longest + " straight." : ".") + st.suffix, ...st, player: per.name }; }
+    const st = starNumbers([r.last.length, r.qual.length], set);
+    return { answer: per.name + " last had " + what + " on " + span(r.last) + (r.last.length > n ? " \u2014 part of a " + r.last.length + "-game run" : "") + ". He\u2019s done it " + r.qual.length + " time" + (r.qual.length === 1 ? "" : "s") + " this season." + st.suffix, ...st, player: per.name };
+  }
+  const st = starNumbers([r.qual.length, r.longest], set);
+  return { answer: per.name + " has had " + what + " " + r.qual.length + " time" + (r.qual.length === 1 ? "" : "s") + " this season (each stretch counted once)" + (r.last ? " \u2014 most recently " + span(r.last) : "") + (r.longest >= n ? "; longest run " + r.longest + " straight." : ".") + st.suffix, ...st, player: per.name };
+}
 function parseOracle(q) {
   let s = (q || "").toLowerCase().replace(/\u2019/g, "'").replace(/[?!.]/g, " ")
     .replace(/\b(?:on|during|for|of) the season\b/g, " ").replace(/\bthis season\b/g, " ").replace(/\bso far\b/g, " ")
@@ -3051,6 +3075,31 @@ function parseOracle(q) {
   const num = (w) => ({ a:1, an:1, one:1, two:2, three:3, four:4, five:5 }[w] || parseInt(w, 10) || null);
   const statKey = (w) => ORACLE_STATS.keys[(w || "").replace(/ +/g, " ").trim()] || null;
   let m;
+  // CONSECUTIVE GAMES \u2014 "back to back", "in a row", "consecutive", "N straight games".
+  // "how many times has X homered in back to back games" -> count of stretches
+  // "when was the last time X hit 2 home runs in a row" -> most recent stretch
+  const consecTrig = /back[ -]?to[ -]?back|in a row|consecutive|straight games|\b\d+ straight\b|(?:two|three|four|five) straight/;
+  if (consecTrig.test(s) && !/^how many (?:games|consecutive)/.test(s)) {
+    const verbs = "(?:hit|had|has had|homered|homer|gone deep|went deep|go deep|got|gotten|collected|recorded|driven in|drove in|walked|scored|stolen|stole|reached)";
+    let cm, mode = null;
+    if ((cm = s.match(new RegExp("^(?:how many times|how often|how many separate times) (?:has|have|did|was) (.+?) " + verbs + "\\b(.*)$")))) mode = "count";
+    else if ((cm = s.match(new RegExp("^(?:when (?:was|is) the (?:last|most recent) time|when did|when was the last|last time|most recent time|when'?s the last time) (.+?) (?:last )?" + verbs + "\\b(.*)$")))) mode = "last";
+    if (mode) {
+      const name = cm[1].replace(/\b(?:the|that|last|time)\b/g, " ").replace(/\s+/g, " ").trim();
+      const rest = cm[2] || "";
+      const verb = s.slice(cm.index + cm[0].indexOf(cm[1]) + cm[1].length).match(new RegExp("^\\s*(?:last )?" + verbs));
+      const v = verb ? verb[0].trim() : "";
+      const sw = rest.match(new RegExp("\\b" + STATWORD + "\\b")) || s.match(new RegExp("\\b" + STATWORD + "\\b"));
+      let stat = /driv|drove/.test(v) ? "rbi" : (sw ? statKey(sw[1] || sw[0]) : null);
+      if (!stat) stat = /homer|deep/.test(v) ? "hr" : /walk/.test(v) ? "bb" : /scor/.test(v) ? "r" : /stol/.test(v) ? "sb" : "h";
+      const w2n = { two: 2, three: 3, four: 4, five: 5 };
+      let n = 2;
+      const nm = s.match(/\b(\d+|two|three|four|five)\s*\+?\s*(?:straight|consecutive|games in a row|in a row|game)/) || s.match(new RegExp("\\b(\\d+|two|three|four|five)\\s+" + STATWORD + "\\s+in a row"));
+      if (nm) n = w2n[nm[1]] || +nm[1] || 2;
+      if (n < 2) n = 2;
+      if (name) return withQual({ intent: "consec", mode, name, stat, n });
+    }
+  }
   if ((m = s.match(/(?:how many )?consecutive games (?:has |have |did )?(.+?)\s+(homered|homer|hit safely|hit|walked|scored|driven in|stolen)/))) {
     const vmap = { homered: "hr", homer: "hr", "hit safely": "h", hit: "h", walked: "bb", scored: "r", "driven in": "rbi", stolen: "sb" };
     return withQual({ intent: "streak", name: m[1], stat: vmap[m[2]] || "h" });
@@ -3196,7 +3245,7 @@ app.get("/api/oracle", async (req, res) => {
       if (ctx) parsed.name = ctx;
       else return res.json({ answer: "Who do you mean? Ask once with the player\u2019s name \u2014 after that, \u201che\u201d works.", numbers: [], aligned: false, set });
     }
-    const key = "oracle:" + day + ":" + parsed.intent + ":" + JSON.stringify([parsed.name, parsed.n, parsed.stat, parsed.key, parsed.loc, parsed.hand, parsed.why || null]).toLowerCase();
+    const key = "oracle:" + day + ":" + parsed.intent + ":" + JSON.stringify([parsed.name, parsed.n, parsed.stat, parsed.key, parsed.loc, parsed.hand, parsed.why || null, parsed.mode || null]).toLowerCase();
     const out = await cached(key, 0.5 * H, async () => {
       const findP = async () => {
         if (!parsed.name) return null;
@@ -3269,6 +3318,13 @@ app.get("/api/oracle", async (req, res) => {
         log.forEach((g) => { if ((g[sk] || 0) > (best[sk] || 0)) best = g; });
         const st = starNumbers([best[sk] || 0], set);
         return { answer: per.name + "\u2019s season high is " + (best[sk] || 0) + " " + ORACLE_STATS.labels[sk] + " in a game" + (parsed.loc ? " " + SPLIT_LABELS[parsed.loc] : "") + " \u2014 " + best.date + " vs " + best.opp + "." + st.suffix, ...st, player: per.name };
+      }
+      if (parsed.intent === "consec") {
+        const per = await findP();
+        if (!per) return { answer: "I couldn\u2019t place that name \u2014 try the full last name.", numbers: [], aligned: false };
+        let log = (await oracleGameLog(per.id)).filter((g) => g.ab > 0);
+        if (parsed.loc) log = log.filter((g) => g.isHome === (parsed.loc === "h"));
+        return consecAnswer(per, log, parsed, set);
       }
       if (parsed.intent === "streak") {
         const per = await findP();
@@ -3384,7 +3440,7 @@ app.get("/api/oracle", async (req, res) => {
         }
         return { answer: "He\u2019s not on tonight\u2019s board \u2014 season questions work for any player.", numbers: [], aligned: false };
       }
-      return { answer: "Ask me things like: \u201chow many times has Devers had 3 RBI in a game\u201d \u00b7 \u201chow many games with 2+ homers\u201d \u00b7 \u201cmost hits Judge has in a game\u201d \u00b7 \u201cSoto\u2019s hitting streak\u201d \u00b7 \u201chow many walks does Harper have\u201d \u00b7 \u201cwhen did Alvarez last homer\u201d \u00b7 \u201cJudge\u2019s last 10 games\u201d \u00b7 \u201cwho leads HR% tonight\u201d \u00b7 \u201cAbrams\u2019 leadoff homers\u201d \u00b7 and about tonight: \u201cwho\u2019s most likely to homer tonight\u201d \u00b7 \u201cwill Judge homer tonight\u201d \u00b7 \u201cwho\u2019s the best bet for 2 RBI\u201d \u00b7 \u201cSoto\u2019s expected line\u201d \u00b7 \u201cif Judge homers who else goes deep\u201d \u00b7 \u201chow accurate were you this week\u201d \u2014 any counting stat works: HR, RBI, hits, walks, Ks, doubles, triples, runs, steals, total bases \u2014 and you can add \u2018at home\u2019, \u2018on the road\u2019, \u2018vs lefties\u2019, or \u2018vs righties\u2019 to any of them. Follow-ups work \u2014 after any answer, \u2018he\u2019 means that player.", numbers: [], aligned: false };
+      return { answer: "Ask me things like: \u201chow many times has Devers had 3 RBI in a game\u201d \u00b7 \u201chow many games with 2+ homers\u201d \u00b7 \u201cmost hits Judge has in a game\u201d \u00b7 \u201cSoto\u2019s hitting streak\u201d \u00b7 \u201chow many walks does Harper have\u201d \u00b7 \u201cwhen did Alvarez last homer\u201d \u00b7 \u201cJudge\u2019s last 10 games\u201d \u00b7 \u201cwho leads HR% tonight\u201d \u00b7 \u201cAbrams\u2019 leadoff homers\u201d \u00b7 and about tonight: \u201cwho\u2019s most likely to homer tonight\u201d \u00b7 \u201cwill Judge homer tonight\u201d \u00b7 \u201cwho\u2019s the best bet for 2 RBI\u201d \u00b7 \u201cSoto\u2019s expected line\u201d \u00b7 \u201chow many times has Lowe homered in back to back games\u201d \u00b7 \u201cif Judge homers who else goes deep\u201d \u00b7 \u201chow accurate were you this week\u201d \u2014 any counting stat works: HR, RBI, hits, walks, Ks, doubles, triples, runs, steals, total bases \u2014 and you can add \u2018at home\u2019, \u2018on the road\u2019, \u2018vs lefties\u2019, or \u2018vs righties\u2019 to any of them. Follow-ups work \u2014 after any answer, \u2018he\u2019 means that player.", numbers: [], aligned: false };
     });
     res.json({ ...out, set });
   } catch (e) { res.status(500).json({ error: e.message }); }
