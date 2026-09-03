@@ -2161,14 +2161,14 @@ var ML_MIN_PITCHES = 10;
    pitch minimum still count toward totals but are excluded from rate blending). */
 function mixBlend(byPitch, mix, sel) {
   var picked = (mix || []).filter(function (m) { return !sel || sel.indexOf(m.pt) !== -1; });
-  var tot = { hr: 0, h: 0, ab: 0, pa: 0, bbe: 0, n: 0 }, wsum = 0, rates = {}, arsenal = 0;
+  var tot = { hr: 0, h: 0, ab: 0, pa: 0, bbe: 0, n: 0, fb: 0 }, wsum = 0, rates = {}, arsenal = 0;
   var keys = ["avg", "slg", "iso", "obp", "ops", "woba", "xwoba", "brl", "hard", "ev", "la", "ss", "fb", "hrfb", "pull", "pullAir", "whiff", "k"];
   keys.forEach(function (k) { rates[k] = { num: 0, den: 0 }; });
   picked.forEach(function (m) {
     arsenal += m.pct || 0;
     var a = byPitch && byPitch[m.pt];
     if (!a) return;
-    tot.hr += a.hr; tot.h += a.h; tot.ab += a.ab; tot.pa += a.pa; tot.bbe += a.bbe; tot.n += a.n;
+    tot.hr += a.hr; tot.h += a.h; tot.ab += a.ab; tot.pa += a.pa; tot.bbe += a.bbe; tot.n += a.n; tot.fb += a.fb;
     if (a.n < ML_MIN_PITCHES) return;
     var w = m.pct || 0; if (!w) return;
     var r = {
@@ -2187,6 +2187,8 @@ function mixBlend(byPitch, mix, sel) {
   });
   var out = { hr: tot.hr, h: tot.h, ab: tot.ab, pa: tot.pa, bbe: tot.bbe, pitches: tot.n, arsenal: arsenal, picked: picked.length, wsum: wsum };
   keys.forEach(function (k) { out[k] = rates[k].den ? rates[k].num / rates[k].den : null; });
+  // HR/FB is a ratio of two counts: pool it so the tile reconciles with the HR and FB% tiles beside it
+  out.hrfb = tot.fb ? tot.hr / tot.fb * 100 : null;
   return out;
 }
 function mlR3(v) { return v.toFixed(3).replace(/^0\./, "."); }
@@ -3311,7 +3313,7 @@ function setBanner(kind, msg) {
   var b = document.getElementById("banner");
   b.className = "banner show " + (kind === "live" ? "banner-live" : "banner-demo");
   b.innerHTML = msg;
-  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b93";
+  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b94";
 }
 
 /* ---------- data loading ---------- */
