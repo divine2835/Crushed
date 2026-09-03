@@ -236,6 +236,7 @@ async function savantRowsRaw(playerId, playerType) {
     stand: r.stand, p_throws: r.p_throws, description: r.description,
     game_date: r.game_date,
     xwoba: r.estimated_woba_using_speedangle, woba_value: r.woba_value, woba_denom: r.woba_denom,
+    lsa: r.launch_speed_angle, game_type: r.game_type,
   }));
 }
 /* small cached packs (a few KB each) */
@@ -262,9 +263,10 @@ function pitcherDamage(rows) {
 const SWING = new Set(["swinging_strike", "swinging_strike_blocked", "missed_bunt", "foul", "foul_tip", "hit_into_play", "foul_bunt", "bunt_foul_tip"]);
 function pitchSplitAggregates(rows) {
   const by = {};
-  const Z = () => ({ n: 0, pa: 0, ab: 0, h: 0, hr: 0, d2: 0, d3: 0, bb: 0, hbp: 0, so: 0, sf: 0, tb: 0, sw: 0, wh: 0, bbe: 0, hard: 0, brl: 0, evSum: 0, laSum: 0, laN: 0, ss: 0, fb: 0, gb: 0, ld: 0, pull: 0, pullAir: 0, xwSum: 0, wobaV: 0, wobaD: 0 });
+  const Z = () => ({ n: 0, pa: 0, ab: 0, h: 0, hr: 0, d2: 0, d3: 0, bb: 0, hbp: 0, so: 0, sf: 0, tb: 0, sw: 0, wh: 0, bbe: 0, hard: 0, brl: 0, evSum: 0, laSum: 0, laN: 0, ss: 0, fb: 0, pu: 0, gb: 0, ld: 0, pull: 0, pullAir: 0, xwSum: 0, wobaV: 0, wobaD: 0 });
   rows.forEach((r) => {
     if (!r.pitch_type) return;
+    if (r.game_type && r.game_type !== "R") return; // regular season only \u2014 no spring, no October
     const a = by[r.pitch_type] = by[r.pitch_type] || Z();
     a.n++;
     if (SWING.has(r.description)) a.sw++;
@@ -292,10 +294,12 @@ function pitchSplitAggregates(rows) {
       a.bbe++;
       const lsp = +r.launch_speed, la = +r.launch_angle;
       if (lsp >= 95) a.hard++;
-      if (isBarrel(lsp, la)) a.brl++;
+      // Savant's own barrel classification (launch_speed_angle 6) when present; formula otherwise
+      if (r.lsa !== undefined && r.lsa !== null && r.lsa !== "") { if (+r.lsa === 6) a.brl++; } else if (isBarrel(lsp, la)) a.brl++;
       if (Number.isFinite(lsp)) a.evSum += lsp;
       if (Number.isFinite(la)) { a.laSum += la; a.laN++; if (la >= 8 && la <= 32) a.ss++; }
-      if (r.bb_type === "fly_ball" || r.bb_type === "popup") a.fb++;
+      if (r.bb_type === "fly_ball") a.fb++; // Statcast convention: popups are not fly balls
+      if (r.bb_type === "popup") a.pu++;
       if (r.bb_type === "ground_ball") a.gb++;
       if (r.bb_type === "line_drive") a.ld++;
       const dx = (+r.hc_x) - 125.42, dz = 198.27 - (+r.hc_y);
