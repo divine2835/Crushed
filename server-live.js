@@ -235,6 +235,7 @@ async function savantRowsRaw(playerId, playerType) {
     launch_speed: r.launch_speed, launch_angle: r.launch_angle,
     stand: r.stand, p_throws: r.p_throws, description: r.description,
     game_date: r.game_date,
+    xwoba: r.estimated_woba_using_speedangle, woba_value: r.woba_value, woba_denom: r.woba_denom,
   }));
 }
 /* small cached packs (a few KB each) */
@@ -255,8 +256,63 @@ function pitcherDamage(rows) {
   return { vsPitchAllowed: vs, hrByPtAllowed: hrpt, hrAllowed: hr };
 }
 
-const batterPack = (id) => cached(`bpk2:${id}`, 12 * H, async () =>
-  batterAggregates(await savantRowsRaw(id, "batter")));
+/* MIX LAB \u2014 the batter's Statcast profile split by the pitch type he saw.
+   Raw counters per type; the frontend blends them against tonight's starter's
+   usage so toggling pitches recomputes instantly with no server round trip. */
+const SWING = new Set(["swinging_strike", "swinging_strike_blocked", "missed_bunt", "foul", "foul_tip", "hit_into_play", "foul_bunt", "bunt_foul_tip"]);
+function pitchSplitAggregates(rows) {
+  const by = {};
+  const Z = () => ({ n: 0, pa: 0, ab: 0, h: 0, hr: 0, d2: 0, d3: 0, bb: 0, hbp: 0, so: 0, sf: 0, tb: 0, sw: 0, wh: 0, bbe: 0, hard: 0, brl: 0, evSum: 0, laSum: 0, laN: 0, ss: 0, fb: 0, gb: 0, ld: 0, pull: 0, pullAir: 0, xwSum: 0, wobaV: 0, wobaD: 0 });
+  rows.forEach((r) => {
+    if (!r.pitch_type) return;
+    const a = by[r.pitch_type] = by[r.pitch_type] || Z();
+    a.n++;
+    if (SWING.has(r.description)) a.sw++;
+    if (WHIFF.has(r.description)) a.wh++;
+    const ev = r.events;
+    if (ev) {
+      a.pa++;
+      if (AB_END.has(ev)) { a.ab++; a.tb += TB[ev] || 0; }
+      if (ev === "single" || ev === "double" || ev === "triple" || ev === "home_run") a.h++;
+      if (ev === "home_run") a.hr++;
+      if (ev === "double") a.d2++;
+      if (ev === "triple") a.d3++;
+      if (ev === "walk" || ev === "intent_walk") a.bb++;
+      if (ev === "hit_by_pitch") a.hbp++;
+      if (ev === "strikeout" || ev === "strikeout_double_play") a.so++;
+      if (ev === "sac_fly" || ev === "sac_fly_double_play") a.sf++;
+      const wd = +r.woba_denom, wv = +r.woba_value;
+      if (Number.isFinite(wd) && wd > 0) {
+        a.wobaD += wd; a.wobaV += Number.isFinite(wv) ? wv : 0;
+        const xw = +r.xwoba;
+        a.xwSum += (r.type === "X" && Number.isFinite(xw)) ? xw : (Number.isFinite(wv) ? wv : 0);
+      }
+    }
+    if (r.type === "X" && r.hc_x && r.hc_y) {
+      a.bbe++;
+      const lsp = +r.launch_speed, la = +r.launch_angle;
+      if (lsp >= 95) a.hard++;
+      if (isBarrel(lsp, la)) a.brl++;
+      if (Number.isFinite(lsp)) a.evSum += lsp;
+      if (Number.isFinite(la)) { a.laSum += la; a.laN++; if (la >= 8 && la <= 32) a.ss++; }
+      if (r.bb_type === "fly_ball" || r.bb_type === "popup") a.fb++;
+      if (r.bb_type === "ground_ball") a.gb++;
+      if (r.bb_type === "line_drive") a.ld++;
+      const dx = (+r.hc_x) - 125.42, dz = 198.27 - (+r.hc_y);
+      if (dz > 0) {
+        const ang = Math.atan2(dx, dz) * 180 / Math.PI;
+        if ((r.stand === "R" && ang <= -15) || (r.stand === "L" && ang >= 15)) { a.pull++; if (Number.isFinite(la) && la >= 20) a.pullAir++; }
+      }
+    }
+  });
+  return by;
+}
+const batterPack = (id) => cached(`bpk3:${id}`, 12 * H, async () => {
+  const rows = await savantRowsRaw(id, "batter");
+  const agg = batterAggregates(rows);
+  agg.byPitch = pitchSplitAggregates(rows);
+  return agg;
+});
 function pitcherZoneUsage(rows) {
   const zc = {};
   let tot = 0;
@@ -2256,6 +2312,25 @@ async function quantumWave(day) {
       return { day, built: Date.now(), games: simmed, thin, ran: simmed * SIM_N, rows, joint };
   });
 }
+app.get("/api/mixlab", async (req, res) => {
+  try {
+    const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
+    const b = BOARDS[day];
+    if (!b || !(b.players || []).length) return res.json({ warming: true });
+    const out = [];
+    let pending = 0;
+    for (const p of b.players) {
+      const pk = cachePeek(`bpk3:${p.id}`, 12 * H);
+      if (!pk) { pending++; batterPack(p.id).catch(() => {}); }
+      out.push({
+        id: p.id, name: p.name, team: p.team, stand: p.stand || p.bats || null, gamePk: p.gamePk, hrPct: p.hrPct,
+        sp: p.sp ? { name: p.sp.name, hand: p.sp.hand, mix: (p.sp.mix || []).map((m) => ({ pt: m.pt, pct: m.pct, velo: m.velo })) } : null,
+        byPitch: pk ? pk.byPitch || null : null,
+      });
+    }
+    res.json({ day, built: Date.now(), season: SEASON, pending, players: out });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.get("/api/quantum", async (req, res) => {
   try {
     const day = req.query.day === "tomorrow" ? "tomorrow" : "today";

@@ -57,6 +57,31 @@ button { font-family: inherit; }
 .chip-hot { color: var(--ink); background: var(--hot); border-color: var(--hot); }
 .chip-cold { color: var(--cold); border-color: var(--cold); }
 
+.ml-btn { border-color: rgba(251,146,60,0.55); color: #fb923c; }
+.ml-on { color: var(--ink); border-color: #fb923c; background: #fb923c; box-shadow: 0 0 12px rgba(251,146,60,0.45); }
+.ml-card { background: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+.ml-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.ml-name { font-weight: 800; font-size: 17px; color: var(--chalk); }
+.ml-vs { color: var(--dim); font-size: 13px; }
+.ml-hr { margin-left: auto; font-family: "JetBrains Mono", monospace; font-weight: 700; color: #f6c453; }
+.ml-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.ml-chip { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--dim); cursor: pointer; }
+.ml-chip-on { color: #fb923c; border-color: #fb923c; background: rgba(251,146,60,0.12); }
+.ml-chip.ml-thin { opacity: 0.55; }
+.ml-label { font-size: 12px; color: var(--dim); margin-bottom: 8px; }
+.ml-legend { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--dim); margin-bottom: 10px; }
+.ml-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 2px; }
+.ml-dot.ml-good { background: #2ecc8f; } .ml-dot.ml-mid { background: #f6c453; } .ml-dot.ml-bad { background: #f43f5e; }
+.ml-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ml-tile { border: 1px solid var(--line); border-radius: 8px; padding: 10px 6px; text-align: center; background: var(--panel); }
+.ml-lab { font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); margin-bottom: 4px; }
+.ml-val { font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 17px; color: var(--chalk); }
+.ml-tile.ml-good { background: rgba(46,204,143,0.12); border-color: rgba(46,204,143,0.45); } .ml-tile.ml-good .ml-val { color: #2ecc8f; }
+.ml-tile.ml-mid { background: rgba(246,196,83,0.10); border-color: rgba(246,196,83,0.4); } .ml-tile.ml-mid .ml-val { color: #f6c453; }
+.ml-tile.ml-bad { background: rgba(244,63,94,0.12); border-color: rgba(244,63,94,0.45); } .ml-tile.ml-bad .ml-val { color: #f43f5e; }
+.ml-basis { font-size: 11px; color: var(--dim); margin-top: 8px; font-family: "JetBrains Mono", monospace; }
+.ml-pending { font-size: 12px; color: #fb923c; margin: 6px 0 10px; }
+.ml-fine { font-size: 11px; color: var(--dim); margin-top: 6px; line-height: 1.5; }
 .ora-msg.opening { border-color: rgba(192,132,252,0.55); background: linear-gradient(135deg, rgba(192,132,252,0.10), rgba(103,232,249,0.06)); }
 .ora-first { font-size: 9.5px; letter-spacing: 0.12em; font-weight: 800; color: #c084fc; text-transform: uppercase; }
 .a1-bases { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 7px; padding-top: 7px; border-top: 1px dashed rgba(148,163,184,0.18); }
@@ -859,7 +884,7 @@ var DEMO = {
 var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", oddsData:{}, oddsLoading:false, oddsBook:"best", oddsMenu:false,
   saved: (function () { try { return JSON.parse(localStorage.getItem("crushedSaved") || "[]").map(Number); } catch (e) { return []; } })(),
   simData:{}, simOpen:null, simLoading:false, simIdx:0, simLevel:"expert",
-  quantumData:{}, quantumLoading:false, destinyData:{}, destinyLoading:false, chatOpen:false, chat:[], chatBusy:false, chatBuilt:false, advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
+  quantumData:{}, quantumLoading:false, destinyData:{}, destinyLoading:false, chatOpen:false, chat:[], chatBusy:false, chatBuilt:false, mixlabData:{}, mixlabLoading:false, mixSel:{}, advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
   alerts: (function () { try { return JSON.parse(localStorage.getItem("crushedAlerts") || "[]"); } catch (e) { return []; } })(), profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", penArm:null, armZs:{}, armZsLoading:{}, pitch:null, hrSort:"hrPct", hrDir:"desc", slgMode:false, slgWin:"szn", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
@@ -2120,6 +2145,131 @@ function allInView() {
   }).join("");
 }
 /* QUANTOM — the slate collapsed into one ranked wave of expected lines. */
+/* ---------------- MIX LAB ---------------- */
+function loadMixLab() {
+  if (state.mixlabLoading || (state.mixlabData[state.day] && !state.mixlabData[state.day].pending)) return;
+  state.mixlabLoading = true;
+  fetch(apiBase + "/api/mixlab?day=" + state.day)
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (j) { state.mixlabData[state.day] = j; if (j.pending) setTimeout(function () { if (state.tab === "mixlab") loadMixLab(); }, 20000); })
+    .catch(function () { state.mixlabData[state.day] = { error: true }; })
+    .finally(function () { state.mixlabLoading = false; if (state.tab === "mixlab") render(); });
+}
+var ML_MIN_PITCHES = 10;
+/* blend the batter's per-pitch counters against the starter's usage of the selected pitches.
+   counts sum; every rate is computed per pitch then weighted by usage (types under the
+   pitch minimum still count toward totals but are excluded from rate blending). */
+function mixBlend(byPitch, mix, sel) {
+  var picked = (mix || []).filter(function (m) { return !sel || sel.indexOf(m.pt) !== -1; });
+  var tot = { hr: 0, h: 0, ab: 0, pa: 0, bbe: 0, n: 0 }, wsum = 0, rates = {}, arsenal = 0;
+  var keys = ["avg", "slg", "iso", "obp", "ops", "woba", "xwoba", "brl", "hard", "ev", "la", "ss", "fb", "hrfb", "pull", "pullAir", "whiff", "k"];
+  keys.forEach(function (k) { rates[k] = { num: 0, den: 0 }; });
+  picked.forEach(function (m) {
+    arsenal += m.pct || 0;
+    var a = byPitch && byPitch[m.pt];
+    if (!a) return;
+    tot.hr += a.hr; tot.h += a.h; tot.ab += a.ab; tot.pa += a.pa; tot.bbe += a.bbe; tot.n += a.n;
+    if (a.n < ML_MIN_PITCHES) return;
+    var w = m.pct || 0; if (!w) return;
+    var r = {
+      avg: a.ab ? a.h / a.ab : null, slg: a.ab ? a.tb / a.ab : null, iso: a.ab ? (a.tb - a.h) / a.ab : null,
+      obp: (a.ab + a.bb + a.hbp + a.sf) ? (a.h + a.bb + a.hbp) / (a.ab + a.bb + a.hbp + a.sf) : null,
+      woba: a.wobaD ? a.wobaV / a.wobaD : null, xwoba: a.wobaD ? a.xwSum / a.wobaD : null,
+      brl: a.bbe ? a.brl / a.bbe * 100 : null, hard: a.bbe ? a.hard / a.bbe * 100 : null,
+      ev: a.bbe ? a.evSum / a.bbe : null, la: a.laN ? a.laSum / a.laN : null, ss: a.bbe ? a.ss / a.bbe * 100 : null,
+      fb: a.bbe ? a.fb / a.bbe * 100 : null, hrfb: a.fb ? a.hr / a.fb * 100 : null,
+      pull: a.bbe ? a.pull / a.bbe * 100 : null, pullAir: a.bbe ? a.pullAir / a.bbe * 100 : null,
+      whiff: a.sw ? a.wh / a.sw * 100 : null, k: a.pa ? a.so / a.pa * 100 : null
+    };
+    r.ops = (r.obp != null && r.slg != null) ? r.obp + r.slg : null;
+    keys.forEach(function (k) { if (r[k] != null && isFinite(r[k])) { rates[k].num += r[k] * w; rates[k].den += w; } });
+    wsum += w;
+  });
+  var out = { hr: tot.hr, h: tot.h, ab: tot.ab, pa: tot.pa, bbe: tot.bbe, pitches: tot.n, arsenal: arsenal, picked: picked.length, wsum: wsum };
+  keys.forEach(function (k) { out[k] = rates[k].den ? rates[k].num / rates[k].den : null; });
+  return out;
+}
+function mlR3(v) { return v.toFixed(3).replace(/^0\./, "."); }
+function mlPct(v) { return v.toFixed(1) + "%"; }
+/* tile definitions: label, formatter, batter-edge / pitcher-edge thresholds */
+var ML_TILES = [
+  { k: "hr", lab: "HR", fmt: function (v) { return v; }, count: true },
+  { k: "avg", lab: "AVG", fmt: mlR3, good: 0.27, bad: 0.22 },
+  { k: "xwoba", lab: "xwOBA", fmt: mlR3, good: 0.36, bad: 0.3 },
+  { k: "brl", lab: "Barrel %", fmt: mlPct, good: 12, bad: 6 },
+  { k: "hard", lab: "Hard Hit %", fmt: mlPct, good: 45, bad: 35 },
+  { k: "k", lab: "K %", fmt: mlPct, good: 20, bad: 28, invert: true },
+  { k: "fb", lab: "Fly Ball %", fmt: mlPct, good: 35, bad: 25 },
+  { k: "ev", lab: "Exit Velo", fmt: function (v) { return v.toFixed(1); }, good: 91, bad: 87 },
+  { k: "slg", lab: "SLG", fmt: mlR3, good: 0.48, bad: 0.38 },
+  { k: "iso", lab: "ISO", fmt: mlR3, good: 0.2, bad: 0.13 },
+  { k: "hrfb", lab: "HR/FB %", fmt: mlPct, good: 18, bad: 10 },
+  { k: "pull", lab: "Pull %", fmt: mlPct, good: 42, bad: 35 },
+  { k: "ss", lab: "Sweet Spot %", fmt: mlPct, good: 36, bad: 28 },
+  { k: "whiff", lab: "Whiff %", fmt: mlPct, good: 22, bad: 30, invert: true },
+  { k: "ops", lab: "OPS", fmt: mlR3, good: 0.8, bad: 0.65 },
+  { k: "woba", lab: "wOBA", fmt: mlR3, good: 0.35, bad: 0.3 },
+  { k: "la", lab: "LA", fmt: function (v) { return v.toFixed(1) + "\u00b0"; }, band: [12, 22], badBand: [8, 28] },
+  { k: "pullAir", lab: "Pull-Air %", fmt: mlPct, good: 17, bad: 10 }
+];
+function mlEdge(t, v, out) {
+  if (v == null) return "";
+  if (t.count) { var per = out.pa ? v / out.pa : 0; return per >= 0.05 ? " ml-good" : per <= 0.025 ? " ml-bad" : " ml-mid"; }
+  if (t.band) return (v >= t.band[0] && v <= t.band[1]) ? " ml-good" : (v < t.badBand[0] || v > t.badBand[1]) ? " ml-bad" : " ml-mid";
+  if (t.invert) return v <= t.good ? " ml-good" : v >= t.bad ? " ml-bad" : " ml-mid";
+  return v >= t.good ? " ml-good" : v <= t.bad ? " ml-bad" : " ml-mid";
+}
+function mixLabCard(p) {
+  var sel = state.mixSel[p.id] || null;
+  var mix = (p.sp && p.sp.mix) || [];
+  var out = mixBlend(p.byPitch, mix, sel);
+  var chips = '<button class="ml-chip' + (!sel ? " ml-chip-on" : "") + '" data-mixfull="' + p.id + '">\u25cf FULL MIX</button>' +
+    mix.map(function (m) {
+      var on = sel && sel.indexOf(m.pt) !== -1, info = pInfo(m.pt), a = p.byPitch && p.byPitch[m.pt];
+      var thin = !a || a.n < ML_MIN_PITCHES;
+      return '<button class="ml-chip' + (on ? " ml-chip-on" : "") + (thin ? " ml-thin" : "") + '" data-mixpt="' + p.id + ":" + m.pt + '" style="' + (on ? "border-color:" + info.color + ";color:" + info.color : "") + '" title="' + (a ? a.n + " pitches seen this season" : "no pitches seen") + (thin ? " \u00b7 under the " + ML_MIN_PITCHES + "-pitch minimum, excluded from rate blending" : "") + '">\u25cf ' + info.label + " " + m.pct + "%</button>";
+    }).join("");
+  var label = !sel
+    ? "Clone of " + (p.sp ? p.sp.hand + "HP " + p.sp.name : "tonight\u2019s starter") + " \u00b7 full pitch mix weighted by actual usage \u00b7 " + out.arsenal + "% of arsenal"
+    : "Custom mix \u00b7 " + sel.map(function (pt) { return pInfo(pt).label; }).join(" \u00b7 ") + " \u00b7 " + out.arsenal + "% of arsenal";
+  var tiles = ML_TILES.map(function (t) {
+    var v = out[t.k];
+    var shown = v == null ? "\u2014" : t.fmt(v);
+    return '<div class="ml-tile' + mlEdge(t, v, out) + '"><div class="ml-lab">' + t.lab + '</div><div class="ml-val">' + shown + "</div></div>";
+  }).join("");
+  var basis = out.picked ? out.pa + " PA \u00b7 " + out.bbe + " batted balls vs the selected pitch types" : "no pitch types selected";
+  return '<div class="ml-card" id="mlcard-' + p.id + '">' +
+    '<div class="ml-head"><span class="ml-name">' + p.name + '</span><span class="ml-vs"> vs ' + (p.sp ? p.sp.hand + "HP " + p.sp.name : "TBD") + "</span>" +
+    (p.hrPct != null ? '<span class="ml-hr" title="Board HR chance tonight">' + (+p.hrPct).toFixed(1) + "%</span>" : "") + "</div>" +
+    '<div class="ml-chips">' + chips + "</div>" +
+    '<div class="ml-label">' + label + "</div>" +
+    '<div class="ml-legend"><span class="ml-dot ml-good"></span>Batter edge <span class="ml-dot ml-mid"></span>Neutral <span class="ml-dot ml-bad"></span>Pitcher edge</div>' +
+    '<div class="ml-grid">' + tiles + "</div>" +
+    '<div class="ml-basis">' + basis + "</div></div>";
+}
+function mixLabRepaint(pid) {
+  var d = state.mixlabData[state.day];
+  var p = d && d.players ? d.players.filter(function (x) { return String(x.id) === String(pid); })[0] : null;
+  var el = document.getElementById("mlcard-" + pid);
+  if (!p || !el) { render(); return; }
+  var tmp = document.createElement("div"); tmp.innerHTML = mixLabCard(p);
+  el.replaceWith(tmp.firstChild);
+}
+function mixLabView() {
+  var banner = '<div class="fn-banner" style="border-color:rgba(251,146,60,0.5)"><div class="fn-title" style="color:#fb923c">MIX LAB \u00b7 EVERY BAT, RE-PROFILED AGAINST TONIGHT\u2019S ARSENAL</div>' +
+    '<div class="fn-sub">Each card starts as a clone of the starter he faces: his Statcast line against the pitch types in that arm\u2019s arsenal, blended by how often the arm actually throws each one. Tap pitches to isolate them \u2014 counts sum, rates re-blend instantly. Green tiles are where the batter owns the edge, red where the pitcher does.</div></div>';
+  if (state.demo) return banner + '<div class="loading">MIX LAB runs on the live server \u2014 demo mode has no pitch-type splits.</div>';
+  var d = state.mixlabData[state.day];
+  if (!d) return banner + '<div class="loading">Splitting every bat on the slate by pitch type\u2026</div>';
+  if (d.error) return banner + '<div class="loading">Could not load the pitch-type splits \u2014 tap MIX LAB again.</div>';
+  if (d.warming) return banner + '<div class="loading">The board is still assembling \u2014 back in a moment.</div>';
+  var players = d.players.filter(function (p) { return !state.game || String(p.gamePk) === String(state.game); });
+  players.sort(function (a, b) { return (b.hrPct || 0) - (a.hrPct || 0); });
+  var note = d.pending ? '<div class="ml-pending">' + d.pending + ' bat' + (d.pending === 1 ? "" : "s") + ' still splitting \u2014 refreshing automatically.</div>' : "";
+  var fine = '<div class="ml-fine"><div><b>How it works:</b> weighted by the starter\u2019s pitch usage % \u00b7 updates instantly when pitches are toggled</div>' +
+    '<div><b>Data:</b> ' + d.season + ' regular season \u00b7 Statcast pitch classification via Baseball Savant \u00b7 min ' + ML_MIN_PITCHES + ' pitches per type for rate blending \u00b7 refreshed with the board</div></div>';
+  return banner + note + players.map(mixLabCard).join("") + fine;
+}
 function loadQuantum() {
   if (state.quantumLoading || state.quantumData[state.day]) return;
   state.quantumLoading = true;
@@ -2999,7 +3149,8 @@ function renderDaybar() {
     '<button class="god-btn saved-btn' + (state.tab === "savedx" ? " saved-on" : "") + '" data-savetab="1" aria-pressed="' + (state.tab === "savedx") + '">SAVED' + (state.saved.length ? " \u00b7 " + state.saved.length : "") + '</button>' +
     '<button class="god-btn sim-btn' + (state.tab === "simx" ? " sim-on" : "") + '" data-simtab="1" aria-pressed="' + (state.tab === "simx") + '">SIMULATOR</button>' +
     '<button class="god-btn qm-btn' + (state.tab === "quantum" ? " qm-on" : "") + '" data-qmtab="1" aria-pressed="' + (state.tab === "quantum") + '">QUANTOM</button>' +
-    '<button class="god-btn a1-btn' + (state.tab === "allin1" ? " a1-on" : "") + '" data-alltab="1" aria-pressed="' + (state.tab === "allin1") + '">ALL IN 1</button>';
+    '<button class="god-btn a1-btn' + (state.tab === "allin1" ? " a1-on" : "") + '" data-alltab="1" aria-pressed="' + (state.tab === "allin1") + '">ALL IN 1</button>' +
+    '<button class="god-btn ml-btn' + (state.tab === "mixlab" ? " ml-on" : "") + '" data-mltab="1" aria-pressed="' + (state.tab === "mixlab") + '">MIX LAB</button>';
 }
 function render() {
   renderDaybar();
@@ -3042,6 +3193,11 @@ function render() {
   if (state.tab === "destiny") {
     intro.innerHTML = 'Winner and loser for every game \u2014 the sims set the odds, and the day\u2019s numbers lean on teams whose next result completes a destined total in the standings.';
     board.innerHTML = destinyView();
+    return;
+  }
+  if (state.tab === "mixlab") {
+    intro.innerHTML = 'Every bat on the slate, re-profiled against the exact arsenal he faces tonight. Toggle pitches to build a custom mix \u2014 counts sum, rates blend by the starter\u2019s usage, tiles turn green where the batter owns the edge and red where the arm does.';
+    board.innerHTML = mixLabView();
     return;
   }
   if (state.tab === "allin1") {
@@ -3155,7 +3311,7 @@ function setBanner(kind, msg) {
   var b = document.getElementById("banner");
   b.className = "banner show " + (kind === "live" ? "banner-live" : "banner-demo");
   b.innerHTML = msg;
-  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b92";
+  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b93";
 }
 
 /* ---------- data loading ---------- */
@@ -3548,7 +3704,7 @@ document.addEventListener("keydown", function (e) {
   }
 });
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-slg],[data-slgwin],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-bookmenu],[data-bookpick],[data-save],[data-savetab],[data-simtab],[data-simgame],[data-simback],[data-simlvl],[data-qmtab],[data-alltab],[data-desttab],[data-orafab],[data-orasend],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-penarm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-slg],[data-slgwin],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-bookmenu],[data-bookpick],[data-save],[data-savetab],[data-simtab],[data-simgame],[data-simback],[data-simlvl],[data-qmtab],[data-alltab],[data-mltab],[data-mixpt],[data-mixfull],[data-desttab],[data-orafab],[data-orasend],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-penarm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -3642,6 +3798,31 @@ document.addEventListener("click", function (e) {
     if (state.tab === "allin1" && !state.demo) { loadQuantum(); loadWeak(); }
     return;
   }
+  if (el.dataset.mltab) {
+    state.tab = state.tab === "mixlab" ? "hr" : "mixlab";
+    state.god = false; state.ops = false; state.zoneMode = false; state.slgMode = false; state.open = null;
+    render();
+    if (state.tab === "mixlab" && !state.demo) loadMixLab();
+    return;
+  }
+  if (el.dataset.mixfull) {
+    delete state.mixSel[el.dataset.mixfull];
+    mixLabRepaint(el.dataset.mixfull);
+    return;
+  }
+  if (el.dataset.mixpt) {
+    var parts = el.dataset.mixpt.split(":"), pid = parts[0], pt = parts[1];
+    var cur = state.mixSel[pid];
+    if (!cur) {
+      state.mixSel[pid] = [pt];
+    } else {
+      var idx = cur.indexOf(pt);
+      if (idx === -1) cur.push(pt); else cur.splice(idx, 1);
+      if (!cur.length) delete state.mixSel[pid];
+    }
+    mixLabRepaint(pid);
+    return;
+  }
   if (el.dataset.qmtab) {
     state.tab = state.tab === "quantum" ? "hr" : "quantum";
     state.god = false; state.ops = false; state.zoneMode = false; state.slgMode = false; state.open = null;
@@ -3691,6 +3872,11 @@ document.addEventListener("click", function (e) {
   if (state.tab === "destiny") {
     intro.innerHTML = 'Winner and loser for every game \u2014 the sims set the odds, and the day\u2019s numbers lean on teams whose next result completes a destined total in the standings.';
     board.innerHTML = destinyView();
+    return;
+  }
+  if (state.tab === "mixlab") {
+    intro.innerHTML = 'Every bat on the slate, re-profiled against the exact arsenal he faces tonight. Toggle pitches to build a custom mix \u2014 counts sum, rates blend by the starter\u2019s usage, tiles turn green where the batter owns the edge and red where the arm does.';
+    board.innerHTML = mixLabView();
     return;
   }
   if (state.tab === "allin1") {
