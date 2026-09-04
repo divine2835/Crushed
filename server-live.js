@@ -2427,7 +2427,10 @@ function hrCalFromEntries(entries, todayISO) {
     monthToday: td.getUTCMonth() + 1, dowToday: td.getUTCDay(),
   };
 }
-const hrCalendar = (id) => cached(`hrcal:${id}`, 12 * H, async () => {
+/* Past seasons never change, so they cache for a week. The current season is
+   re-read on the same 6h clock as the season tile, so "This Year" and the
+   profile HR count move together instead of drifting apart overnight. */
+const hrCalPast = (id) => cached(`hrcalpast:${id}`, 168 * H, async () => {
   // scan from the player's actual MLB debut year, not a guessed window —
   // a fixed lookback silently amputates early seasons (the Goldschmidt bug)
   let floor = SEASON - 25;
@@ -2437,16 +2440,25 @@ const hrCalendar = (id) => cached(`hrcal:${id}`, 12 * H, async () => {
   } catch { /* fall back to the wide window */ }
   const entries = [];
   let empty = 0;
-  for (let y = SEASON; y >= floor; y--) {
+  for (let y = SEASON - 1; y >= floor; y--) {
     try {
       const j = await getJson(`${STATS}/people/${id}/stats?stats=gameLog&group=hitting&season=${y}`);
       const splits = j.stats?.[0]?.splits || [];
-      if (!splits.length) { if (y < SEASON) empty++; if (empty >= 2) break; continue; }
+      if (!splits.length) { empty++; if (empty >= 2) break; continue; }
       empty = 0;
       splits.forEach((s) => entries.push({ date: s.date, hr: +(s.stat?.homeRuns || 0) }));
     } catch { /* season unavailable — keep going */ }
   }
-  return hrCalFromEntries(entries, dayDate("today"));
+  return entries;
+});
+const hrCalendar = (id) => cached(`hrcal:${id}`, 6 * H, async () => {
+  const entries = [];
+  try {
+    const j = await getJson(`${STATS}/people/${id}/stats?stats=gameLog&group=hitting&season=${SEASON}`);
+    (j.stats?.[0]?.splits || []).forEach((s) => entries.push({ date: s.date, hr: +(s.stat?.homeRuns || 0) }));
+  } catch { /* current season unavailable — past still folds */ }
+  const past = await hrCalPast(id).catch(() => []);
+  return hrCalFromEntries(entries.concat(past), dayDate("today"));
 });
 /* Last-25-games OPS across the slate for the OPS mode toggle */
 const ADVW = {}; // date -> { building, list, ts } — L-window aggregates for the whole slate
