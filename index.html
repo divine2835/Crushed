@@ -79,6 +79,14 @@ button { font-family: inherit; }
 .ml-tile.ml-good { background: rgba(46,204,143,0.12); border-color: rgba(46,204,143,0.45); } .ml-tile.ml-good .ml-val { color: #2ecc8f; }
 .ml-tile.ml-mid { background: rgba(246,196,83,0.10); border-color: rgba(246,196,83,0.4); } .ml-tile.ml-mid .ml-val { color: #f6c453; }
 .ml-tile.ml-bad { background: rgba(244,63,94,0.12); border-color: rgba(244,63,94,0.45); } .ml-tile.ml-bad .ml-val { color: #f43f5e; }
+.ml-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 10px; }
+.ml-bar-lab { font-size: 9.5px; letter-spacing: 0.12em; font-weight: 800; color: var(--dim); margin: 0 2px 0 6px; }
+.ml-bar-lab.ml-dim { opacity: 0.4; }
+.ml-ctl { font-size: 11px; font-weight: 700; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--dim); cursor: pointer; }
+.ml-ctl-on { color: #fb923c; border-color: #fb923c; background: rgba(251,146,60,0.12); }
+.ml-ctl-off { opacity: 0.35; cursor: default; }
+.ml-note { font-size: 11.5px; color: var(--dim); line-height: 1.5; margin: 0 0 10px; }
+.ml-tile.ml-masked { opacity: 0.45; border-style: dashed; }
 .ml-basis { font-size: 11px; color: var(--dim); margin-top: 8px; font-family: "JetBrains Mono", monospace; }
 .ml-pending { font-size: 12px; color: #fb923c; margin: 6px 0 10px; }
 .ml-fine { font-size: 11px; color: var(--dim); margin-top: 6px; line-height: 1.5; }
@@ -884,7 +892,7 @@ var DEMO = {
 var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", oddsData:{}, oddsLoading:false, oddsBook:"best", oddsMenu:false,
   saved: (function () { try { return JSON.parse(localStorage.getItem("crushedSaved") || "[]").map(Number); } catch (e) { return []; } })(),
   simData:{}, simOpen:null, simLoading:false, simIdx:0, simLevel:"expert",
-  quantumData:{}, quantumLoading:false, destinyData:{}, destinyLoading:false, chatOpen:false, chat:[], chatBusy:false, chatBuilt:false, mixlabData:{}, mixlabLoading:false, mixSel:{}, advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
+  quantumData:{}, quantumLoading:false, destinyData:{}, destinyLoading:false, chatOpen:false, chat:[], chatBusy:false, chatBuilt:false, mixlabData:{}, mixlabLoading:false, mixSel:{}, mixRange:"season", mixType:"g", mixRows:{}, mixRowsBusy:{}, advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
   alerts: (function () { try { return JSON.parse(localStorage.getItem("crushedAlerts") || "[]"); } catch (e) { return []; } })(), profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", penArm:null, armZs:{}, armZsLoading:{}, pitch:null, hrSort:"hrPct", hrDir:"desc", slgMode:false, slgWin:"szn", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
@@ -2159,17 +2167,18 @@ var ML_MIN_PITCHES = 10;
 /* blend the batter's per-pitch counters against the starter's usage of the selected pitches.
    counts sum; every rate is computed per pitch then weighted by usage (types under the
    pitch minimum still count toward totals but are excluded from rate blending). */
-function mixBlend(byPitch, mix, sel) {
+function mixBlend(byPitch, mix, sel, minN) {
+  if (minN == null) minN = ML_MIN_PITCHES;
   var picked = (mix || []).filter(function (m) { return !sel || sel.indexOf(m.pt) !== -1; });
-  var tot = { hr: 0, h: 0, ab: 0, pa: 0, bbe: 0, n: 0, fb: 0 }, wsum = 0, rates = {}, arsenal = 0;
-  var keys = ["avg", "slg", "iso", "obp", "ops", "woba", "xwoba", "brl", "hard", "ev", "la", "ss", "fb", "hrfb", "pull", "pullAir", "whiff", "k"];
+  var tot = { hr: 0, h: 0, ab: 0, pa: 0, bbe: 0, n: 0, fb: 0, d300: 0 }, wsum = 0, rates = {}, arsenal = 0;
+  var keys = ["avg", "slg", "iso", "obp", "ops", "woba", "xwoba", "brl", "hard", "ev", "la", "ss", "fb", "hrfb", "pull", "pullAir", "whiff", "k", "dist"];
   keys.forEach(function (k) { rates[k] = { num: 0, den: 0 }; });
   picked.forEach(function (m) {
     arsenal += m.pct || 0;
     var a = byPitch && byPitch[m.pt];
     if (!a) return;
-    tot.hr += a.hr; tot.h += a.h; tot.ab += a.ab; tot.pa += a.pa; tot.bbe += a.bbe; tot.n += a.n; tot.fb += a.fb;
-    if (a.n < ML_MIN_PITCHES) return;
+    tot.hr += a.hr; tot.h += a.h; tot.ab += a.ab; tot.pa += a.pa; tot.bbe += a.bbe; tot.n += a.n; tot.fb += a.fb; tot.d300 += (a.d300 || 0);
+    if (a.n < minN) return;
     var w = m.pct || 0; if (!w) return;
     var r = {
       avg: a.ab ? a.h / a.ab : null, slg: a.ab ? a.tb / a.ab : null, iso: a.ab ? (a.tb - a.h) / a.ab : null,
@@ -2179,13 +2188,14 @@ function mixBlend(byPitch, mix, sel) {
       ev: a.bbe ? a.evSum / a.bbe : null, la: a.laN ? a.laSum / a.laN : null, ss: a.bbe ? a.ss / a.bbe * 100 : null,
       fb: a.bbe ? a.fb / a.bbe * 100 : null, hrfb: a.fb ? a.hr / a.fb * 100 : null,
       pull: a.bbe ? a.pull / a.bbe * 100 : null, pullAir: a.bbe ? a.pullAir / a.bbe * 100 : null,
-      whiff: a.sw ? a.wh / a.sw * 100 : null, k: a.pa ? a.so / a.pa * 100 : null
+      whiff: a.sw ? a.wh / a.sw * 100 : null, k: a.pa ? a.so / a.pa * 100 : null,
+      dist: a.distN ? a.distSum / a.distN : null
     };
     r.ops = (r.obp != null && r.slg != null) ? r.obp + r.slg : null;
     keys.forEach(function (k) { if (r[k] != null && isFinite(r[k])) { rates[k].num += r[k] * w; rates[k].den += w; } });
     wsum += w;
   });
-  var out = { hr: tot.hr, h: tot.h, ab: tot.ab, pa: tot.pa, bbe: tot.bbe, pitches: tot.n, arsenal: arsenal, picked: picked.length, wsum: wsum };
+  var out = { hr: tot.hr, h: tot.h, ab: tot.ab, pa: tot.pa, bbe: tot.bbe, pitches: tot.n, arsenal: arsenal, picked: picked.length, wsum: wsum, d300: tot.d300 };
   keys.forEach(function (k) { out[k] = rates[k].den ? rates[k].num / rates[k].den : null; });
   // HR/FB is a ratio of two counts: pool it so the tile reconciles with the HR and FB% tiles beside it
   out.hrfb = tot.fb ? tot.hr / tot.fb * 100 : null;
@@ -2212,34 +2222,103 @@ var ML_TILES = [
   { k: "ops", lab: "OPS", fmt: mlR3, good: 0.8, bad: 0.65 },
   { k: "woba", lab: "wOBA", fmt: mlR3, good: 0.35, bad: 0.3 },
   { k: "la", lab: "LA", fmt: function (v) { return v.toFixed(1) + "\u00b0"; }, band: [12, 22], badBand: [8, 28] },
-  { k: "pullAir", lab: "Pull-Air %", fmt: mlPct, good: 17, bad: 10 }
+  { k: "pullAir", lab: "Pull-Air %", fmt: mlPct, good: 17, bad: 10 },
+  { k: "dist", lab: "Avg Air Dist", fmt: function (v) { return Math.round(v) + " ft"; }, good: 290, bad: 240 },
+  { k: "d300", lab: "300+ ft", fmt: function (v) { return v; }, count300: true }
 ];
+var ML_PA_ONLY = { avg: 1, xwoba: 1, k: 1, slg: 1, iso: 1, ops: 1, woba: 1, whiff: 1 };
 function mlEdge(t, v, out) {
   if (v == null) return "";
+  if (t.count300) { var r300 = out.bbe ? v / out.bbe : 0; return r300 >= 0.2 ? " ml-good" : r300 <= 0.1 ? " ml-bad" : " ml-mid"; }
   if (t.count) { var per = out.pa ? v / out.pa : 0; return per >= 0.05 ? " ml-good" : per <= 0.025 ? " ml-bad" : " ml-mid"; }
   if (t.band) return (v >= t.band[0] && v <= t.band[1]) ? " ml-good" : (v < t.badBand[0] || v > t.badBand[1]) ? " ml-bad" : " ml-mid";
   if (t.invert) return v <= t.good ? " ml-good" : v >= t.bad ? " ml-bad" : " ml-mid";
   return v >= t.good ? " ml-good" : v <= t.bad ? " ml-bad" : " ml-mid";
 }
+/* ---- windows: last N games / PA / batted balls vs the selected pitches ---- */
+var ML_RANGES = [["season", "Season"], ["30", "L30"], ["15", "L15"], ["10", "L10"], ["5", "L5"], ["3", "L3"]];
+var ML_TYPES = [["g", "Games"], ["pa", "Plate App."], ["bbe", "Batted Balls"]];
+var PA_BITS = ["ab", "h", "hr", "d2", "d3", "bb", "hbp", "so", "sf", "bbe", "hard", "brl", "ss", "fb", "pu", "gb", "ld", "pull", "pullAir", "air"];
+function mlZero() { return { n: 0, pa: 0, ab: 0, h: 0, hr: 0, d2: 0, d3: 0, bb: 0, hbp: 0, so: 0, sf: 0, tb: 0, sw: 0, wh: 0, bbe: 0, hard: 0, brl: 0, evSum: 0, laSum: 0, laN: 0, ss: 0, fb: 0, pu: 0, gb: 0, ld: 0, pull: 0, pullAir: 0, xwSum: 0, wobaV: 0, wobaD: 0, distSum: 0, distN: 0, d300: 0 }; }
+function windowByPitch(rows, mix, sel, N, type) {
+  var allowed = {};
+  (mix || []).forEach(function (m) { if (!sel || sel.indexOf(m.pt) !== -1) allowed[m.pt] = true; });
+  var cand = [];
+  for (var i = rows.pa.length - 1; i >= 0; i--) { var r = rows.pa[i]; if (allowed[rows.pts[r[1]]]) cand.push(r); }
+  var take = [];
+  if (type === "g") {
+    var minG = rows.games.length - N;
+    take = cand.filter(function (r) { return r[0] >= minG; });
+  } else if (type === "bbe") {
+    for (var j = 0; j < cand.length && take.length < N; j++) if (cand[j][2] & (1 << 9)) take.push(cand[j]);
+  } else {
+    take = cand.slice(0, N);
+  }
+  var by = {}, games = {}, minGame = null, maxGame = null, bbe = 0;
+  take.forEach(function (r) {
+    var pt = rows.pts[r[1]], a = by[pt] = by[pt] || mlZero(), f = r[2];
+    var has = function (name) { return (f & (1 << PA_BITS.indexOf(name))) !== 0; };
+    a.pa++; a.n += r[10]; a.sw += r[11]; a.wh += r[12]; a.tb += r[3];
+    ["ab", "h", "hr", "d2", "d3", "bb", "hbp", "so", "sf", "bbe", "hard", "brl", "ss", "fb", "pu", "gb", "ld", "pull", "pullAir"].forEach(function (k) { if (has(k)) a[k]++; });
+    if (has("bbe")) { bbe++; a.evSum += r[4] / 10; a.laSum += r[5] / 10; a.laN++; }
+    if (r[8]) { a.wobaD += r[8]; a.wobaV += r[7] / 1000; a.xwSum += r[6] / 1000; }
+    if (r[9] > 0) { if (has("air")) { a.distSum += r[9]; a.distN++; } if (r[9] >= 300) a.d300++; }
+    games[r[0]] = true;
+    if (minGame == null || r[0] < minGame) minGame = r[0];
+    if (maxGame == null || r[0] > maxGame) maxGame = r[0];
+  });
+  return { by: by, pa: take.length, bbe: bbe, games: Object.keys(games).length, from: minGame != null ? rows.games[minGame] : null, to: maxGame != null ? rows.games[maxGame] : null };
+}
+function mixLabEnsureRows() {
+  var d = state.mixlabData[state.day];
+  if (!d || !d.players) return;
+  var queue = d.players.filter(function (p) { return (!state.game || String(p.gamePk) === String(state.game)) && !state.mixRows[p.id] && !state.mixRowsBusy[p.id]; });
+  var inflight = 0;
+  var next = function () {
+    while (inflight < 4 && queue.length) {
+      (function (p) {
+        inflight++; state.mixRowsBusy[p.id] = true;
+        fetch(apiBase + "/api/mixlab/rows?id=" + p.id)
+          .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+          .then(function (j) { if (j && j.pa) state.mixRows[p.id] = j; })
+          .catch(function () { /* stays in loading state; next range change retries */ })
+          .finally(function () { inflight--; delete state.mixRowsBusy[p.id]; if (state.tab === "mixlab") mixLabRepaint(p.id); next(); });
+      })(queue.shift());
+    }
+  };
+  next();
+}
+function mlDate(s) { return s ? s.slice(5).replace("-", "/") : ""; }
 function mixLabCard(p) {
   var sel = state.mixSel[p.id] || null;
   var mix = (p.sp && p.sp.mix) || [];
-  var out = mixBlend(p.byPitch, mix, sel);
+  var windowed = state.mixRange !== "season";
+  var win = null, rows = windowed ? state.mixRows[p.id] : null;
+  if (windowed && rows) win = windowByPitch(rows, mix, sel, +state.mixRange, state.mixType);
+  var out = windowed ? (win ? mixBlend(win.by, mix, sel, 1) : null) : mixBlend(p.byPitch, mix, sel);
   var chips = '<button class="ml-chip' + (!sel ? " ml-chip-on" : "") + '" data-mixfull="' + p.id + '">\u25cf FULL MIX</button>' +
     mix.map(function (m) {
       var on = sel && sel.indexOf(m.pt) !== -1, info = pInfo(m.pt), a = p.byPitch && p.byPitch[m.pt];
       var thin = !a || a.n < ML_MIN_PITCHES;
       return '<button class="ml-chip' + (on ? " ml-chip-on" : "") + (thin ? " ml-thin" : "") + '" data-mixpt="' + p.id + ":" + m.pt + '" style="' + (on ? "border-color:" + info.color + ";color:" + info.color : "") + '" title="' + (a ? a.n + " pitches seen this season" : "no pitches seen") + (thin ? " \u00b7 under the " + ML_MIN_PITCHES + "-pitch minimum, excluded from rate blending" : "") + '">\u25cf ' + info.label + " " + m.pct + "%</button>";
     }).join("");
+  var arsenalPct = (mix || []).filter(function (m) { return !sel || sel.indexOf(m.pt) !== -1; }).reduce(function (s, m) { return s + (m.pct || 0); }, 0);
   var label = !sel
-    ? "Clone of " + (p.sp ? p.sp.hand + "HP " + p.sp.name : "tonight\u2019s starter") + " \u00b7 full pitch mix weighted by actual usage \u00b7 " + out.arsenal + "% of arsenal"
-    : "Custom mix \u00b7 " + sel.map(function (pt) { return pInfo(pt).label; }).join(" \u00b7 ") + " \u00b7 " + out.arsenal + "% of arsenal";
-  var tiles = ML_TILES.map(function (t) {
+    ? "Clone of " + (p.sp ? p.sp.hand + "HP " + p.sp.name : "tonight\u2019s starter") + " \u00b7 full pitch mix weighted by actual usage \u00b7 " + arsenalPct + "% of arsenal"
+    : "Custom mix \u00b7 " + sel.map(function (pt) { return pInfo(pt).label; }).join(" \u00b7 ") + " \u00b7 " + arsenalPct + "% of arsenal";
+  var bbeMode = windowed && state.mixType === "bbe";
+  var tiles = out ? ML_TILES.map(function (t) {
     var v = out[t.k];
-    var shown = v == null ? "\u2014" : t.fmt(v);
-    return '<div class="ml-tile' + mlEdge(t, v, out) + '"><div class="ml-lab">' + t.lab + '</div><div class="ml-val">' + shown + "</div></div>";
-  }).join("");
-  var basis = out.picked ? out.pa + " PA \u00b7 " + out.bbe + " batted balls vs the selected pitch types" : "no pitch types selected";
+    var masked = bbeMode && ML_PA_ONLY[t.k];
+    var shown = masked ? "\u2014" : (v == null ? "\u2014" : t.fmt(v));
+    return '<div class="ml-tile' + (masked ? " ml-masked" : mlEdge(t, v, out)) + '"' + (masked ? ' title="Needs every plate appearance (strikeouts, walks) \u2014 switch TYPE to Games or Plate App."' : "") + '><div class="ml-lab">' + t.lab + '</div><div class="ml-val">' + shown + "</div></div>";
+  }).join("") : '<div class="loading" style="grid-column:1/-1">Pulling his plate-appearance ledger\u2026</div>';
+  var basis;
+  if (!out) basis = "";
+  else if (windowed) {
+    var typeLab = state.mixType === "g" ? "games" : state.mixType === "pa" ? "plate appearances" : "batted balls";
+    basis = "Last " + state.mixRange + " " + typeLab + " vs the selected pitches \u00b7 " + out.pa + " PA \u00b7 " + out.bbe + " batted balls \u00b7 " + win.games + " game" + (win.games === 1 ? "" : "s") + (win.from ? " \u00b7 " + mlDate(win.from) + " \u2192 " + mlDate(win.to) : "") + (out.pa === 0 ? " \u00b7 nothing in this window" : "");
+  } else basis = out.picked ? out.pa + " PA \u00b7 " + out.bbe + " batted balls vs the selected pitch types" : "no pitch types selected";
   return '<div class="ml-card" id="mlcard-' + p.id + '">' +
     '<div class="ml-head"><span class="ml-name">' + p.name + '</span><span class="ml-vs"> vs ' + (p.sp ? p.sp.hand + "HP " + p.sp.name : "TBD") + "</span>" +
     (p.hrPct != null ? '<span class="ml-hr" title="Board HR chance tonight">' + (+p.hrPct).toFixed(1) + "%</span>" : "") + "</div>" +
@@ -2267,10 +2346,19 @@ function mixLabView() {
   if (d.warming) return banner + '<div class="loading">The board is still assembling \u2014 back in a moment.</div>';
   var players = d.players.filter(function (p) { return !state.game || String(p.gamePk) === String(state.game); });
   players.sort(function (a, b) { return (b.hrPct || 0) - (a.hrPct || 0); });
+  var windowed = state.mixRange !== "season";
+  var bar = '<div class="ml-bar"><span class="ml-bar-lab">RANGE</span>' +
+    ML_RANGES.map(function (r) { return '<button class="ml-ctl' + (state.mixRange === r[0] ? " ml-ctl-on" : "") + '" data-mlrange="' + r[0] + '">' + r[1] + "</button>"; }).join("") +
+    '<span class="ml-bar-lab' + (windowed ? "" : " ml-dim") + '">TYPE</span>' +
+    ML_TYPES.map(function (t) { return '<button class="ml-ctl' + (state.mixType === t[0] ? " ml-ctl-on" : "") + (windowed ? "" : " ml-ctl-off") + '"' + (windowed ? ' data-mltype="' + t[0] + '"' : "") + '>' + t[1] + "</button>"; }).join("") +
+    '</div>' +
+    (windowed
+      ? '<div class="ml-note">Window is taken <b>after</b> the pitch filter: the last ' + state.mixRange + ' ' + (state.mixType === "g" ? "games he played" : state.mixType === "pa" ? "plate appearances" : "batted balls") + ' against the selected pitch types, each plate appearance classified by the pitch that ended it.' + (state.mixType === "bbe" ? ' <b>AVG, SLG, ISO, OPS, wOBA, xwOBA, K% and Whiff% are hidden</b> \u2014 they need strikeouts and walks, which a batted-ball window can\u2019t see. Switch TYPE to Games or Plate App. for those.' : "") + "</div>"
+      : "");
   var note = d.pending ? '<div class="ml-pending">' + d.pending + ' bat' + (d.pending === 1 ? "" : "s") + ' still splitting \u2014 refreshing automatically.</div>' : "";
   var fine = '<div class="ml-fine"><div><b>How it works:</b> weighted by the starter\u2019s pitch usage % \u00b7 updates instantly when pitches are toggled</div>' +
     '<div><b>Data:</b> ' + d.season + ' regular season \u00b7 Statcast pitch classification via Baseball Savant \u00b7 min ' + ML_MIN_PITCHES + ' pitches per type for rate blending \u00b7 refreshed with the board</div></div>';
-  return banner + note + players.map(mixLabCard).join("") + fine;
+  return banner + bar + note + players.map(mixLabCard).join("") + fine;
 }
 function loadQuantum() {
   if (state.quantumLoading || state.quantumData[state.day]) return;
@@ -3313,7 +3401,7 @@ function setBanner(kind, msg) {
   var b = document.getElementById("banner");
   b.className = "banner show " + (kind === "live" ? "banner-live" : "banner-demo");
   b.innerHTML = msg;
-  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b94";
+  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b95";
 }
 
 /* ---------- data loading ---------- */
@@ -3706,7 +3794,7 @@ document.addEventListener("keydown", function (e) {
   }
 });
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-slg],[data-slgwin],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-bookmenu],[data-bookpick],[data-save],[data-savetab],[data-simtab],[data-simgame],[data-simback],[data-simlvl],[data-qmtab],[data-alltab],[data-mltab],[data-mixpt],[data-mixfull],[data-desttab],[data-orafab],[data-orasend],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-penarm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-slg],[data-slgwin],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-bookmenu],[data-bookpick],[data-save],[data-savetab],[data-simtab],[data-simgame],[data-simback],[data-simlvl],[data-qmtab],[data-alltab],[data-mltab],[data-mixpt],[data-mixfull],[data-mlrange],[data-mltype],[data-desttab],[data-orafab],[data-orasend],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-penarm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -3804,7 +3892,18 @@ document.addEventListener("click", function (e) {
     state.tab = state.tab === "mixlab" ? "hr" : "mixlab";
     state.god = false; state.ops = false; state.zoneMode = false; state.slgMode = false; state.open = null;
     render();
-    if (state.tab === "mixlab" && !state.demo) loadMixLab();
+    if (state.tab === "mixlab" && !state.demo) { loadMixLab(); if (state.mixRange !== "season") mixLabEnsureRows(); }
+    return;
+  }
+  if (el.dataset.mlrange) {
+    state.mixRange = el.dataset.mlrange;
+    render();
+    if (state.mixRange !== "season") mixLabEnsureRows();
+    return;
+  }
+  if (el.dataset.mltype) {
+    state.mixType = el.dataset.mltype;
+    render();
     return;
   }
   if (el.dataset.mixfull) {

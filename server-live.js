@@ -237,6 +237,7 @@ async function savantRowsRaw(playerId, playerType) {
     game_date: r.game_date,
     xwoba: r.estimated_woba_using_speedangle, woba_value: r.woba_value, woba_denom: r.woba_denom,
     lsa: r.launch_speed_angle, game_type: r.game_type,
+    game_pk: r.game_pk, at_bat_number: r.at_bat_number, pitch_number: r.pitch_number, hit_distance: r.hit_distance_sc,
   }));
 }
 /* small cached packs (a few KB each) */
@@ -263,7 +264,7 @@ function pitcherDamage(rows) {
 const SWING = new Set(["swinging_strike", "swinging_strike_blocked", "missed_bunt", "foul", "foul_tip", "hit_into_play", "foul_bunt", "bunt_foul_tip"]);
 function pitchSplitAggregates(rows) {
   const by = {};
-  const Z = () => ({ n: 0, pa: 0, ab: 0, h: 0, hr: 0, d2: 0, d3: 0, bb: 0, hbp: 0, so: 0, sf: 0, tb: 0, sw: 0, wh: 0, bbe: 0, hard: 0, brl: 0, evSum: 0, laSum: 0, laN: 0, ss: 0, fb: 0, pu: 0, gb: 0, ld: 0, pull: 0, pullAir: 0, xwSum: 0, wobaV: 0, wobaD: 0 });
+  const Z = () => ({ n: 0, pa: 0, ab: 0, h: 0, hr: 0, d2: 0, d3: 0, bb: 0, hbp: 0, so: 0, sf: 0, tb: 0, sw: 0, wh: 0, bbe: 0, hard: 0, brl: 0, evSum: 0, laSum: 0, laN: 0, ss: 0, fb: 0, pu: 0, gb: 0, ld: 0, pull: 0, pullAir: 0, xwSum: 0, wobaV: 0, wobaD: 0, distSum: 0, distN: 0, d300: 0 });
   rows.forEach((r) => {
     if (!r.pitch_type) return;
     if (r.game_type && r.game_type !== "R") return; // regular season only \u2014 no spring, no October
@@ -300,6 +301,8 @@ function pitchSplitAggregates(rows) {
       if (Number.isFinite(la)) { a.laSum += la; a.laN++; if (la >= 8 && la <= 32) a.ss++; }
       if (r.bb_type === "fly_ball") a.fb++; // Statcast convention: popups are not fly balls
       if (r.bb_type === "popup") a.pu++;
+      const dist = +r.hit_distance;
+      if (Number.isFinite(dist) && dist > 0) { if (r.bb_type === "fly_ball" || r.bb_type === "line_drive") { a.distSum += dist; a.distN++; } if (dist >= 300) a.d300++; }
       if (r.bb_type === "ground_ball") a.gb++;
       if (r.bb_type === "line_drive") a.ld++;
       const dx = (+r.hc_x) - 125.42, dz = 198.27 - (+r.hc_y);
@@ -311,10 +314,78 @@ function pitchSplitAggregates(rows) {
   });
   return by;
 }
+/* MIX LAB windows: one compact record per plate appearance (regular season),
+   classified by the pitch that ended it, so the browser can take "last N
+   games / PA / batted balls vs the selected pitches" without a round trip.
+   PA = [g, ptIdx, flags, tb, ev*10, la*10, xw*1000, wv*1000, wd, dist, pitches, swings, whiffs]
+   flags bits: 0 ab 1 h 2 hr 3 2b 4 3b 5 bb 6 hbp 7 so 8 sf 9 bbe 10 hard 11 brl 12 ss 13 fb 14 pu 15 gb 16 ld 17 pull 18 pullAir 19 air(dist) */
+const PA_BITS = ["ab", "h", "hr", "d2", "d3", "bb", "hbp", "so", "sf", "bbe", "hard", "brl", "ss", "fb", "pu", "gb", "ld", "pull", "pullAir", "air"];
+function paRowsFromRows(rows) {
+  const reg = rows.filter((r) => r.pitch_type && !(r.game_type && r.game_type !== "R") && r.game_pk && r.at_bat_number != null);
+  const gameKey = (r) => String(r.game_date) + "#" + String(r.game_pk);
+  const games = Array.from(new Set(reg.map(gameKey))).sort().map((k) => k.split("#"));
+  const gIdx = {}; games.forEach((g, i) => { gIdx[g[0] + "#" + g[1]] = i; });
+  const pts = [], ptIdx = {};
+  const groups = {};
+  reg.forEach((r) => {
+    const k = gameKey(r) + "#" + r.at_bat_number;
+    (groups[k] = groups[k] || []).push(r);
+  });
+  const pa = [];
+  Object.keys(groups).forEach((k) => {
+    const g = groups[k].slice().sort((a, b) => (+a.pitch_number || 0) - (+b.pitch_number || 0));
+    const end = g.filter((r) => r.events).pop();
+    if (!end) return;
+    let sw = 0, wh = 0;
+    g.forEach((r) => { if (SWING.has(r.description)) sw++; if (WHIFF.has(r.description)) wh++; });
+    const pt = end.pitch_type;
+    if (ptIdx[pt] == null) { ptIdx[pt] = pts.length; pts.push(pt); }
+    const ev = end.events;
+    let flags = 0; const set = (name) => { flags |= 1 << PA_BITS.indexOf(name); };
+    if (AB_END.has(ev)) set("ab");
+    if (ev === "single" || ev === "double" || ev === "triple" || ev === "home_run") set("h");
+    if (ev === "home_run") set("hr");
+    if (ev === "double") set("d2");
+    if (ev === "triple") set("d3");
+    if (ev === "walk" || ev === "intent_walk") set("bb");
+    if (ev === "hit_by_pitch") set("hbp");
+    if (ev === "strikeout" || ev === "strikeout_double_play") set("so");
+    if (ev === "sac_fly" || ev === "sac_fly_double_play") set("sf");
+    let ev10 = 0, la10 = 0, dist = 0;
+    const isX = end.type === "X" && end.hc_x && end.hc_y;
+    if (isX) {
+      set("bbe");
+      const lsp = +end.launch_speed, la = +end.launch_angle;
+      if (lsp >= 95) set("hard");
+      if (end.lsa !== undefined && end.lsa !== null && end.lsa !== "") { if (+end.lsa === 6) set("brl"); } else if (isBarrel(lsp, la)) set("brl");
+      if (Number.isFinite(lsp)) ev10 = Math.round(lsp * 10);
+      if (Number.isFinite(la)) { la10 = Math.round(la * 10); if (la >= 8 && la <= 32) set("ss"); }
+      if (end.bb_type === "fly_ball") set("fb");
+      if (end.bb_type === "popup") set("pu");
+      if (end.bb_type === "ground_ball") set("gb");
+      if (end.bb_type === "line_drive") set("ld");
+      const dx = (+end.hc_x) - 125.42, dz = 198.27 - (+end.hc_y);
+      if (dz > 0) {
+        const ang = Math.atan2(dx, dz) * 180 / Math.PI;
+        if ((end.stand === "R" && ang <= -15) || (end.stand === "L" && ang >= 15)) { set("pull"); if (Number.isFinite(la) && la >= 20) set("pullAir"); }
+      }
+      const d = +end.hit_distance;
+      if (Number.isFinite(d) && d > 0) { dist = Math.round(d); if (end.bb_type === "fly_ball" || end.bb_type === "line_drive") set("air"); }
+    }
+    const wd = +end.woba_denom, wv = +end.woba_value, xw = +end.xwoba;
+    const wdN = Number.isFinite(wd) && wd > 0 ? wd : 0;
+    const wvN = Number.isFinite(wv) ? wv : 0;
+    const xwN = wdN ? ((isX && Number.isFinite(xw)) ? xw : wvN) : 0;
+    pa.push([gIdx[gameKey(end)], ptIdx[pt], flags, TB[ev] || 0, ev10, la10, Math.round(xwN * 1000), Math.round(wvN * 1000), wdN, dist, g.length, sw, wh]);
+  });
+  pa.sort((a, b) => a[0] - b[0]);
+  return { pts, games: games.map((g) => g[0]), pa };
+}
 const batterPack = (id) => cached(`bpk3:${id}`, 12 * H, async () => {
   const rows = await savantRowsRaw(id, "batter");
   const agg = batterAggregates(rows);
   agg.byPitch = pitchSplitAggregates(rows);
+  agg.paRows = paRowsFromRows(rows);
   return agg;
 });
 function pitcherZoneUsage(rows) {
@@ -2333,6 +2404,15 @@ app.get("/api/mixlab", async (req, res) => {
       });
     }
     res.json({ day, built: Date.now(), season: SEASON, pending, players: out });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get("/api/mixlab/rows", async (req, res) => {
+  try {
+    const id = +req.query.id;
+    if (!id) return res.status(400).json({ error: "id required" });
+    const pk = cachePeek(`bpk3:${id}`, 12 * H);
+    if (!pk) { batterPack(id).catch(() => {}); return res.json({ pending: true }); }
+    res.json({ id, season: SEASON, ...(pk.paRows || { pts: [], games: [], pa: [] }) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get("/api/quantum", async (req, res) => {
