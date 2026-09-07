@@ -3201,6 +3201,29 @@ function consecAnswer(per, log, parsed, set, era) {
   const st = starNumbers([r.qual.length, r.longest], set);
   return { answer: per.name + " has had " + what + " " + r.qual.length + " time" + (r.qual.length === 1 ? "" : "s") + " " + era + " (each stretch counted once)" + (r.last ? " \u2014 most recently " + span(r.last) : "") + (r.longest >= n ? "; longest run " + r.longest + " straight." : ".") + st.suffix, ...st, player: per.name };
 }
+/* two players, same game: games where BOTH reached the threshold. Matched on
+   gamePk when both logs carry it (teammates or opponents), else on date. */
+function jointAnswer(pa, pb, logA, logB, parsed, set, era) {
+  const stat = parsed.stat || "hr", n = parsed.n || 1;
+  const lab = ORACLE_STATS.labels[stat] ? ORACLE_STATS.labels[stat].replace(/s$/, "") : stat;
+  const what = (n > 1 ? n + "+ " + lab + (stat === "rbi" ? "" : "s") : (stat === "hr" ? "a homer" : stat === "rbi" ? "an RBI" : stat === "h" ? "a hit" : stat === "r" ? "a run" : stat === "bb" ? "a walk" : stat === "sb" ? "a steal" : "a " + lab));
+  const key = (g) => (g.gamePk ? "pk" + g.gamePk : "d" + g.date);
+  const aMap = {};
+  logA.forEach((g) => { if ((g[stat] || 0) >= n) aMap[key(g)] = g; });
+  const both = [];
+  logB.forEach((g) => { if ((g[stat] || 0) >= n && aMap[key(g)]) both.push({ date: g.date, opp: g.opp, a: aMap[key(g)][stat], b: g[stat] }); });
+  const aKeys = {}; logA.forEach((g) => { aKeys[key(g)] = true; });
+  const shared = logB.filter((g) => aKeys[key(g)]).length;
+  const last = both.length ? both[both.length - 1] : null;
+  const detail = last ? " (" + pa.name.split(" ").pop() + " " + last.a + ", " + pb.name.split(" ").pop() + " " + last.b + ")" : "";
+  if (parsed.mode === "last") {
+    if (!last) { const st0 = starNumbers([0], set); return { answer: pa.name + " and " + pb.name + " haven\u2019t both had " + what + " in the same game " + era + (shared ? " \u2014 " + shared + " shared games checked." : ".") + st0.suffix, ...st0, player: pa.name }; }
+    const st = starNumbers([both.length], set);
+    return { answer: pa.name + " and " + pb.name + " last both had " + what + " in the same game on " + last.date + (last.opp ? " vs " + last.opp : "") + detail + ". They\u2019ve done it " + both.length + " time" + (both.length === 1 ? "" : "s") + " " + era + "." + st.suffix, ...st, player: pa.name };
+  }
+  const st = starNumbers([both.length], set); // the prophecy rides the connection count only
+  return { answer: pa.name + " and " + pb.name + " have both had " + what + " in the same game " + both.length + " time" + (both.length === 1 ? "" : "s") + " " + era + " (" + shared + " shared games)" + (last ? " \u2014 most recently " + last.date + (last.opp ? " vs " + last.opp : "") + detail : "") + "." + st.suffix, ...st, player: pa.name };
+}
 function parseOracle(q) {
   let s = (q || "").toLowerCase().replace(/\u2019/g, "'").replace(/[?!.]/g, " ")
     .replace(/\b(?:on|during|for|of) the season\b/g, " ").replace(/\bthis season\b/g, " ").replace(/\bso far\b/g, " ")
@@ -3226,6 +3249,24 @@ function parseOracle(q) {
       (em = s.match(/^(?:what(?:'s| is)\s+)?(.+?)(?:'s)?\s+(?:entanglement|entangled|correlations?|partners?|running mates?)\b/))) {
     const name = em[1].replace(/\b(?:tonight|today|does|do)\b/g, " ").replace(/\s+/g, " ").trim();
     if (name && !/^(who|what|which)$/.test(name)) return { intent: "entangle", name };
+  }
+  // JOINT \u2014 two players in the same game: "how many games have Abrams and Wood
+  // both hit an RBI in the same game", "when was the last time Judge & Soto both homered"
+  const js = s.replace(/\s*&\s*|\s*\+\s*/g, " and ");
+  let jm;
+  if ((jm = js.match(/^(?:(how many (?:games|times))|(when (?:was|is) the (?:last|most recent) time|when did|last time|most recent time)|(?:have|has|did))\s*(?:have|has|did|were|was)?\s*(.+?)\s+and\s+(.+?)\s+(?:both|each)\s+(?:hit|had|have|got|gotten|homered|homer|went deep|gone deep|go deep|driven in|drove in|scored|walked|stole|stolen|recorded|reached)\b(.*)$/))) {
+    const rest = jm[5] || "";
+    const all = (rest + " " + js).match(new RegExp("\\b" + FC_STAT + "\\b", "g")) || [];
+    const real = all.find((w) => !/^hits?$/.test(w));
+    const verb = js.match(/\b(?:both|each)\s+(hit|had|have|got|gotten|homered|homer|went deep|gone deep|go deep|driven in|drove in|scored|walked|stole|stolen|recorded|reached)\b/);
+    const v = verb ? verb[1] : "";
+    let stat = /driv|drove/.test(v) ? "rbi" : (real || all[0]) ? fcStat(real || all[0]) : null;
+    if (!stat) stat = /homer|deep/.test(v) ? "hr" : /walk/.test(v) ? "bb" : /scor/.test(v) ? "r" : /stol/.test(v) ? "sb" : "h";
+    const cm = rest.match(/\b(\d+)\s*\+?\s*(?=(?:homer|home ?run|hr|bomb|rbi|ribb|hit|total base|tb|base|run)s?\b)/);
+    const n = cm ? +cm[1] : 1;
+    const clean = (x) => x.replace(/\b(?:the|that|last|time|both|each|games?|where|in which)\b/g, " ").replace(/\s+/g, " ").trim();
+    const name = clean(jm[3]), name2 = clean(jm[4]);
+    if (name && name2) return { intent: "joint", mode: jm[2] ? "last" : "count", name, name2, stat, n, scope, loc: null, hand: null };
   }
   const fc = parseForecast(s);
   if (fc) return fc;
@@ -3461,7 +3502,7 @@ app.get("/api/oracle", async (req, res) => {
       if (ctx) parsed.name = ctx;
       else return res.json({ answer: "Who do you mean? Ask once with the player\u2019s name \u2014 after that, \u201che\u201d works.", numbers: [], aligned: false, set });
     }
-    const key = "oracle:" + day + ":" + parsed.intent + ":" + JSON.stringify([parsed.name, parsed.n, parsed.stat, parsed.key, parsed.loc, parsed.hand, parsed.why || null, parsed.mode || null, parsed.scope || null]).toLowerCase();
+    const key = "oracle:" + day + ":" + parsed.intent + ":" + JSON.stringify([parsed.name, parsed.n, parsed.stat, parsed.key, parsed.loc, parsed.hand, parsed.why || null, parsed.mode || null, parsed.scope || null, parsed.name2 || null]).toLowerCase();
     const out = await cached(key, 0.5 * H, async () => {
       const era = parsed.scope === "career" ? "in his career" : "this season";
       const logFor = (id) => (parsed.scope === "career" ? oracleCareerLog(id) : oracleGameLog(id));
@@ -3536,6 +3577,22 @@ app.get("/api/oracle", async (req, res) => {
         log.forEach((g) => { if ((g[sk] || 0) > (best[sk] || 0)) best = g; });
         const st = starNumbers([best[sk] || 0], set);
         return { answer: per.name + "\u2019s season high is " + (best[sk] || 0) + " " + ORACLE_STATS.labels[sk] + " in a game" + (parsed.loc ? " " + SPLIT_LABELS[parsed.loc] : "") + " \u2014 " + best.date + " vs " + best.opp + "." + st.suffix, ...st, player: per.name };
+      }
+      if (parsed.intent === "joint") {
+        const findName = async (nm) => {
+          const frag = nm.replace(/[']/g, "").replace(/\s+/g, " ").trim();
+          if (!frag) return null;
+          if (b) {
+            const hit = (b.players || []).find((p) => p.name.toLowerCase().indexOf(frag) !== -1) || oracleInitials(b.players, frag);
+            if (hit) return { id: hit.id, name: hit.name, board: hit };
+          }
+          return await oracleFind(frag);
+        };
+        const [pa, pb] = await Promise.all([findName(parsed.name), findName(parsed.name2)]);
+        if (!pa || !pb) return { answer: "I couldn\u2019t place " + (!pa ? "\u201c" + parsed.name + "\u201d" : "\u201c" + parsed.name2 + "\u201d") + " \u2014 try the full last name.", numbers: [], aligned: false };
+        if (String(pa.id) === String(pb.id)) return { answer: "Those are the same player \u2014 give me two different names.", numbers: [], aligned: false, player: pa.name };
+        const [logA, logB] = await Promise.all([logFor(pa.id), logFor(pb.id)]);
+        return jointAnswer(pa, pb, logA.filter((g) => g.ab > 0 || g.bb > 0), logB.filter((g) => g.ab > 0 || g.bb > 0), parsed, set, parsed.scope === "career" ? "in their careers" : "this season");
       }
       if (parsed.intent === "consec") {
         const per = await findP();
@@ -3667,7 +3724,7 @@ app.get("/api/oracle", async (req, res) => {
         }
         return { answer: "He\u2019s not on tonight\u2019s board \u2014 season questions work for any player.", numbers: [], aligned: false };
       }
-      return { answer: "Ask me things like: \u201chow many times has Devers had 3 RBI in a game\u201d \u00b7 \u201chow many games with 2+ homers\u201d \u00b7 \u201cmost hits Judge has in a game\u201d \u00b7 \u201cSoto\u2019s hitting streak\u201d \u00b7 \u201chow many walks does Harper have\u201d \u00b7 \u201cwhen did Alvarez last homer\u201d \u00b7 \u201cJudge\u2019s last 10 games\u201d \u00b7 \u201cwho leads HR% tonight\u201d \u00b7 \u201cAbrams\u2019 leadoff homers\u201d \u00b7 and about tonight: \u201cwho\u2019s most likely to homer tonight\u201d \u00b7 \u201cwill Judge homer tonight\u201d \u00b7 \u201cwho\u2019s the best bet for 2 RBI\u201d \u00b7 \u201cSoto\u2019s expected line\u201d \u00b7 \u201chow many times has Lowe homered in back to back games\u201d \u00b7 add \u2018in his career\u2019 to any of them \u00b7 \u201cif Judge homers who else goes deep\u201d \u00b7 \u201chow accurate were you this week\u201d \u2014 any counting stat works: HR, RBI, hits, walks, Ks, doubles, triples, runs, steals, total bases \u2014 and you can add \u2018at home\u2019, \u2018on the road\u2019, \u2018vs lefties\u2019, or \u2018vs righties\u2019 to any of them. Follow-ups work \u2014 after any answer, \u2018he\u2019 means that player.", numbers: [], aligned: false };
+      return { answer: "Ask me things like: \u201chow many times has Devers had 3 RBI in a game\u201d \u00b7 \u201chow many games with 2+ homers\u201d \u00b7 \u201cmost hits Judge has in a game\u201d \u00b7 \u201cSoto\u2019s hitting streak\u201d \u00b7 \u201chow many walks does Harper have\u201d \u00b7 \u201cwhen did Alvarez last homer\u201d \u00b7 \u201cJudge\u2019s last 10 games\u201d \u00b7 \u201cwho leads HR% tonight\u201d \u00b7 \u201cAbrams\u2019 leadoff homers\u201d \u00b7 and about tonight: \u201cwho\u2019s most likely to homer tonight\u201d \u00b7 \u201cwill Judge homer tonight\u201d \u00b7 \u201cwho\u2019s the best bet for 2 RBI\u201d \u00b7 \u201cSoto\u2019s expected line\u201d \u00b7 \u201chow many times has Lowe homered in back to back games\u201d \u00b7 \u201chow many games have Abrams and Wood both homered in the same game\u201d \u00b7 add \u2018in his career\u2019 to any of them \u00b7 \u201cif Judge homers who else goes deep\u201d \u00b7 \u201chow accurate were you this week\u201d \u2014 any counting stat works: HR, RBI, hits, walks, Ks, doubles, triples, runs, steals, total bases \u2014 and you can add \u2018at home\u2019, \u2018on the road\u2019, \u2018vs lefties\u2019, or \u2018vs righties\u2019 to any of them. Follow-ups work \u2014 after any answer, \u2018he\u2019 means that player.", numbers: [], aligned: false };
     });
     res.json({ ...out, set });
   } catch (e) { res.status(500).json({ error: e.message }); }
