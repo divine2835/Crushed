@@ -79,6 +79,17 @@ button { font-family: inherit; }
 .ml-tile.ml-good { background: rgba(46,204,143,0.12); border-color: rgba(46,204,143,0.45); } .ml-tile.ml-good .ml-val { color: #2ecc8f; }
 .ml-tile.ml-mid { background: rgba(246,196,83,0.10); border-color: rgba(246,196,83,0.4); } .ml-tile.ml-mid .ml-val { color: #f6c453; }
 .ml-tile.ml-bad { background: rgba(244,63,94,0.12); border-color: rgba(244,63,94,0.45); } .ml-tile.ml-bad .ml-val { color: #f43f5e; }
+.gen-lines { margin-bottom: 6px; }
+.gline { letter-spacing: 0.04em; }
+.genline { font-size: 9.5px; font-weight: 800; letter-spacing: 0.1em; padding: 2px 7px; border-radius: 999px; border: 1px solid; margin-right: 4px; }
+.genline.gl-hr { color: #f6c453; border-color: rgba(246,196,83,0.6); background: rgba(246,196,83,0.1); }
+.genline.gl-rbi { color: #2ecc8f; border-color: rgba(46,204,143,0.6); background: rgba(46,204,143,0.1); }
+.genchip { font-size: 10px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); margin-right: 4px; }
+.genchip.gen-wave { color: #67e8f9; border-color: rgba(103,232,249,0.45); }
+.genchip.gen-good { color: #2ecc8f; border-color: rgba(46,204,143,0.45); }
+.genchip.gen-bad { color: #f43f5e; border-color: rgba(244,63,94,0.45); }
+.genchip.gen-orth { color: #67e8f9; border-color: rgba(103,232,249,0.45); }
+.genchip.gen-pro { color: #c9a2e8; border-color: rgba(201,162,232,0.55); }
 .ml-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 10px; }
 .ml-bar-lab { font-size: 9.5px; letter-spacing: 0.12em; font-weight: 800; color: var(--dim); margin: 0 2px 0 6px; }
 .ml-bar-lab.ml-dim { opacity: 0.4; }
@@ -889,7 +900,7 @@ var DEMO = {
 };
 
 /* ---------- state ---------- */
-var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", oddsData:{}, oddsLoading:false, oddsBook:"best", oddsMenu:false,
+var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, genLine:"hr", recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", oddsData:{}, oddsLoading:false, oddsBook:"best", oddsMenu:false,
   saved: (function () { try { return JSON.parse(localStorage.getItem("crushedSaved") || "[]").map(Number); } catch (e) { return []; } })(),
   simData:{}, simOpen:null, simLoading:false, simIdx:0, simLevel:"expert",
   quantumData:{}, quantumLoading:false, destinyData:{}, destinyLoading:false, chatOpen:false, chat:[], chatBusy:false, chatBuilt:false, mixlabData:{}, mixlabLoading:false, mixSel:{}, mixRange:"season", mixType:"g", mixRows:{}, mixRowsBusy:{}, advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
@@ -1595,6 +1606,85 @@ function genEdge(p) {
   var edge = 0.4 * slgScore + 0.3 * contact + 0.3 * zPart;
   return { edge: edge, slgScore: slgScore, slgVal: slgWt ? wSlg / slgWt : null, slgSrc: slgSrc, kPct: kPct, whPct: whPct, zs: z ? z.zs : null, contact: contact };
 }
+/* ---------------- GENERATE: the amplitude brain ----------------
+   Every bat gets an AMPLITUDE per line (HR, RBI) from seven sources that
+   measure in different bases, so agreement across them is real signal and
+   not one Statcast number echoing seven times:
+     wave    \u2014 QUANTOM: sim HR% (HR) or Poisson P(1+ RBI) on his expected RBI
+     brain   \u2014 the board composite: HR%, tags with learning adjustments, numerology, lineup
+     mixlab  \u2014 his full-mix clone vs tonight's arsenal: batter-edge tiles minus pitcher-edge
+     weak    \u2014 Weak Spots: does he sit in this starter's soft side
+     bases   \u2014 ALL IN 1 orthogonality: how many independent bases agree
+     numer   \u2014 day energies held + the PROPHECY: the next homer / ribbie landing on a day number
+     env     \u2014 carry and park geometry
+   Unknown sources score neutral 50 so an unscouted bat is never buried. */
+var GEN_W = {
+  hr:  { wave: 0.30, brain: 0.20, mixlab: 0.15, weak: 0.12, bases: 0.10, numer: 0.08, env: 0.05 },
+  rbi: { wave: 0.36, brain: 0.10, mixlab: 0.14, weak: 0.12, bases: 0.08, numer: 0.08, env: 0.12 }, // the board brain is an HR brain; RBI leans on the wave and the lineup slot
+};
+var GEN_HR_TILES = { brl: 1.5, hard: 1, xwoba: 1, slg: 1, iso: 1.2, hrfb: 1, pullAir: 1.5, ev: 1, whiff: 0.6, k: 0.6, fb: 0.5 };
+var GEN_RBI_TILES = { avg: 1.5, xwoba: 1.2, hard: 1, k: 1.2, whiff: 1, slg: 0.8, ss: 0.8, ev: 0.6, brl: 0.5 };
+function genMixLabScore(mp, tileW) {
+  if (!mp || !mp.byPitch || !mp.sp || !mp.sp.mix || !mp.sp.mix.length) return null;
+  var out = mixBlend(mp.byPitch, mp.sp.mix, null);
+  if (!out.pa) return null;
+  var good = 0, bad = 0, tot = 0;
+  ML_TILES.forEach(function (t) {
+    var w = tileW[t.k]; if (!w) return;
+    var v = out[t.k]; if (v == null) return;
+    var e = mlEdge(t, v, out);
+    tot += w; if (/good/.test(e)) good += w; else if (/bad/.test(e)) bad += w;
+  });
+  if (!tot) return null;
+  return Math.max(0, Math.min(100, Math.round(50 + ((good - bad) / tot) * 50)));
+}
+function genProphecy(n, daySet) {
+  if (n == null || !daySet.length) return 0;
+  return daySet.indexOf(fnReduce(n + 1)) !== -1 ? 1 : 0;
+}
+function genSignals(p, ctx, mixMap, wave, csRank) {
+  var daySet = ctx.daySet || [];
+  var row = wave && wave[p.id];
+  var out = {};
+  ["hr", "rbi"].forEach(function (line) {
+    var s = {};
+    // wave
+    if (row) {
+      if (line === "hr") s.wave = Math.max(0, Math.min(100, (row.hrSim || 0) * 2.6));
+      else { var lam = +row.rbi || 0; var p1 = 1 - Math.exp(-lam); s.wave = Math.max(0, Math.min(100, p1 * 135)); s.waveP = p1; }
+    } else if (line === "hr" && p.hrPct != null) s.wave = Math.max(0, Math.min(100, p.hrPct * 2.6));
+    else s.wave = null;
+    if (line === "hr") s.waveP = row ? (row.hrSim || 0) / 100 : (p.hrPct || 0) / 100;
+    // brain: the composite, ranked across tonight's pool
+    s.brain = csRank[p.id] != null ? csRank[p.id] : 50;
+    // mix lab clone
+    var mp = mixMap && mixMap[p.id];
+    s.mixlab = genMixLabScore(mp, line === "hr" ? GEN_HR_TILES : GEN_RBI_TILES);
+    // weak spots
+    if (ctx.weakBy) { var wm = ctx.weakBy[p.id] || 0; s.weak = wm >= 2 ? 100 : wm === 1 ? 75 : 15; } else s.weak = null;
+    // bases
+    var a = a1Compute(p, ctx); var bz = a1Bases(a);
+    s.bases = bz.avail ? Math.round((bz.aligned / bz.avail) * 100) : null; s.basesN = bz.aligned; s.basesAvail = bz.avail;
+    // numerology + prophecy on the line's own counting stat
+    var hits = Math.min(4, (p.numerHits || []).length);
+    var stat = line === "hr" ? (p.season && p.season.hr) : (p.season && p.season.rbi);
+    var pro = genProphecy(stat, daySet);
+    s.prophecy = pro; s.prophecyNext = stat != null ? stat + 1 : null;
+    s.numer = Math.min(100, 20 + hits * 15 + (crossAligned(p) ? 10 : 0) + pro * 30);
+    // environment
+    var g = ctx.gamesById && ctx.gamesById[p.gamePk];
+    var carry = g && g.carry != null ? g.carry : 1;
+    var slot = +p.slot || 5;
+    var slotB = line === "rbi" ? (slot >= 3 && slot <= 5 ? 20 : slot === 6 || slot === 2 ? 8 : slot === 1 ? -8 : 0) : 0;
+    s.env = Math.max(0, Math.min(100, 50 + (carry - 1) * 200 + (ctx.parkAl && ctx.parkAl[p.gamePk] ? ctx.parkAl[p.gamePk] * 6 : 0) + slotB));
+    // amplitude
+    var W = GEN_W[line], num = 0, den = 0;
+    Object.keys(W).forEach(function (k) { var v = s[k]; if (v == null) v = 50; num += v * W[k]; den += W[k]; });
+    s.amp = den ? num / den : 50;
+    out[line] = s;
+  });
+  return out;
+}
 function genCombo(size) {
   var pool = ((state.data && state.data.players) || []).slice();
   if (pool.length < size) {
@@ -1604,11 +1694,22 @@ function genCombo(size) {
   var TH = (state.data && state.data.thresholds) || DEFAULT_THRESH;
   var gamesById = {};
   ((state.data && state.data.games) || []).forEach(function (g) { gamesById[g.gamePk] = g; });
+  var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
+  var ctx = a1Context(daySet); ctx.gamesById = gamesById;
+  var qd = state.quantumData[state.day], wave = null;
+  if (qd && qd.rows && qd.rows.length) { wave = {}; qd.rows.forEach(function (r) { wave[r.id] = r; }); }
+  var md = state.mixlabData[state.day], mixMap = null;
+  if (md && md.players) { mixMap = {}; md.players.forEach(function (mp) { if (mp.byPitch) mixMap[mp.id] = mp; }); }
+  // brain rank across the pool (0-100)
+  pool.forEach(function (p) { p._cs = compositeScore(p, TH); p._genE = genEdge(p); });
+  var byCs = pool.slice().sort(function (a, b) { return b._cs - a._cs; });
+  var csRank = {}; byCs.forEach(function (p, i) { csRank[p.id] = Math.round(100 - (i / Math.max(1, byCs.length - 1)) * 70); });
+  var line = state.genLine || "hr";
   pool.forEach(function (p) {
-    p._cs = compositeScore(p, TH);
-    var e = genEdge(p);
-    p._genE = e;
-    p._gen = p._cs + (e.edge - 50) * 0.35; // the new signals shift the brain's score, never replace it
+    var sig = genSignals(p, ctx, mixMap, wave, csRank);
+    p._sig = sig;
+    if (line === "mix") { p._line = sig.hr.amp >= sig.rbi.amp ? "hr" : "rbi"; p._gen = Math.max(sig.hr.amp, sig.rbi.amp); }
+    else { p._line = line; p._gen = sig[line].amp; }
   });
   pool.sort(function (a, b) { return b._gen - a._gen; });
   var cand = pool.slice(0, Math.max(20, size * 5));
@@ -1629,10 +1730,22 @@ function genCombo(size) {
       .map(function (p) { return { p: p, s: p._gen + synergyScore(p, combo, gamesById, stackMode) }; })
       .sort(function (a, b) { return b.s - a.s; });
     if (!scored.length) break;
-    var pick = scored[Math.floor(Math.random() * Math.min(scored.length, 3))]; // explore among the top 3 for fresh combos
+    // explore only inside the degeneracy band: names within a few points of the best remaining
+    // amplitude are interchangeable, but a clear leader is never blocked by a filler from his own game
+    var band = scored.filter(function (x) { return x.s >= scored[0].s - 3; });
+    var pick = band[Math.floor(Math.random() * Math.min(band.length, 3))];
     combo.push(pick.p);
   }
-  var joint = combo.reduce(function (pr, p) { return pr * ((p.hrPct || 0) / 100); }, 1) * 100;
+  // MIX tickets carry at least one of each line: flip the smallest-margin name if needed
+  if (line === "mix" && combo.length >= 2) {
+    var hrN = combo.filter(function (p) { return p._line === "hr"; }).length;
+    if (hrN === 0 || hrN === combo.length) {
+      var want = hrN === 0 ? "hr" : "rbi";
+      var flip = combo.slice().sort(function (a, b) { return Math.abs(a._sig.hr.amp - a._sig.rbi.amp) - Math.abs(b._sig.hr.amp - b._sig.rbi.amp); })[0];
+      flip._line = want;
+    }
+  }
+  var joint = combo.reduce(function (pr, p) { return pr * (p._sig[p._line].waveP || 0); }, 1) * 100;
   var covered = {};
   combo.forEach(function (p) { (p.numerHits || []).forEach(function (h) { covered[h.num] = 1; }); });
   var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
@@ -1646,7 +1759,8 @@ function genCombo(size) {
       if (String(p.gamePk) === String(q.gamePk) && p.teamAbbr === q.teamAbbr) stacks.push(p.teamAbbr + " stack");
     });
   });
-  state.genResult = { ids: combo.map(function (p) { return p.id; }), blend: blend, joint: joint, covList: covList, daySet: daySet, stacks: stackMode ? stacks : [], size: size, mode: stackMode ? "Stack mode" : "Multi-game spread", cycled: cycled, usedN: usedN, candN: Math.max(20, size * 5) };
+  var sources = { wave: !!wave, mixlab: !!mixMap, weak: !!ctx.weakBy };
+  state.genResult = { ids: combo.map(function (p) { return p.id; }), lines: combo.map(function (p) { return p._line; }), line: line, sources: sources, blend: blend, joint: joint, covList: covList, daySet: daySet, stacks: stackMode ? stacks : [], size: size, mode: stackMode ? "Stack mode" : "Multi-game spread", cycled: cycled, usedN: usedN, candN: Math.max(20, size * 5) };
 }
 function generateView() {
   var sizes = [2, 3, 4, 5].map(function (n) {
@@ -1669,18 +1783,32 @@ function generateView() {
         (LA.last ? '<span>last graded: stars ' + LA.last.starsHit + '/' + LA.last.starsN + ' HR \u00b7 slate ' + LA.last.hits + '/' + LA.last.n + '</span>' : "") + '</div>';
     }
   }
-  var controls = calib + '<div class="gen-controls">' + sizes +
+  var lines = [["hr", "\u2b50 HR ticket"], ["rbi", "\u25c6 RBI ticket"], ["mix", "\u269b MIX"]].map(function (l) {
+    return '<button class="gchip gline' + (state.genLine === l[0] ? " gchip-on" : "") + '" data-genline="' + l[0] + '" title="' + (l[0] === "hr" ? "Every name built for a home run" : l[0] === "rbi" ? "Every name built to drive in a run" : "Each name rides the line he is strongest on \u2014 at least one homer and one RBI on every ticket") + '">' + l[1] + "</button>";
+  }).join("");
+  var controls = calib + '<div class="gen-controls gen-lines">' + lines + '</div><div class="gen-controls">' + sizes +
     '<button class="gchip' + (state.genStack ? " gchip-on" : "") + '" data-genstack="1" title="When on: allows up to two names per game and rewards same-team stacks on launch nights. When off: one name per game, spread across the slate.">\u29c9 Stack ' + (state.genStack ? "on" : "off") + '</button>' +
     '<button class="gen-btn" data-generate="1">\u2726 Generate</button></div>';
   var r = state.genResult;
   if (!r) {
-    return controls + '<p class="mix-caption" style="padding:10px 6px">Pick a size and hit Generate. The engine blends model HR%, all thirteen signal tags, numerology alignments, convergence stars, and lineup status \u2014 then sharpens each bat by his windowed SLG against this pitcher\u2019s actual mix (L5 \u2192 L3 \u2192 season), his contact profile vs that mix (low whiff + low K climbs), and his Zone Score, and spreads names across different games by default. Every Generate rotates through the shortlist without repeating a name until the strong bats are exhausted \u2014 then it announces a fresh cycle. Flip <b>Stack on</b> to allow up to two names per game with same-team stacks rewarded on launch nights. Generate again for fresh high-scoring variations.</p>';
+    return controls + '<p class="mix-caption" style="padding:10px 6px">Pick a line and a size, then hit Generate. Every bat earns an amplitude per line from seven sources that measure in different bases \u2014 the QUANTOM wave, the board brain (tags, learning, numerology, lineup), his Mix Lab clone against tonight\u2019s arsenal, Weak Spots, cross-basis agreement, the prophecy (his next homer or ribbie landing on a day energy), and the environment. HR builds for the long ball, RBI for the run, MIX rides each name on his strongest line. Then the old rules still hold: the engine sharpens each bat by his windowed SLG against this pitcher\u2019s actual mix (L5 \u2192 L3 \u2192 season), his contact profile vs that mix (low whiff + low K climbs), and his Zone Score, and spreads names across different games by default. Every Generate rotates through the shortlist without repeating a name until the strong bats are exhausted \u2014 then it announces a fresh cycle. Flip <b>Stack on</b> to allow up to two names per game with same-team stacks rewarded on launch nights. Generate again for fresh high-scoring variations.</p>';
   }
   if (r.error) return controls + '<div class="loading">' + esc(r.error) + '</div>';
   var players = r.ids.map(function (id) { return byId(id); }).filter(Boolean);
   if (players.length !== r.size) return controls + '<div class="loading">The slate updated \u2014 hit Generate for a fresh combo.</div>';
   var rows = players.map(function (p, i) {
-    var chips = (p.tags || []).slice(0, 2).map(function (t) { return '<span class="tagchip">' + esc(t) + '</span>'; }).join("") +
+    var ln = (r.lines && r.lines[i]) || r.line || "hr";
+    var sg = p._sig && p._sig[ln];
+    var drivers = [];
+    if (sg) {
+      if (sg.wave != null) drivers.push('<span class="genchip gen-wave" title="QUANTOM wave">' + (ln === "hr" ? "wave " + Math.round(sg.waveP * 100) + "% HR" : "wave " + Math.round(sg.waveP * 100) + "% 1+ RBI") + "</span>");
+      if (sg.mixlab != null && sg.mixlab !== 50) drivers.push('<span class="genchip' + (sg.mixlab >= 60 ? " gen-good" : sg.mixlab <= 40 ? " gen-bad" : "") + '" title="Mix Lab clone vs tonight\u2019s arsenal">mix lab ' + (sg.mixlab >= 50 ? "+" : "") + (sg.mixlab - 50) + "</span>");
+      if (sg.weak != null && sg.weak >= 75) drivers.push('<span class="genchip gen-good" title="Sits in the starter\u2019s weak side">weak spot' + (sg.weak === 100 ? " \u00d72" : "") + "</span>");
+      if (sg.basesN >= 3) drivers.push('<span class="genchip gen-orth" title="Independent measurement bases agreeing">' + sg.basesN + "/" + sg.basesAvail + " bases</span>");
+      if (sg.prophecy) drivers.push('<span class="genchip gen-pro" title="The next one lands on a day energy">\u2605 #' + sg.prophecyNext + " prophecy</span>");
+    }
+    var chips = '<span class="genline gl-' + ln + '">' + (ln === "hr" ? "HR" : "RBI") + "</span>" + drivers.join("") +
+      (p.tags || []).slice(0, 2).map(function (t) { return '<span class="tagchip">' + esc(t) + '</span>'; }).join("") +
       ((p.numerHits && p.numerHits[0]) ? '<span class="numchip"><b>' + p.numerHits[0].num + '</b>' + esc(p.numerHits[0].label) + '</span>' : "");
     var out = '<div class="gen-row row" data-row="' + p.id + '">' +
       '<span class="gen-rank">' + (i + 1) + '</span>' +
@@ -1695,7 +1823,8 @@ function generateView() {
   var meta = '<div class="gen-meta">' +
     '<span class="mono" style="color:var(--hr);font-weight:600">Blend score ' + r.blend + '</span>' +
     (r.mode ? '<span class="mono dim">' + esc(r.mode) + '</span>' : "") +
-    '<span class="mono dim">All-hit estimate: ' + (r.joint >= 1 ? r.joint.toFixed(1) : r.joint.toFixed(2)) + '% \u00b7 baseline model</span>' +
+    '<span class="mono dim">All-hit estimate: ' + (r.joint >= 1 ? r.joint.toFixed(1) : r.joint.toFixed(2)) + '% \u00b7 ' + (r.sources && r.sources.wave ? "from the wave" : "board model") + '</span>' +
+    (r.sources ? '<span class="mono dim">Sources: wave ' + (r.sources.wave ? "\u2713" : "collapsing\u2026") + ' \u00b7 mix lab ' + (r.sources.mixlab ? "\u2713" : "splitting\u2026") + ' \u00b7 weak spots ' + (r.sources.weak ? "\u2713" : "loading\u2026") + ((!r.sources.wave || !r.sources.mixlab || !r.sources.weak) ? " \u00b7 generate again once they land" : "") + '</span>' : "") +
     '<span class="mono dim">Rotation: ' + r.usedN + ' of the top ' + r.candN + ' bats spun this session' + (r.cycled ? ' \u00b7 \u2726 fresh cycle \u2014 the shortlist reset' : '') + '</span>' +
     (r.daySet.length ? '<span class="mono" style="color:#c9a2e8">Day energies covered: ' + (r.covList.length ? r.covList.join(" \u00b7 ") : "none") + ' (' + r.covList.length + ' of ' + r.daySet.length + ')</span>' : "") +
     (r.stacks.length ? '<span class="mono dim">' + esc([...new Set(r.stacks)].join(", ")) + '</span>' : "") +
@@ -2083,24 +2212,9 @@ var A1_BASES = [
   { key:"env",   lab:"ENVIRON", color:"#93c5fd", sys:["park","vector"] },
   { key:"eso",   lab:"ESOTERIC", color:"#c084fc", sys:["num","chart","ltr","astro"] },
 ];
-function a1Bases(a) {
-  var out = [], aligned = 0, avail = 0;
-  A1_BASES.forEach(function (b) {
-    var vals = b.sys.map(function (k) { return a.sub[k]; }).filter(function (v) { return v != null; });
-    if (!vals.length) { out.push({ key: b.key, lab: b.lab, color: b.color, val: null, lit: false }); return; }
-    var mean = Math.round(vals.reduce(function (x, y) { return x + y; }, 0) / vals.length);
-    var lit = mean >= 60;
-    avail++; if (lit) aligned++;
-    out.push({ key: b.key, lab: b.lab, color: b.color, val: mean, lit: lit, n: vals.length });
-  });
-  return { bases: out, aligned: aligned, avail: avail };
-}
-function allInView() {
-  var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
-  var banner = '<div class="fn-banner" style="border-color:rgba(248,250,252,0.4)"><div class="fn-title" style="color:#f8fafc">ALL IN 1 \u00b7 WHERE EVERY SYSTEM AGREES</div>' +
-    '<div class="fn-sub">The slate\u2019s best picks by TOTAL CONVERGENCE \u2014 all ten systems cast a normalized vote: the HR board\u2019s Crushed Score, the QUANTOM rating, weak-spot placement, his windowed SLG + whiff/K vs tonight\u2019s actual pitch mix (L5 \u2192 L3 \u2192 season; unscouted bats sit neutral), VECTOR \u2014 his pull-air rate (pulled + elevated batted balls) aimed at tonight\u2019s pull-side porch in tonight\u2019s carry \u2014 numerology alignments, the full LP/PY/PM chart, letterology, eastern astrology, and stadium name energy. Weighted blend, re-balanced when a system is still warming \u00b7 lit chips = that system fired (60+) for him \u00b7 tap any card for the full dossier</div></div>';
-  var players = ((state.data && state.data.players) || []).filter(function (p) { return state.game === "all" || String(p.gamePk) === String(state.game); });
-  if (!players.length) return banner + '<div class="loading">Waiting on the board\u2026</div>';
+/* the ALL IN 1 context (park letters, QUANTOM rank, weak-spot matches) \u2014 shared
+   by the convergence tab and the GENERATE brain so both hear the same votes */
+function a1Context(daySet) {
   var ctx = { daySet: daySet, parkAl: {}, qRank: null, weakBy: null };
   ((state.data && state.data.games) || []).forEach(function (g) {
     var L = letterFor(g.park || "");
@@ -2120,6 +2234,28 @@ function allInView() {
       (e.lineup || []).forEach(function (le) { if (le && le.matches && le.matches.length) ctx.weakBy[le.id] = le.matches.length; });
     });
   }
+  return ctx;
+}
+function a1Bases(a) {
+  var out = [], aligned = 0, avail = 0;
+  A1_BASES.forEach(function (b) {
+    var vals = b.sys.map(function (k) { return a.sub[k]; }).filter(function (v) { return v != null; });
+    if (!vals.length) { out.push({ key: b.key, lab: b.lab, color: b.color, val: null, lit: false }); return; }
+    var mean = Math.round(vals.reduce(function (x, y) { return x + y; }, 0) / vals.length);
+    var lit = mean >= 60;
+    avail++; if (lit) aligned++;
+    out.push({ key: b.key, lab: b.lab, color: b.color, val: mean, lit: lit, n: vals.length });
+  });
+  return { bases: out, aligned: aligned, avail: avail };
+}
+function allInView() {
+  var daySet = (state.data && state.data.numerology && state.data.numerology.set) || [];
+  var banner = '<div class="fn-banner" style="border-color:rgba(248,250,252,0.4)"><div class="fn-title" style="color:#f8fafc">ALL IN 1 \u00b7 WHERE EVERY SYSTEM AGREES</div>' +
+    '<div class="fn-sub">The slate\u2019s best picks by TOTAL CONVERGENCE \u2014 all ten systems cast a normalized vote: the HR board\u2019s Crushed Score, the QUANTOM rating, weak-spot placement, his windowed SLG + whiff/K vs tonight\u2019s actual pitch mix (L5 \u2192 L3 \u2192 season; unscouted bats sit neutral), VECTOR \u2014 his pull-air rate (pulled + elevated batted balls) aimed at tonight\u2019s pull-side porch in tonight\u2019s carry \u2014 numerology alignments, the full LP/PY/PM chart, letterology, eastern astrology, and stadium name energy. Weighted blend, re-balanced when a system is still warming \u00b7 lit chips = that system fired (60+) for him \u00b7 tap any card for the full dossier</div></div>';
+  var players = ((state.data && state.data.players) || []).filter(function (p) { return state.game === "all" || String(p.gamePk) === String(state.game); });
+  if (!players.length) return banner + '<div class="loading">Waiting on the board\u2026</div>';
+  var ctx = a1Context(daySet);
+  var wd = state.weak[state.day];
   var status = [];
   if (!ctx.qRank) status.push(state.demo ? "QUANTOM votes on the live server" : "QUANTOM still collapsing \u2014 scores refine when it lands");
   if (!ctx.weakBy) status.push(state.demo ? "weak-spot votes on the live server" : (wd && wd.warming ? "weak spots warming" : "weak spots loading"));
@@ -3401,7 +3537,7 @@ function setBanner(kind, msg) {
   var b = document.getElementById("banner");
   b.className = "banner show " + (kind === "live" ? "banner-live" : "banner-demo");
   b.innerHTML = msg;
-  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b95";
+  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b96";
 }
 
 /* ---------- data loading ---------- */
@@ -3814,12 +3950,16 @@ document.addEventListener("click", function (e) {
     return;
   }
   if (el.dataset.gensize) { state.genSize = +el.dataset.gensize; render(); return; }
+  if (el.dataset.genline) { state.genLine = el.dataset.genline; if (state.genResult && !state.genResult.error) { genCombo(state.genSize); state.open = null; } render(); return; }
   if (el.dataset.genstack) {
     state.genStack = !state.genStack;
     if (state.genResult && !state.genResult.error) { genCombo(state.genSize); state.open = null; }
     render(); return;
   }
-  if (el.dataset.generate) { genCombo(state.genSize); state.open = null; render(); return; }
+  if (el.dataset.generate) {
+    if (!state.demo) { if (!state.quantumData[state.day]) loadQuantum(); if (!state.weak[state.day]) loadWeak(); if (!state.mixlabData[state.day]) loadMixLab(); }
+    genCombo(state.genSize); state.open = null; render(); return;
+  }
   if (el.dataset.gdside) { state.gdSide = el.dataset.gdside; state.open = null; render(); return; }
   if (el.dataset.prof) {
     state.profOpen = String(state.profOpen) === String(el.dataset.prof) ? null : el.dataset.prof;
