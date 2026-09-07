@@ -1686,9 +1686,10 @@ function genSignals(p, ctx, mixMap, wave, csRank) {
   return out;
 }
 function genCombo(size) {
-  var pool = ((state.data && state.data.players) || []).slice();
+  var single = state.game && state.game !== "all" ? String(state.game) : null;
+  var pool = ((state.data && state.data.players) || []).filter(function (p) { return !single || String(p.gamePk) === single; });
   if (pool.length < size) {
-    state.genResult = { error: "Not enough players on this slate yet \u2014 combos sharpen as lineups post." };
+    state.genResult = { error: single ? "Only " + pool.length + " bat" + (pool.length === 1 ? "" : "s") + " posted for this game so far \u2014 pick a smaller ticket or wait for the lineups." : "Not enough players on this slate yet \u2014 combos sharpen as lineups post." };
     return;
   }
   var TH = (state.data && state.data.thresholds) || DEFAULT_THRESH;
@@ -1722,12 +1723,12 @@ function genCombo(size) {
   var uniq = {};
   pool.forEach(function (p) { uniq[String(p.gamePk)] = 1; });
   // default = spread: one name per game; only relax if the slate is smaller than the combo
-  var maxPerGame = stackMode ? 2 : (Object.keys(uniq).length >= size ? 1 : 2);
+  var maxPerGame = single ? size : stackMode ? 2 : (Object.keys(uniq).length >= size ? 1 : 2); // one game selected: the whole ticket lives in it
   var combo = [];
   function countGame(pk) { return combo.filter(function (q) { return String(q.gamePk) === String(pk); }).length; }
   while (combo.length < size) {
     var scored = cand.filter(function (p) { return combo.indexOf(p) === -1 && countGame(p.gamePk) < maxPerGame; })
-      .map(function (p) { return { p: p, s: p._gen + synergyScore(p, combo, gamesById, stackMode) }; })
+      .map(function (p) { return { p: p, s: p._gen + (single ? synergyScore(p, combo, gamesById, true) : synergyScore(p, combo, gamesById, stackMode)) }; })
       .sort(function (a, b) { return b.s - a.s; });
     if (!scored.length) break;
     // explore only inside the degeneracy band: names within a few points of the best remaining
@@ -1760,7 +1761,9 @@ function genCombo(size) {
     });
   });
   var sources = { wave: !!wave, mixlab: !!mixMap, weak: !!ctx.weakBy };
-  state.genResult = { ids: combo.map(function (p) { return p.id; }), lines: combo.map(function (p) { return p._line; }), line: line, sources: sources, blend: blend, joint: joint, covList: covList, daySet: daySet, stacks: stackMode ? stacks : [], size: size, mode: stackMode ? "Stack mode" : "Multi-game spread", cycled: cycled, usedN: usedN, candN: Math.max(20, size * 5) };
+  var g1 = single ? gamesById[single] : null;
+  var gameLabel = g1 ? esc(g1.away) + " @ " + esc(g1.home) : null;
+  state.genResult = { ids: combo.map(function (p) { return p.id; }), lines: combo.map(function (p) { return p._line; }), line: line, sources: sources, game: single, gameLabel: gameLabel, blend: blend, joint: joint, covList: covList, daySet: daySet, stacks: single || stackMode ? stacks : [], size: size, mode: single ? "Single game \u00b7 " + gameLabel : stackMode ? "Stack mode" : "Multi-game spread", cycled: cycled, usedN: usedN, candN: Math.max(20, size * 5) };
 }
 function generateView() {
   var sizes = [2, 3, 4, 5].map(function (n) {
@@ -1791,7 +1794,7 @@ function generateView() {
     '<button class="gen-btn" data-generate="1">\u2726 Generate</button></div>';
   var r = state.genResult;
   if (!r) {
-    return controls + '<p class="mix-caption" style="padding:10px 6px">Pick a line and a size, then hit Generate. Every bat earns an amplitude per line from seven sources that measure in different bases \u2014 the QUANTOM wave, the board brain (tags, learning, numerology, lineup), his Mix Lab clone against tonight\u2019s arsenal, Weak Spots, cross-basis agreement, the prophecy (his next homer or ribbie landing on a day energy), and the environment. HR builds for the long ball, RBI for the run, MIX rides each name on his strongest line. Then the old rules still hold: the engine sharpens each bat by his windowed SLG against this pitcher\u2019s actual mix (L5 \u2192 L3 \u2192 season), his contact profile vs that mix (low whiff + low K climbs), and his Zone Score, and spreads names across different games by default. Every Generate rotates through the shortlist without repeating a name until the strong bats are exhausted \u2014 then it announces a fresh cycle. Flip <b>Stack on</b> to allow up to two names per game with same-team stacks rewarded on launch nights. Generate again for fresh high-scoring variations.</p>';
+    return controls + '<p class="mix-caption" style="padding:10px 6px">Pick a line and a size, then hit Generate. Every bat earns an amplitude per line from seven sources that measure in different bases \u2014 the QUANTOM wave, the board brain (tags, learning, numerology, lineup), his Mix Lab clone against tonight\u2019s arsenal, Weak Spots, cross-basis agreement, the prophecy (his next homer or ribbie landing on a day energy), and the environment. HR builds for the long ball, RBI for the run, MIX rides each name on his strongest line. Tap a game card above to build the whole ticket inside that game; on All games the engine sharpens each bat by his windowed SLG against this pitcher\u2019s actual mix (L5 \u2192 L3 \u2192 season), his contact profile vs that mix (low whiff + low K climbs), and his Zone Score, and spreads names across different games by default. Every Generate rotates through the shortlist without repeating a name until the strong bats are exhausted \u2014 then it announces a fresh cycle. Flip <b>Stack on</b> to allow up to two names per game with same-team stacks rewarded on launch nights. Generate again for fresh high-scoring variations.</p>';
   }
   if (r.error) return controls + '<div class="loading">' + esc(r.error) + '</div>';
   var players = r.ids.map(function (id) { return byId(id); }).filter(Boolean);
@@ -2408,7 +2411,7 @@ function windowByPitch(rows, mix, sel, N, type) {
 function mixLabEnsureRows() {
   var d = state.mixlabData[state.day];
   if (!d || !d.players) return;
-  var queue = d.players.filter(function (p) { return (!state.game || String(p.gamePk) === String(state.game)) && !state.mixRows[p.id] && !state.mixRowsBusy[p.id]; });
+  var queue = d.players.filter(function (p) { return (state.game === "all" || !state.game || String(p.gamePk) === String(state.game)) && !state.mixRows[p.id] && !state.mixRowsBusy[p.id]; });
   var inflight = 0;
   var next = function () {
     while (inflight < 4 && queue.length) {
@@ -2480,7 +2483,7 @@ function mixLabView() {
   if (!d) return banner + '<div class="loading">Splitting every bat on the slate by pitch type\u2026</div>';
   if (d.error) return banner + '<div class="loading">Could not load the pitch-type splits \u2014 tap MIX LAB again.</div>';
   if (d.warming) return banner + '<div class="loading">The board is still assembling \u2014 back in a moment.</div>';
-  var players = d.players.filter(function (p) { return !state.game || String(p.gamePk) === String(state.game); });
+  var players = d.players.filter(function (p) { return state.game === "all" || !state.game || String(p.gamePk) === String(state.game); });
   players.sort(function (a, b) { return (b.hrPct || 0) - (a.hrPct || 0); });
   var windowed = state.mixRange !== "season";
   var bar = '<div class="ml-bar"><span class="ml-bar-lab">RANGE</span>' +
@@ -3537,7 +3540,7 @@ function setBanner(kind, msg) {
   var b = document.getElementById("banner");
   b.className = "banner show " + (kind === "live" ? "banner-live" : "banner-demo");
   b.innerHTML = msg;
-  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b96";
+  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b98";
 }
 
 /* ---------- data loading ---------- */
@@ -3930,7 +3933,7 @@ document.addEventListener("keydown", function (e) {
   }
 });
 document.addEventListener("click", function (e) {
-  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-slg],[data-slgwin],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-bookmenu],[data-bookpick],[data-save],[data-savetab],[data-simtab],[data-simgame],[data-simback],[data-simlvl],[data-qmtab],[data-alltab],[data-mltab],[data-mixpt],[data-mixfull],[data-mlrange],[data-mltype],[data-desttab],[data-orafab],[data-orasend],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-penarm],[data-row]") : null;
+  var el = e.target.closest ? e.target.closest("[data-day],[data-tab],[data-game],[data-gensize],[data-genline],[data-genstack],[data-generate],[data-clip],[data-god],[data-ops],[data-zone],[data-slg],[data-slgwin],[data-mixwin],[data-alert],[data-lettab],[data-sltab],[data-slsort],[data-stadtab],[data-staddir],[data-stad],[data-advtab],[data-advmenu],[data-advcol],[data-advop],[data-advclear],[data-advfclear],[data-advwin],[data-advmode],[data-oddstab],[data-bookmenu],[data-bookpick],[data-save],[data-savetab],[data-simtab],[data-simgame],[data-simback],[data-simlvl],[data-qmtab],[data-alltab],[data-mltab],[data-mixpt],[data-mixfull],[data-mlrange],[data-mltype],[data-desttab],[data-orafab],[data-orasend],[data-opswin],[data-gdside],[data-wk],[data-prof],[data-sort],[data-rwin],[data-pitch],[data-arm],[data-penarm],[data-row]") : null;
   if (!el) return;
   if (el.dataset.day) {
     if (state.day === el.dataset.day) return;
@@ -4286,6 +4289,7 @@ document.addEventListener("click", function (e) {
   }
   if (el.dataset.game) {
     state.game = el.dataset.game; state.open = null; state.pitch = null; state.arm = "sp"; state.penArm = null;
+    if (state.tab === "generate" && state.genResult && !state.genResult.error) { genCombo(state.genSize); }
     if (state.tab === "lgame" && !state.demo && state.game !== "all") loadGameday(state.game);
     if (state.tab === "weak" && !state.demo) loadWeak();
     state.gdSide = null;
