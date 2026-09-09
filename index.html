@@ -687,7 +687,7 @@ thead th { font-weight: 800; letter-spacing: 0.06em; }
     <div class="masthead-meta">
       <span class="mono dim" id="slate-meta">syncing…</span>
       <span class="live-dot" aria-hidden="true"></span> <span class="mono live-label" id="sync-label">connecting</span>
-      <div style="display:flex;justify-content:center"><button class="dest-btn" id="dest-btn" data-desttab="1">\u2726 DESTINY \u2726</button></div>
+      <div style="display:flex;justify-content:center"><button class="dest-btn" id="dest-btn" data-desttab="1">&#10022; DESTINY &#10022;</button></div>
       <div id="oracle-host"></div>
     </div>
   </header>
@@ -3540,7 +3540,7 @@ function setBanner(kind, msg) {
   var b = document.getElementById("banner");
   b.className = "banner show " + (kind === "live" ? "banner-live" : "banner-demo");
   b.innerHTML = msg;
-  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b98";
+  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b99";
 }
 
 /* ---------- data loading ---------- */

@@ -756,7 +756,7 @@ const PORCH = {
    Transparent blend, 0-100; tune the weights freely. */
 function vectorScore(p, park) {
   if (p.pullAirPct == null) return null;
-  const porch = PORCH[park] || { lf: 5, rf: 5 };
+  const porch = PORCH[parkKey(park)] || { lf: 5, rf: 5 };
   let side;
   if (p.bats === "L") side = porch.rf;
   else if (p.bats === "R") side = porch.lf;
@@ -840,11 +840,27 @@ const STADIA = {
   "Sutter Health Park": { lat: 38.580, lon: -121.513, cf: 60 },
 };
 const ROOFED = new Set(["Globe Life Field", "Chase Field", "Rogers Centre", "American Family Field", "Daikin Park", "Minute Maid Park", "loanDepot park"]);
+/* Venue names drift with naming rights ("UNIQLO Field at Dodger Stadium") while
+   every park table is keyed to the classic name. parkKey resolves a schedule
+   name to the table key: exact match first, then the alias map, then any table
+   key the name contains (or is contained by). Unknown parks pass through. */
+const PARK_ALIAS = { "UNIQLO Field at Dodger Stadium": "Dodger Stadium" };
+const PARK_KEYS = Array.from(new Set([].concat(Object.keys(STADIA), Object.keys(PARK_HR), Object.keys(PORCH), Array.from(ROOFED))));
+function parkKey(name) {
+  if (!name) return name;
+  if (STADIA[name] || PARK_HR[name] || PORCH[name] || ROOFED.has(name)) return name;
+  if (PARK_ALIAS[name]) return PARK_ALIAS[name];
+  const low = String(name).toLowerCase();
+  let best = null;
+  for (const k of PARK_KEYS) { const kl = k.toLowerCase(); if ((low.indexOf(kl) !== -1 || kl.indexOf(low) !== -1) && (!best || k.length > best.length)) best = k; }
+  return best || name;
+}
 
 /* game-time forecast from Open-Meteo (free, no API key).
    relDeg: wind direction relative to the field — 0 = blowing
    straight out to CF, 90 = L-to-R, 180 = blowing in, 270 = R-to-L */
 async function gameWeather(park, isoStart) {
+  park = parkKey(park);
   const st = STADIA[park];
   if (!st) return null;
   if (ROOFED.has(park)) return { roof: true, tempF: 72, windMph: 0, relDeg: null, label: "Roof", carryWind: 0 };
@@ -1385,7 +1401,7 @@ async function buildTeamSide(game, sideKey, box, carry, dayNums) {
 
   const spPerson = await person(oppSP.id).catch(() => ({}));
   const tInfo = await teamInfo(team.id);
-  const parkHR = PARK_HR[game.venue?.name] || 1.0;
+  const parkHR = PARK_HR[parkKey(game.venue?.name)] || 1.0;
   // NOTE: no Savant pulls during board assembly — the board is built
   // entirely from the MLB Stats API (lineups, probables, season stats,
   // BvP) so it loads fast. Savant detail (arsenal, spray, zones,
@@ -1482,7 +1498,7 @@ async function assembleBoard(date) {
       gameDate: g.gameDate || null,
       away: awayInfo.abbreviation || g.teams.away.team.name,
       home: homeInfo.abbreviation || g.teams.home.team.name,
-      park: g.venue?.name, parkHR: PARK_HR[g.venue?.name] || 1.0,
+      park: g.venue?.name, parkHR: PARK_HR[parkKey(g.venue?.name)] || 1.0,
       start: g.gameDate,
       carry,
       weather: wx ? { tempF: wx.tempF, windMph: wx.windMph, relDeg: wx.relDeg, label: wx.roof ? "Roof" : wx.label } : null,
@@ -1585,7 +1601,7 @@ async function weatherBackfill() {
     const b = BOARDS[day];
     if (!b || !b.games) continue;
     for (const g of b.games) {
-      if (g.weather || !STADIA[g.park] || ROOFED.has(g.park)) continue;
+      if (g.weather || !STADIA[parkKey(g.park)] || ROOFED.has(parkKey(g.park))) continue;
       try {
         const wx = await gameWeather(g.park, g.start || `${b.date}T23:00:00Z`);
         if (!wx) continue;
