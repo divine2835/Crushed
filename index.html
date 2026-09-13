@@ -90,6 +90,10 @@ button { font-family: inherit; }
 .genchip.gen-bad { color: #f43f5e; border-color: rgba(244,63,94,0.45); }
 .genchip.gen-orth { color: #67e8f9; border-color: rgba(103,232,249,0.45); }
 .genchip.gen-pro { color: #c9a2e8; border-color: rgba(201,162,232,0.55); }
+.mkt-num { color: #67e8f9; }
+.mkt-sub { display: block; font-size: 10px; font-family: "JetBrains Mono", monospace; color: var(--dim); }
+.mkt-sub.mkt-up { color: #2ecc8f; } .mkt-sub.mkt-dn { color: #f43f5e; }
+.mkt-cell.mkt-thin { opacity: 0.55; }
 .ml-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 10px; }
 .ml-bar-lab { font-size: 9.5px; letter-spacing: 0.12em; font-weight: 800; color: var(--dim); margin: 0 2px 0 6px; }
 .ml-bar-lab.ml-dim { opacity: 0.4; }
@@ -903,7 +907,7 @@ var DEMO = {
 var state = { tab:"hr", day:"today", boards:{}, everLive:false, genSize:3, genResult:null, genStack:false, genLine:"hr", recent:{}, recentLoading:{}, recentWin:7, bsplits:{}, psplits:{}, splitsLoading:{}, liveData:null, liveLoading:false, liveUpdated:null, clips:{}, openClip:null, god:false, godData:{}, godLoading:false, ops:false, opsWin:"season", ops25:{}, ops25Loading:false, zoneMode:false, zoneData:{}, zoneLoading:false, slSort:{col:"hr",dir:"desc"}, stadOpen:null, stadDir:"desc", oddsData:{}, oddsLoading:false, oddsBook:"best", oddsMenu:false,
   saved: (function () { try { return JSON.parse(localStorage.getItem("crushedSaved") || "[]").map(Number); } catch (e) { return []; } })(),
   simData:{}, simOpen:null, simLoading:false, simIdx:0, simLevel:"expert",
-  quantumData:{}, quantumLoading:false, destinyData:{}, destinyLoading:false, chatOpen:false, chat:[], chatBusy:false, chatBuilt:false, mixlabData:{}, mixlabLoading:false, mixSel:{}, mixRange:"season", mixType:"g", mixRows:{}, mixRowsBusy:{}, advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
+  quantumData:{}, quantumLoading:false, destinyData:{}, destinyLoading:false, chatOpen:false, chat:[], chatBusy:false, chatBuilt:false, mixlabData:{}, mixlabLoading:false, mixSel:{}, mixRange:"season", mixType:"g", mixRows:{}, mixRowsBusy:{}, marketData:{}, marketLoading:false, marketAt:0, advMenu:false, advCols:{hrPct:true,zs:true,iso:true,brl:true,whiff:true,ev:true}, advFilters:{}, advWin:"szn", advWinData:{}, advWinLoading:false, advMode:"tot", mixWin:"szn",
   alerts: (function () { try { return JSON.parse(localStorage.getItem("crushedAlerts") || "[]"); } catch (e) { return []; } })(), profOpen:null, hrcal:{}, hrcalLoading:{}, gameday:{}, gdLoading:{}, gdSide:null, weak:{}, weakLoading:false, weakOpen:null, game:"all", open:null, arm:"sp", penArm:null, armZs:{}, armZsLoading:{}, pitch:null, hrSort:"hrPct", hrDir:"desc", slgMode:false, slgWin:"szn", rbiSort:"xRbi", data:null, demo:false, pen:{}, penLoading:{}, detailLoading:{}, arsenals:{}, arsLoading:{} };
 var API_BASES = ["", "http://localhost:3001"];
 var apiBase = "";
@@ -1438,6 +1442,13 @@ function crushedScore(p) {
 function csCls(v) { return v >= 70 ? "cs-hot" : v >= 50 ? "cs-mid" : "cs-cold"; }
 var HR_COLS = [
   { key:"hrPct", label:"HR%", render:function (p) { return '<div class="stat-cell"><span class="mono strong hr-num">' + p.hrPct.toFixed(1) + '</span>' + meter(p.hrPct, 35, "var(--hr)") + '</div>'; } },
+  { key:"mkt", label:"MKT", render:function (p) {
+      if (!state.demo) loadMarket();
+      var d = state.marketData[state.day], m = d && d.players ? d.players[p.id] : null;
+      if (!m || m.yes == null) return '<span class="mono dim" title="No Kalshi home-run contract matched yet \u2014 they usually post a few hours before first pitch">\u2014</span>';
+      var thin = m.vol < (d.thin || 100), gap = p.hrPct != null ? Math.round(p.hrPct - m.yes) : null;
+      var title = "Kalshi YES " + m.yes + "\u00a2 (bid " + (m.bid != null ? m.bid + "\u00a2" : "\u2014") + ") \u00b7 " + m.vol.toLocaleString() + " contracts traded" + (thin ? " \u00b7 thin market, low signal" : "") + (gap != null ? " \u00b7 board " + p.hrPct.toFixed(1) + "% vs market " + m.yes + "\u00a2 = " + (gap > 0 ? "+" : "") + gap + " pts" : "");
+      return '<div class="stat-cell mkt-cell' + (thin ? " mkt-thin" : "") + '" title="' + title + '"><span class="mono strong mkt-num">' + m.yes + '\u00a2</span>' + (thin ? '<span class="mkt-sub">thin</span>' : (gap != null ? '<span class="mkt-sub ' + (gap >= 5 ? "mkt-up" : gap <= -5 ? "mkt-dn" : "") + '">' + (gap > 0 ? "+" : "") + gap + '</span>' : "")) + '</div>'; } },
   { key:"cs", label:"CS", render:function (p) { var v = crushedScore(p); return '<span class="cs-num ' + csCls(v) + '" title="Crushed Score ' + v + ' \u00b7 0.6\u00d7matchup (HR% slate percentile' + (zsOf(p.id) ? ' + ZS' : '') + ') + 0.4\u00d7form (L10 vs his season' + (csForm(p) === 50 ? ' \u00b7 neutral until windows land or sample thickens' : '') + ')">' + v + '</span>'; } },
   { key:"seasonHr", label:"HR (szn)", render:function (p) { return '<span class="mono">' + (p.season ? p.season.hr : "—") + '</span>'; } },
   { key:"parkHR", label:"Park", render:function (p) { return factorChip(p.parkHR); } },
@@ -1453,6 +1464,7 @@ var RBI_COLS = [
 function sortVal(p, key) {
   if (key === "seasonHr") return p.season ? p.season.hr : 0;
   if (key === "cs") return crushedScore(p);
+  if (key === "mkt") { var md = state.marketData[state.day], mm = md && md.players ? md.players[p.id] : null; return mm && mm.yes != null ? mm.yes : -1; }
   return p[key] == null ? -1 : p[key];
 }
 function playerRow(p, cols) {
@@ -2292,6 +2304,22 @@ function allInView() {
   }).join("");
 }
 /* QUANTOM — the slate collapsed into one ranked wave of expected lines. */
+/* ---------------- THE MARKET (Kalshi) ----------------
+   fetched on its own 10-minute clock, only by the surfaces that show it */
+function loadMarket() {
+  if (state.demo || state.marketLoading) return;
+  var fresh = state.marketData[state.day] && !state.marketData[state.day].pending && (Date.now() - state.marketAt) < 10 * 60 * 1000;
+  if (fresh) return;
+  state.marketLoading = true;
+  fetch(apiBase + "/api/market?day=" + state.day)
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (j) {
+      state.marketData[state.day] = j; state.marketAt = Date.now();
+      if (j.pending || j.warming) setTimeout(function () { state.marketAt = 0; if (state.tab === "hr") loadMarket(); }, 30000);
+    })
+    .catch(function () { state.marketData[state.day] = { error: true }; state.marketAt = Date.now(); })
+    .finally(function () { state.marketLoading = false; if (state.tab === "hr") render(); });
+}
 /* ---------------- MIX LAB ---------------- */
 function loadMixLab() {
   if (state.mixlabLoading || (state.mixlabData[state.day] && !state.mixlabData[state.day].pending)) return;
@@ -3540,7 +3568,7 @@ function setBanner(kind, msg) {
   var b = document.getElementById("banner");
   b.className = "banner show " + (kind === "live" ? "banner-live" : "banner-demo");
   b.innerHTML = msg;
-  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b99";
+  document.getElementById("sync-label").textContent = (kind === "live" ? "Statcast synced" : "demo data") + " \u00b7 b101";
 }
 
 /* ---------- data loading ---------- */

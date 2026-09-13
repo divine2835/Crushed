@@ -2422,6 +2422,90 @@ app.get("/api/mixlab", async (req, res) => {
     res.json({ day, built: Date.now(), season: SEASON, pending, players: out });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+/* ---------------- THE MARKET (Kalshi) ----------------
+   Public, keyless read of Kalshi's MLB home-run contracts: YES price in cents
+   (which reads as a probability) and traded volume per hitter. One request per
+   slate on a 10-minute clock. Runs beside the board, never inside it \u2014 if
+   Kalshi is slow or down, the chip reads "\u2014" and nothing else notices. */
+const KALSHI = "https://api.elections.kalshi.com/trade-api/v2";
+const KALSHI_SERIES_GUESSES = ["KXMLBHR", "KXMLBHOMERUN", "KXMLBPLAYERHR", "KXMLBHRS"];
+let KALSHI_HR_SERIES = process.env.KALSHI_HR_SERIES || null;
+const mktNorm = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+async function kalshiGet(path) {
+  const r = await fetch(KALSHI + path, { headers: { Accept: "application/json", "User-Agent": "crushed" } });
+  if (!r.ok) throw new Error("kalshi " + r.status);
+  return r.json();
+}
+async function kalshiHrMarkets() {
+  // 1) known series (env or previously discovered)
+  const tryTickers = KALSHI_HR_SERIES ? [KALSHI_HR_SERIES] : KALSHI_SERIES_GUESSES;
+  for (const t of tryTickers) {
+    try {
+      const j = await kalshiGet(`/markets?status=open&limit=1000&series_ticker=${encodeURIComponent(t)}`);
+      const ms = (j.markets || []).filter((m) => /home ?run/i.test((m.title || "") + " " + (m.subtitle || "") + " " + (m.yes_sub_title || "") + " " + (m.event_ticker || "")));
+      if (ms.length) { KALSHI_HR_SERIES = t; return ms; }
+    } catch { /* next guess */ }
+  }
+  // 2) discovery: page through open events looking for an MLB home-run series
+  let cursor = null;
+  for (let page = 0; page < 12; page++) {
+    const j = await kalshiGet(`/events?status=open&limit=200${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`);
+    const ev = (j.events || []).find((e) => /home ?run/i.test(e.title || "") && /mlb|baseball/i.test((e.title || "") + " " + (e.category || "") + " " + (e.series_ticker || "")));
+    if (ev && ev.series_ticker) {
+      KALSHI_HR_SERIES = ev.series_ticker;
+      const mj = await kalshiGet(`/markets?status=open&limit=1000&series_ticker=${encodeURIComponent(ev.series_ticker)}`);
+      return mj.markets || [];
+    }
+    cursor = j.cursor; if (!cursor) break;
+  }
+  return [];
+}
+/* match a contract to a board player: full name first, then last name + first initial (unique) */
+function marketMatch(markets, players) {
+  const out = {};
+  const byFull = {}, byLast = {};
+  players.forEach((p) => {
+    const n = mktNorm(p.name);
+    byFull[n] = p;
+    const parts = n.replace(/\b(jr|sr|ii|iii|iv)\b/g, " ").replace(/\s+/g, " ").trim().split(" "); // suffixes are not last names
+    const key = parts[parts.length - 1] + "|" + (parts[0] || "").slice(0, 1);
+    (byLast[key] = byLast[key] || []).push(p);
+  });
+  markets.forEach((m) => {
+    const text = mktNorm([m.yes_sub_title, m.subtitle, m.title, m.ticker].filter(Boolean).join(" ")).replace(/\b(jr|sr|ii|iii|iv)\b/g, " ").replace(/\s+/g, " ");
+    let hit = null;
+    for (const n in byFull) { const nn = n.replace(/\b(jr|sr|ii|iii|iv)\b/g, " ").replace(/\s+/g, " ").trim(); if (text.indexOf(nn) !== -1) { hit = byFull[n]; break; } }
+    if (!hit) {
+      for (const k in byLast) {
+        const [last, init] = k.split("|");
+        if (byLast[k].length === 1 && new RegExp("\\b" + init + "[a-z]* " + last + "\\b").test(text)) { hit = byLast[k][0]; break; }
+      }
+    }
+    if (!hit) return;
+    const yes = m.yes_ask != null ? +m.yes_ask : (m.last_price != null ? +m.last_price : null);
+    const rec = { ticker: m.ticker, yes, bid: m.yes_bid != null ? +m.yes_bid : null, last: m.last_price != null ? +m.last_price : null, vol: +m.volume || 0, oi: +m.open_interest || 0, close: m.close_time || null };
+    // if a player has several contracts (doubleheaders), keep the most traded
+    if (!out[hit.id] || rec.vol > out[hit.id].vol) out[hit.id] = rec;
+  });
+  return out;
+}
+const marketFor = (day) => cached(`kalshi:${day}`, 10 * 60 * 1000, async () => {
+  const b = BOARDS[day];
+  if (!b || !(b.players || []).length) return null;
+  const markets = await kalshiHrMarkets();
+  const players = marketMatch(markets, b.players);
+  return { built: Date.now(), source: "kalshi", series: KALSHI_HR_SERIES, contracts: markets.length, matched: Object.keys(players).length, thin: 100, players };
+});
+app.get("/api/market", async (req, res) => {
+  try {
+    const day = req.query.day === "tomorrow" ? "tomorrow" : "today";
+    const b = BOARDS[day];
+    if (!b || !(b.players || []).length) return res.json({ warming: true });
+    let out = cachePeek(`kalshi:${day}`, 10 * 60 * 1000);
+    if (!out) { marketFor(day).catch(() => {}); return res.json({ pending: true }); }
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.get("/api/mixlab/rows", async (req, res) => {
   try {
     const id = +req.query.id;
@@ -3024,7 +3108,18 @@ function fcProb(row, stat, n) {
 function fcLine(row) {
   return (+row.h).toFixed(1) + " H \u00b7 " + (+row.hr).toFixed(2) + " HR \u00b7 " + (+row.rbi).toFixed(1) + " RBI \u00b7 " + (+row.tb).toFixed(1) + " TB \u00b7 " + (+row.r).toFixed(1) + " R (Q " + (+row.q).toFixed(1) + ")";
 }
-function forecastAnswer(per, row, bp, parsed, set, ran) {
+function marketLine(mk) {
+  if (!mk || mk.yes == null) return "";
+  return " Kalshi prices him at " + mk.yes + "\u00a2" + (mk.vol >= 100 ? " on " + mk.vol.toLocaleString() + " contracts" : mk.vol ? " (thin: " + mk.vol + " contracts)" : " (no volume yet)") + ".";
+}
+function marketGapAnswer(rows, mkts, set) {
+  const pairs = rows.filter((r) => mkts[r.id] && mkts[r.id].yes != null && mkts[r.id].vol >= 100)
+    .map((r) => ({ r, m: mkts[r.id], gap: (r.hrSim || 0) - mkts[r.id].yes })).sort((a, z) => Math.abs(z.gap) - Math.abs(a.gap)).slice(0, 3);
+  if (!pairs.length) return { answer: "No liquid Kalshi home-run contracts matched tonight\u2019s slate yet \u2014 they usually post a few hours before first pitch.", numbers: [], aligned: false };
+  const st = starNumbers([Math.round(Math.abs(pairs[0].gap))], set);
+  return { answer: "Biggest gaps between the wave and the market tonight: " + pairs.map((x, i) => (i + 1) + ") " + x.r.name + " \u2014 wave " + Math.round(x.r.hrSim) + "%, Kalshi " + x.m.yes + "\u00a2 (" + (x.gap > 0 ? "sims like him more" : "market likes him more") + ", " + x.m.vol.toLocaleString() + " contracts)").join(" \u00b7 ") + ". A positive gap is the sims seeing more than the money does.", ...st, player: pairs[0].r.name };
+}
+function forecastAnswer(per, row, bp, parsed, set, ran, mk) {
   const stat = parsed.stat || "hr", n = parsed.n || 1;
   const vs = bp && bp.sp ? " vs " + bp.sp.name : "";
   const tags = bp && bp.tags && bp.tags.length ? " Tags: " + bp.tags.slice(0, 4).join(", ") + "." : "";
@@ -3041,7 +3136,7 @@ function forecastAnswer(per, row, bp, parsed, set, ran) {
   const how = stat === "hr" && n === 1 ? "goes deep in " + pct + "% of " + (ran || SIM_N) + " expert sims" : "reaches " + what + " in about " + pct + "% of tonight\u2019s realities (Poisson on his expected " + (+row[FC_MEAN[stat]]).toFixed(2) + ")";
   const st = starNumbers([{ v: pct, next: false }], set);
   const why = parsed.why ? " Why he\u2019s a play:" + boardHr + vec + tags : boardHr + vec + tags;
-  return { answer: per.name + " tonight" + vs + ": " + how + ". Expected line " + fcLine(row) + "." + why, ...st, player: per.name };
+  return { answer: per.name + " tonight" + vs + ": " + how + ". Expected line " + fcLine(row) + "." + why + marketLine(mk), ...st, player: per.name };
 }
 function forecastLeaderAnswer(rows, parsed, set, ran) {
   const stat = parsed.stat || "hr", n = parsed.n || 1;
@@ -3253,6 +3348,8 @@ function parseOracle(q) {
   // FORECAST \u2014 questions about tonight's wave, not the past. Detected first
   // so "will he homer tonight" never falls into a season-stat pattern.
   if (s === "__opening__") return { intent: "opening" };
+  if (/\b(kalshi|the market|prediction market|the money|the exchange)\b/.test(s) && /\b(disagree|gap|gaps|vs the wave|against the wave|differ|fade|mispriced|value|off)\b/.test(s)) return { intent: "marketGap" };
+  if (/^(?:where|who)\b.*\b(market|kalshi)\b.*\b(wrong|disagree|off|differ)/.test(s)) return { intent: "marketGap" };
   if (/\b(how accurate|track record|grade yourself|your accuracy|how often are you right|are you any good|how good are you|how (?:have|are|were|did) you (?:been )?(?:doing|do|done)|your (?:\w+ )?(?:calls|picks|forecasts|predictions)|hit rate)\b/.test(s)) {
     const sw = s.match(new RegExp("\\b" + FC_STAT + "\\b"));
     const stat = sw ? fcStat(sw[0]) : null;
@@ -3702,6 +3799,14 @@ app.get("/api/oracle", async (req, res) => {
         const joint = wave && wave.joint ? wave.joint[per.board.gamePk] : null;
         return entangleAnswer(per, joint, set);
       }
+      if (parsed.intent === "marketGap") {
+        const wave = cachePeek(`quantum:${day}`, 1 * H);
+        const mk = cachePeek(`kalshi:${day}`, 10 * 60 * 1000);
+        if (!wave && b && (b.players || []).length) { quantumWave(day).catch(() => {}); }
+        if (!mk && b && (b.players || []).length) { marketFor(day).catch(() => {}); }
+        if (!wave || !mk) return { answer: "Still lining up the wave and the market \u2014 ask again in a minute.", numbers: [], aligned: false };
+        return marketGapAnswer(wave.rows || [], mk.players || {}, set);
+      }
       if (parsed.intent === "forecast" || parsed.intent === "forecastLeader") {
         if (!b || !(b.players || []).length) return { answer: "Tonight\u2019s board is still assembling \u2014 ask again shortly.", numbers: [], aligned: false };
         // read the wave without blocking: if it isn't collapsed yet, start it
@@ -3723,7 +3828,8 @@ app.get("/api/oracle", async (req, res) => {
         if (!per) return { answer: "I couldn\u2019t find that player \u2014 try his last name.", numbers: [], aligned: false };
         const row = rows.find((r) => String(r.id) === String(per.id)) || null;
         if (row) { try { await ledgerLoad(); ledgerRecord(dayDate(day), per.id, per.name, parsed.stat || "hr", parsed.n || 1, Math.round(fcProb(row, parsed.stat || "hr", parsed.n || 1) * 100)); } catch { /* best effort */ } }
-        return forecastAnswer(per, row, per.board || null, parsed, set, wave && wave.ran);
+        const mkAll = cachePeek(`kalshi:${day}`, 10 * 60 * 1000);
+        return forecastAnswer(per, row, per.board || null, parsed, set, wave && wave.ran, mkAll && mkAll.players ? mkAll.players[per.id] : null);
       }
       if (parsed.intent === "leader") {
         if (!b || !(b.players || []).length) return { answer: "The board is still assembling \u2014 ask again shortly.", numbers: [], aligned: false };
@@ -3740,7 +3846,7 @@ app.get("/api/oracle", async (req, res) => {
         }
         return { answer: "He\u2019s not on tonight\u2019s board \u2014 season questions work for any player.", numbers: [], aligned: false };
       }
-      return { answer: "Ask me things like: \u201chow many times has Devers had 3 RBI in a game\u201d \u00b7 \u201chow many games with 2+ homers\u201d \u00b7 \u201cmost hits Judge has in a game\u201d \u00b7 \u201cSoto\u2019s hitting streak\u201d \u00b7 \u201chow many walks does Harper have\u201d \u00b7 \u201cwhen did Alvarez last homer\u201d \u00b7 \u201cJudge\u2019s last 10 games\u201d \u00b7 \u201cwho leads HR% tonight\u201d \u00b7 \u201cAbrams\u2019 leadoff homers\u201d \u00b7 and about tonight: \u201cwho\u2019s most likely to homer tonight\u201d \u00b7 \u201cwill Judge homer tonight\u201d \u00b7 \u201cwho\u2019s the best bet for 2 RBI\u201d \u00b7 \u201cSoto\u2019s expected line\u201d \u00b7 \u201chow many times has Lowe homered in back to back games\u201d \u00b7 \u201chow many games have Abrams and Wood both homered in the same game\u201d \u00b7 add \u2018in his career\u2019 to any of them \u00b7 \u201cif Judge homers who else goes deep\u201d \u00b7 \u201chow accurate were you this week\u201d \u2014 any counting stat works: HR, RBI, hits, walks, Ks, doubles, triples, runs, steals, total bases \u2014 and you can add \u2018at home\u2019, \u2018on the road\u2019, \u2018vs lefties\u2019, or \u2018vs righties\u2019 to any of them. Follow-ups work \u2014 after any answer, \u2018he\u2019 means that player.", numbers: [], aligned: false };
+      return { answer: "Ask me things like: \u201chow many times has Devers had 3 RBI in a game\u201d \u00b7 \u201chow many games with 2+ homers\u201d \u00b7 \u201cmost hits Judge has in a game\u201d \u00b7 \u201cSoto\u2019s hitting streak\u201d \u00b7 \u201chow many walks does Harper have\u201d \u00b7 \u201cwhen did Alvarez last homer\u201d \u00b7 \u201cJudge\u2019s last 10 games\u201d \u00b7 \u201cwho leads HR% tonight\u201d \u00b7 \u201cAbrams\u2019 leadoff homers\u201d \u00b7 and about tonight: \u201cwho\u2019s most likely to homer tonight\u201d \u00b7 \u201cwill Judge homer tonight\u201d \u00b7 \u201cwho\u2019s the best bet for 2 RBI\u201d \u00b7 \u201cSoto\u2019s expected line\u201d \u00b7 \u201chow many times has Lowe homered in back to back games\u201d \u00b7 \u201chow many games have Abrams and Wood both homered in the same game\u201d \u00b7 add \u2018in his career\u2019 to any of them \u00b7 \u201cif Judge homers who else goes deep\u201d \u00b7 \u201chow accurate were you this week\u201d \u00b7 \u201cwhere does the market disagree with the wave\u201d \u2014 any counting stat works: HR, RBI, hits, walks, Ks, doubles, triples, runs, steals, total bases \u2014 and you can add \u2018at home\u2019, \u2018on the road\u2019, \u2018vs lefties\u2019, or \u2018vs righties\u2019 to any of them. Follow-ups work \u2014 after any answer, \u2018he\u2019 means that player.", numbers: [], aligned: false };
     });
     res.json({ ...out, set });
   } catch (e) { res.status(500).json({ error: e.message }); }
