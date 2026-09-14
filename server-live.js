@@ -2428,8 +2428,10 @@ app.get("/api/mixlab", async (req, res) => {
    slate on a 10-minute clock. Runs beside the board, never inside it \u2014 if
    Kalshi is slow or down, the chip reads "\u2014" and nothing else notices. */
 const KALSHI = "https://api.elections.kalshi.com/trade-api/v2";
-const KALSHI_SERIES_GUESSES = ["KXMLBHR", "KXMLBHOMERUN", "KXMLBPLAYERHR", "KXMLBHRS"];
+const KALSHI_SERIES_GUESSES = ["KXMLBHR", "KXMLBHOMERUN", "KXMLBPLAYERHR", "KXMLBHRS"]; // KXMLBHR confirmed: "Milwaukee vs Chicago C: Home Runs"
 let KALSHI_HR_SERIES = process.env.KALSHI_HR_SERIES || null;
+let KALSHI_LAST_ERROR = null, KALSHI_LAST_SAMPLE = [];
+const isTwoPlus = (m) => /\b2\+|two or more|2 or more|\b2\b.*(?:homer|home run|hr)/i.test([m.title, m.subtitle, m.yes_sub_title].filter(Boolean).join(" ")) || /-2\b|_2\b|2PLUS/i.test(String(m.ticker || "").split("-").pop());
 const mktNorm = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
 async function kalshiGet(path) {
   const r = await fetch(KALSHI + path, { headers: { Accept: "application/json", "User-Agent": "crushed" } });
@@ -2442,9 +2444,12 @@ async function kalshiHrMarkets() {
   for (const t of tryTickers) {
     try {
       const j = await kalshiGet(`/markets?status=open&limit=1000&series_ticker=${encodeURIComponent(t)}`);
-      const ms = (j.markets || []).filter((m) => /home ?run/i.test((m.title || "") + " " + (m.subtitle || "") + " " + (m.yes_sub_title || "") + " " + (m.event_ticker || "")));
-      if (ms.length) { KALSHI_HR_SERIES = t; return ms; }
-    } catch { /* next guess */ }
+      // the series IS the home-run board: every open market in it counts (the contracts
+      // themselves are just "Player: 1+"), minus the 2+ longshot tier
+      const ms = (j.markets || []).filter((m) => !isTwoPlus(m));
+      KALSHI_LAST_SAMPLE = (j.markets || []).slice(0, 4).map((m) => ({ ticker: m.ticker, title: m.title, yes_sub_title: m.yes_sub_title, yes_ask: m.yes_ask, volume: m.volume }));
+      if (ms.length) { KALSHI_HR_SERIES = t; KALSHI_LAST_ERROR = null; return ms; }
+    } catch (e) { KALSHI_LAST_ERROR = String(e.message || e); }
   }
   // 2) discovery: page through open events looking for an MLB home-run series
   let cursor = null;
@@ -2454,7 +2459,8 @@ async function kalshiHrMarkets() {
     if (ev && ev.series_ticker) {
       KALSHI_HR_SERIES = ev.series_ticker;
       const mj = await kalshiGet(`/markets?status=open&limit=1000&series_ticker=${encodeURIComponent(ev.series_ticker)}`);
-      return mj.markets || [];
+      KALSHI_LAST_SAMPLE = (mj.markets || []).slice(0, 4).map((m) => ({ ticker: m.ticker, title: m.title, yes_sub_title: m.yes_sub_title, yes_ask: m.yes_ask, volume: m.volume }));
+      return (mj.markets || []).filter((m) => !isTwoPlus(m));
     }
     cursor = j.cursor; if (!cursor) break;
   }
@@ -2492,9 +2498,11 @@ function marketMatch(markets, players) {
 const marketFor = (day) => cached(`kalshi:${day}`, 10 * 60 * 1000, async () => {
   const b = BOARDS[day];
   if (!b || !(b.players || []).length) return null;
-  const markets = await kalshiHrMarkets();
+  let markets = [];
+  try { markets = await kalshiHrMarkets(); } catch (e) { KALSHI_LAST_ERROR = String(e.message || e); }
   const players = marketMatch(markets, b.players);
-  return { built: Date.now(), source: "kalshi", series: KALSHI_HR_SERIES, contracts: markets.length, matched: Object.keys(players).length, thin: 100, players };
+  return { built: Date.now(), source: "kalshi", series: KALSHI_HR_SERIES, contracts: markets.length, matched: Object.keys(players).length, thin: 100, players,
+    diag: { error: KALSHI_LAST_ERROR, sample: KALSHI_LAST_SAMPLE, boardBats: b.players.length, unmatchedSample: markets.filter((m) => !Object.values(players).some((p) => p.ticker === m.ticker)).slice(0, 5).map((m) => m.yes_sub_title || m.title || m.ticker) } };
 });
 app.get("/api/market", async (req, res) => {
   try {
